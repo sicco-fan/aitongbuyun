@@ -103,50 +103,7 @@ router.post('/complete', async (req: Request, res: Response) => {
     // 清理会话
     uploadChunks.delete(uploadId);
 
-    // 生成签名 URL 用于 ASR
-    const audioUrl = await storage.generatePresignedUrl({
-      key: fileKey,
-      expireTime: 86400 * 7,
-    });
-
-    console.log('\n===== 开始处理文件 =====');
-    console.log('文件 Key:', fileKey);
-
-    // 使用 ASR 识别音频
-    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
-    const asrClient = new ASRClient(new Config(), customHeaders);
-    
-    const asrResult = await asrClient.recognize({
-      uid: 'user',
-      url: audioUrl,
-    });
-
-    // 打印 ASR 响应
-    console.log('\n===== ASR 原始响应 =====');
-    console.log('顶层键:', Object.keys(asrResult));
-    console.log('顶层 utterances:', asrResult.utterances);
-    console.log('rawData 键:', asrResult.rawData ? Object.keys(asrResult.rawData) : 'null');
-    console.log('rawData.utterances:', asrResult.rawData?.utterances ? `exists, length=${asrResult.rawData.utterances.length}` : 'null');
-    console.log('rawData.segments:', asrResult.rawData?.segments ? `exists, length=${asrResult.rawData.segments.length}` : 'null');
-    console.log('rawData.audio_info:', JSON.stringify(asrResult.rawData?.audio_info));
-    
-    // 打印 rawData 的完整结构（第一个 utterance/segment）
-    if (asrResult.rawData?.utterances?.[0]) {
-      console.log('rawData.utterances[0]:', JSON.stringify(asrResult.rawData.utterances[0], null, 2));
-    }
-    if (asrResult.rawData?.segments?.[0]) {
-      console.log('rawData.segments[0]:', JSON.stringify(asrResult.rawData.segments[0], null, 2));
-    }
-    console.log('========================\n');
-
-    // 处理句子和时间戳（传入音频 URL 进行静音检测）
-    const sentences = await processASRResultWithSilence(asrResult, audioUrl);
-    
-    const asrDuration = asrResult.duration || asrResult.rawData?.duration;
-    const lastSentenceEndTime = sentences.length > 0 ? sentences[sentences.length - 1].end_time : 0;
-    const totalDuration = duration || asrDuration || lastSentenceEndTime || sentences.length * 2000;
-    
-    // 存储到数据库
+    // 存储到数据库（只存储文件信息，不做ASR处理）
     const supabase = getSupabaseClient();
     
     const { data: material, error: materialError } = await supabase
@@ -155,7 +112,8 @@ router.post('/complete', async (req: Request, res: Response) => {
         title,
         description: description || '',
         audio_url: fileKey,
-        duration: totalDuration,
+        duration: duration || 0,
+        full_text: '', // 初始为空，用户后续获取
       })
       .select()
       .single();
@@ -164,26 +122,11 @@ router.post('/complete', async (req: Request, res: Response) => {
       throw new Error(materialError?.message || '创建材料失败');
     }
 
-    // 插入句子
-    if (sentences.length > 0) {
-      const sentencesData = sentences.map((item, index) => ({
-        material_id: material.id,
-        sentence_index: index,
-        text: item.text,
-        start_time: item.start_time,
-        end_time: item.end_time,
-      }));
-
-      await supabase.from('sentences').insert(sentencesData);
-    }
+    console.log(`材料创建成功: ID=${material.id}, 标题=${title}`);
 
     res.json({
       success: true,
-      material: {
-        ...material,
-        audio_url: audioUrl,
-        sentences_count: sentences.length,
-      },
+      material: material,
     });
   } catch (error) {
     console.error('完成上传失败:', error);
@@ -446,6 +389,154 @@ router.get('/:id', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('获取材料详情失败:', error);
     res.status(500).json({ error: '获取材料详情失败' });
+  }
+});
+
+/**
+ * POST /api/v1/materials/:id/extract-text
+ * 获取音频的ASR文本（用户手动触发）
+ */
+router.post('/:id/extract-text', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const supabase = getSupabaseClient();
+    
+    // 获取材料
+    const { data: material, error: materialError } = await supabase
+      .from('materials')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (materialError || !material) {
+      return res.status(404).json({ error: '材料不存在' });
+    }
+
+    // 检查是否已有文本
+    if (material.full_text && material.full_text.length > 0) {
+      return res.json({ 
+        text: material.full_text,
+        message: '已存在文本' 
+      });
+    }
+
+    // 生成签名 URL
+    const audioUrl = await storage.generatePresignedUrl({
+      key: material.audio_url,
+      expireTime: 86400,
+    });
+
+    console.log(`\n===== 开始 ASR 识别 =====`);
+    console.log('材料 ID:', id);
+    console.log('音频 URL:', audioUrl.substring(0, 100));
+
+    // 调用 ASR
+    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+    const asrClient = new ASRClient(new Config(), customHeaders);
+    
+    const asrResult = await asrClient.recognize({
+      uid: 'user',
+      url: audioUrl,
+    });
+
+    // 提取完整文本
+    const fullText = asrResult.text || asrResult.rawData?.text || '';
+    
+    // 提取时长
+    const duration = asrResult.duration || asrResult.rawData?.audio_info?.duration || 0;
+
+    console.log(`ASR 完成: 文本长度=${fullText.length}, 时长=${duration}s`);
+
+    // 更新材料
+    await supabase
+      .from('materials')
+      .update({ 
+        full_text: fullText,
+        duration: duration * 1000, // 转换为毫秒
+      })
+      .eq('id', id);
+
+    res.json({ 
+      text: fullText,
+      duration: duration * 1000,
+      message: '文本提取成功' 
+    });
+  } catch (error) {
+    console.error('提取文本失败:', error);
+    res.status(500).json({ error: '提取文本失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * POST /api/v1/materials/:id/save-sentences
+ * 保存用户手动切分的句子
+ * Body: { sentences: string[] }
+ */
+router.post('/:id/save-sentences', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { sentences } = req.body;
+
+    if (!sentences || !Array.isArray(sentences) || sentences.length === 0) {
+      return res.status(400).json({ error: '请提供有效的句子数组' });
+    }
+
+    const supabase = getSupabaseClient();
+    
+    // 获取材料
+    const { data: material, error: materialError } = await supabase
+      .from('materials')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (materialError || !material) {
+      return res.status(404).json({ error: '材料不存在' });
+    }
+
+    // 删除现有句子
+    await supabase.from('sentences').delete().eq('material_id', id);
+
+    // 计算时间戳（基于总时长和字符数比例分配）
+    const totalDuration = material.duration || 0;
+    const totalChars = sentences.reduce((sum, s) => sum + s.length, 0);
+    const avgCharDuration = totalDuration / totalChars;
+
+    // 插入新句子
+    let currentTime = 0;
+    const sentencesData = sentences.map((text, index) => {
+      const duration = text.length * avgCharDuration;
+      const start_time = Math.round(currentTime);
+      const end_time = Math.round(currentTime + duration);
+      currentTime = end_time + 100; // 句间停顿 100ms
+      
+      return {
+        material_id: parseInt(id as string),
+        sentence_index: index,
+        text: text.trim(),
+        start_time,
+        end_time,
+      };
+    });
+
+    const { error: insertError } = await supabase
+      .from('sentences')
+      .insert(sentencesData);
+
+    if (insertError) {
+      throw new Error(insertError.message);
+    }
+
+    console.log(`保存 ${sentences.length} 个句子到材料 ${id}`);
+
+    res.json({ 
+      success: true, 
+      count: sentences.length,
+      message: '句子保存成功' 
+    });
+  } catch (error) {
+    console.error('保存句子失败:', error);
+    res.status(500).json({ error: '保存句子失败', message: (error as Error).message });
   }
 });
 

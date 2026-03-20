@@ -89,6 +89,9 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.md,
       gap: Spacing.xs,
     },
+    textButton: {
+      backgroundColor: theme.accent + '15',
+    },
     editButton: {
       backgroundColor: theme.primary + '15',
     },

@@ -27,6 +27,7 @@ interface Material {
   duration: number;
   sentences_count: number;
   completed_count: number;
+  full_text?: string;
   created_at: string;
 }
 
@@ -186,24 +187,43 @@ export default function AdminScreen() {
                 <View style={styles.statRow}>
                   <FontAwesome6 name="list" size={12} color={theme.textMuted} />
                   <ThemedText variant="caption" color={theme.textMuted}>
-                    {material.sentences_count} 句
+                    {material.sentences_count || 0} 句
                   </ThemedText>
                 </View>
                 <View style={styles.statRow}>
                   <FontAwesome6 name="circle-check" size={12} color={theme.success} />
                   <ThemedText variant="caption" color={theme.success}>
-                    {material.completed_count} 完成
+                    {material.completed_count || 0} 完成
+                  </ThemedText>
+                </View>
+                {/* 显示文本状态 */}
+                <View style={styles.statRow}>
+                  <FontAwesome6 
+                    name={material.full_text ? "file-lines" : "file-circle-plus"} 
+                    size={12} 
+                    color={material.full_text ? theme.success : theme.textMuted} 
+                  />
+                  <ThemedText variant="caption" color={material.full_text ? theme.success : theme.textMuted}>
+                    {material.full_text ? '已有文本' : '待提取'}
                   </ThemedText>
                 </View>
               </View>
 
               <View style={styles.materialActions}>
                 <TouchableOpacity
+                  style={[styles.actionButton, styles.textButton]}
+                  onPress={() => router.push('/text-split', { materialId: material.id, title: material.title })}
+                >
+                  <FontAwesome6 name="scissors" size={14} color={theme.accent} />
+                  <ThemedText variant="smallMedium" color={theme.accent}>文本切分</ThemedText>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
                   style={[styles.actionButton, styles.editButton]}
                   onPress={() => router.push('/admin-sentences', { materialId: material.id, title: material.title })}
                 >
                   <FontAwesome6 name="pen-to-square" size={14} color={theme.primary} />
-                  <ThemedText variant="smallMedium" color={theme.primary}>编辑句子</ThemedText>
+                  <ThemedText variant="smallMedium" color={theme.primary}>编辑</ThemedText>
                 </TouchableOpacity>
                 
                 <TouchableOpacity
