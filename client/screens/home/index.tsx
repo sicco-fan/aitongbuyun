@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
@@ -83,36 +84,47 @@ export default function HomeScreen() {
     router.push('/practice', { materialId: material.id, title: material.title });
   };
 
-  const handleDeleteMaterial = (material: Material) => {
-    Alert.alert(
-      '删除材料',
-      `确定要删除「${material.title}」吗？\n此操作将删除该材料及其所有句子数据，且不可恢复。`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const response = await fetch(
-                `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${material.id}`,
-                { method: 'DELETE' }
-              );
+  const handleDeleteMaterial = async (material: Material) => {
+    // Web 端使用 confirm，移动端使用 Alert
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm(`确定要删除「${material.title}」吗？\n此操作将删除该材料及其所有句子数据，且不可恢复。`)
+      : await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            '删除材料',
+            `确定要删除「${material.title}」吗？\n此操作将删除该材料及其所有句子数据，且不可恢复。`,
+            [
+              { text: '取消', style: 'cancel', onPress: () => resolve(false) },
+              { text: '删除', style: 'destructive', onPress: () => resolve(true) },
+            ]
+          );
+        });
 
-              if (response.ok) {
-                setMaterials(prev => prev.filter(m => m.id !== material.id));
-                Alert.alert('成功', '材料已删除');
-              } else {
-                throw new Error('删除失败');
-              }
-            } catch (error) {
-              console.error('删除材料失败:', error);
-              Alert.alert('错误', '删除材料失败');
-            }
-          },
-        },
-      ]
-    );
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(
+        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${material.id}`,
+        { method: 'DELETE' }
+      );
+
+      if (response.ok) {
+        setMaterials(prev => prev.filter(m => m.id !== material.id));
+        if (Platform.OS === 'web') {
+          alert('材料已删除');
+        } else {
+          Alert.alert('成功', '材料已删除');
+        }
+      } else {
+        throw new Error('删除失败');
+      }
+    } catch (error) {
+      console.error('删除材料失败:', error);
+      if (Platform.OS === 'web') {
+        alert('删除材料失败');
+      } else {
+        Alert.alert('错误', '删除材料失败');
+      }
+    }
   };
 
   const handleAddMaterial = () => {
@@ -248,8 +260,9 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={styles.deleteButton}
                 onPress={() => handleDeleteMaterial(material)}
+                activeOpacity={0.7}
               >
-                <FontAwesome6 name="trash" size={16} color={theme.error} />
+                <FontAwesome6 name="trash" size={18} color={theme.error} />
               </TouchableOpacity>
             </View>
           ))

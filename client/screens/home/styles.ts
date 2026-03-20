@@ -88,9 +88,15 @@ export const createStyles = (theme: Theme) => {
       marginTop: Spacing.xs,
     },
     deleteButton: {
-      padding: Spacing.sm,
-      marginLeft: Spacing.sm,
-      marginTop: Spacing.xs,
+      padding: Spacing.md,
+      marginLeft: Spacing.md,
+      backgroundColor: theme.error + '20',
+      borderRadius: BorderRadius.lg,
+      alignSelf: 'center',
+      minWidth: 44,
+      minHeight: 44,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     emptyContainer: {
       flex: 1,
