@@ -461,9 +461,16 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
 /**
  * 处理 ASR 结果，提取带时间戳的句子
+ * 核心原则：先按文字分割，再匹配语音时间
  */
 interface SentenceWithTime {
   text: string;
+  start_time: number;
+  end_time: number;
+}
+
+interface WordWithTime {
+  word: string;
   start_time: number;
   end_time: number;
 }
@@ -472,142 +479,175 @@ function processASRResult(asrResult: { text: string; duration?: number; utteranc
   const MAX_WORDS = 6;
   const result: SentenceWithTime[] = [];
 
-  // ===== 调试：打印完整的 ASR 原始响应 =====
-  console.log('\n========== ASR 完整响应 ==========');
+  console.log('\n========== ASR 处理开始 ==========');
   console.log('顶层字段:', Object.keys(asrResult));
-  console.log('text:', asrResult.text?.substring(0, 200));
-  console.log('duration (顶层):', asrResult.duration);
-  console.log('utterances (顶层):', asrResult.utterances?.length, asrResult.utterances?.[0]);
-  console.log('rawData 字段:', asrResult.rawData ? Object.keys(asrResult.rawData) : 'null');
-  console.log('rawData 完整内容:', JSON.stringify(asrResult.rawData, null, 2).substring(0, 2000));
-  console.log('===================================\n');
+  console.log('完整文本:', asrResult.text?.substring(0, 200));
+  console.log('总时长:', asrResult.duration);
 
-  // 尝试从多个可能的位置获取带时间戳的数据
-  let utterances: any[] = [];
+  // 步骤1：提取所有带时间戳的单词
+  const wordsWithTime: WordWithTime[] = extractWordsWithTimestamps(asrResult);
   
-  // 1. 检查顶层 utterances
-  if (asrResult.utterances && Array.isArray(asrResult.utterances) && asrResult.utterances.length > 0) {
-    utterances = asrResult.utterances;
-    console.log('使用顶层 utterances，数量:', utterances.length);
-  }
-  // 2. 检查 rawData 中的 utterances
-  else if (asrResult.rawData?.utterances && Array.isArray(asrResult.rawData.utterances) && asrResult.rawData.utterances.length > 0) {
-    utterances = asrResult.rawData.utterances;
-    console.log('使用 rawData.utterances，数量:', utterances.length);
-  }
-  // 3. 检查 rawData 中的 segments
-  else if (asrResult.rawData?.segments && Array.isArray(asrResult.rawData.segments) && asrResult.rawData.segments.length > 0) {
-    utterances = asrResult.rawData.segments;
-    console.log('使用 rawData.segments，数量:', utterances.length);
-  }
-  // 4. 检查 rawData 中的 results (某些 API 格式)
-  else if (asrResult.rawData?.results && Array.isArray(asrResult.rawData.results)) {
-    utterances = asrResult.rawData.results;
-    console.log('使用 rawData.results，数量:', utterances.length);
+  console.log(`\n提取到 ${wordsWithTime.length} 个带时间戳的单词`);
+  if (wordsWithTime.length > 0) {
+    console.log('前5个单词:', wordsWithTime.slice(0, 5).map(w => `${w.word}(${w.start_time}-${w.end_time})`).join(', '));
   }
 
-  // 打印第一个 utterance 的完整结构
-  if (utterances.length > 0) {
-    console.log('第一个 utterance 结构:', JSON.stringify(utterances[0], null, 2));
-  } else {
-    console.log('警告：未找到任何 utterances 数据！');
-  }
+  // 步骤2：按文字内容分割句子
+  const fullText = asrResult.text || '';
+  const sentenceTexts = splitIntoSentences(fullText);
+  console.log(`\n按文字分割为 ${sentenceTexts.length} 个句子`);
 
-  // 获取总时长
-  const totalDuration = asrResult.duration || asrResult.rawData?.duration || 0;
-  console.log('总时长 (ms):', totalDuration);
-
-  if (utterances.length > 0) {
-    // 使用 ASR 返回的时间戳
-    for (let i = 0; i < utterances.length; i++) {
-      const utterance = utterances[i];
-      const text = (utterance.text || utterance.word || utterance.transcript || '').trim();
-      
-      // 尝试多种可能的时间字段名
-      let startTime = utterance.start_time ?? utterance.startTime ?? utterance.start ?? utterance.begin ?? 0;
-      let endTime = utterance.end_time ?? utterance.endTime ?? utterance.end ?? utterance.finish ?? 0;
-      
-      // 如果时间看起来是秒（值较小且总时长是毫秒），转换为毫秒
-      if (endTime > 0 && endTime < 1000 && totalDuration > 1000) {
-        console.log(`转换时间单位: ${endTime}s -> ${endTime * 1000}ms`);
-        startTime = startTime * 1000;
-        endTime = endTime * 1000;
-      }
-      
-      const duration = endTime - startTime;
-
-      if (!text) {
-        console.log(`跳过空文本 utterance ${i}`);
-        continue;
-      }
-      
-      if (duration <= 0) {
-        console.log(`跳过无效时长 utterance ${i}: start=${startTime}, end=${endTime}`);
-        continue;
-      }
-
-      console.log(`Utterance ${i}: "${text.substring(0, 30)}..." ${startTime}ms - ${endTime}ms (${duration}ms)`);
-
-      const words = text.split(/\s+/).filter((w: string) => w.length > 0);
-
-      if (words.length <= MAX_WORDS) {
-        result.push({ text, start_time: Math.round(startTime), end_time: Math.round(endTime) });
-      } else {
-        // 太长，按单词分割并按比例估算时间
-        console.log(`句子过长 (${words.length} 词)，进行分割`);
-        const wordCount = words.length;
-        const avgWordDuration = duration / wordCount;
-
-        for (let j = 0; j < wordCount; j += MAX_WORDS) {
-          const chunkWords = words.slice(j, j + MAX_WORDS);
-          const chunkText = chunkWords.join(' ');
-          const chunkStart = startTime + j * avgWordDuration;
-          const chunkEnd = startTime + Math.min(j + MAX_WORDS, wordCount) * avgWordDuration;
-
-          result.push({ text: chunkText, start_time: Math.round(chunkStart), end_time: Math.round(chunkEnd) });
-        }
-      }
-    }
-  }
-  
-  // 如果没有获取到带时间戳的句子，回退到文本分割
-  if (result.length === 0 && asrResult.text) {
-    console.log('\n===== 回退到文本分割模式 =====');
-    console.log('警告：ASR 未返回时间戳数据，将估算时间！');
+  if (wordsWithTime.length > 0) {
+    // 步骤3：根据单词时间戳确定每个句子的时间范围
+    let wordIndex = 0;
     
-    const sentences = splitIntoSentences(asrResult.text);
-    console.log(`分割为 ${sentences.length} 个句子`);
-
-    if (sentences.length > 0 && totalDuration > 0) {
-      // 按句子中单词数比例分配时间
-      const totalWords = sentences.reduce((sum, s) => sum + s.split(/\s+/).filter(w => w.length > 0).length, 0);
+    for (const sentenceText of sentenceTexts) {
+      const sentenceWords = sentenceText.split(/\s+/).filter(w => w.length > 0);
+      const sentenceWordCount = sentenceWords.length;
+      
+      // 找到这个句子对应的单词范围
+      const startIdx = wordIndex;
+      const endIdx = Math.min(wordIndex + sentenceWordCount, wordsWithTime.length);
+      
+      if (startIdx < wordsWithTime.length) {
+        const startTime = wordsWithTime[startIdx].start_time;
+        const endTime = wordsWithTime[Math.max(0, endIdx - 1)].end_time;
+        
+        result.push({
+          text: sentenceText,
+          start_time: Math.round(startTime),
+          end_time: Math.round(endTime),
+        });
+        
+        console.log(`句子: "${sentenceText.substring(0, 30)}..." ${startTime}ms - ${endTime}ms`);
+      }
+      
+      wordIndex = endIdx;
+    }
+  } else {
+    // 步骤4：没有时间戳数据，按比例估算
+    console.log('\n警告：无单词时间戳数据，按比例估算时间');
+    
+    const totalDuration = asrResult.duration || asrResult.rawData?.duration || 0;
+    const totalWords = sentenceTexts.reduce((sum, s) => sum + s.split(/\s+/).filter(w => w.length > 0).length, 0);
+    
+    if (totalDuration > 0 && totalWords > 0) {
       const avgWordDuration = totalDuration / totalWords;
-
-      console.log(`总词数: ${totalWords}, 平均每词: ${avgWordDuration.toFixed(0)}ms`);
-
       let currentTime = 0;
-      for (const text of sentences) {
-        const words = text.split(/\s+/).filter(w => w.length > 0);
+      
+      for (const sentenceText of sentenceTexts) {
+        const words = sentenceText.split(/\s+/).filter(w => w.length > 0);
         const duration = Math.round(words.length * avgWordDuration);
-
-        result.push({ text, start_time: currentTime, end_time: currentTime + duration });
-        console.log(`句子: "${text.substring(0, 30)}..." ${currentTime}ms - ${currentTime + duration}ms`);
+        
+        result.push({
+          text: sentenceText,
+          start_time: currentTime,
+          end_time: currentTime + duration,
+        });
+        
+        console.log(`句子: "${sentenceText.substring(0, 30)}..." ${currentTime}ms - ${currentTime + duration}ms (估算)`);
         currentTime += duration;
       }
-    } else if (sentences.length > 0) {
-      // 如果连总时长都没有，使用一个合理的默认值（每个句子平均2秒）
-      console.log('警告：无总时长信息，使用默认2秒/句');
+    } else {
+      // 最后兜底：每个句子默认2秒
+      console.log('警告：无法计算时间，使用默认2秒/句');
       let currentTime = 0;
-      for (const text of sentences) {
+      
+      for (const sentenceText of sentenceTexts) {
         const duration = 2000;
-        result.push({ text, start_time: currentTime, end_time: currentTime + duration });
+        result.push({
+          text: sentenceText,
+          start_time: currentTime,
+          end_time: currentTime + duration,
+        });
         currentTime += duration;
       }
     }
   }
 
   console.log(`\n最终生成 ${result.length} 个句子`);
+  console.log('===================================\n');
   return result;
+}
+
+/**
+ * 从 ASR 结果中提取带时间戳的单词
+ */
+function extractWordsWithTimestamps(asrResult: { text: string; duration?: number; utterances?: any[]; rawData?: any }): WordWithTime[] {
+  const words: WordWithTime[] = [];
+  
+  // 尝试从多个可能的位置获取带时间戳的数据
+  let utterances: any[] = [];
+  
+  // 1. 检查顶层 utterances
+  if (asrResult.utterances && Array.isArray(asrResult.utterances)) {
+    utterances = asrResult.utterances;
+    console.log('使用顶层 utterances，数量:', utterances.length);
+  }
+  // 2. 检查 rawData 中的 utterances
+  else if (asrResult.rawData?.utterances && Array.isArray(asrResult.rawData.utterances)) {
+    utterances = asrResult.rawData.utterances;
+    console.log('使用 rawData.utterances，数量:', utterances.length);
+  }
+  // 3. 检查 rawData 中的 segments
+  else if (asrResult.rawData?.segments && Array.isArray(asrResult.rawData.segments)) {
+    utterances = asrResult.rawData.segments;
+    console.log('使用 rawData.segments，数量:', utterances.length);
+  }
+  
+  // 打印第一个 utterance 的完整结构以便调试
+  if (utterances.length > 0) {
+    console.log('第一个 utterance 结构:', JSON.stringify(utterances[0], null, 2));
+  }
+
+  // 检查是否有单词级别的时间戳
+  // 有些 ASR 返回的 utterances 中每个元素就是一个单词
+  // 有些则是在 utterance 内部有 words 数组
+  
+  for (const utterance of utterances) {
+    // 尝试提取单词级别的时间戳
+    if (utterance.words && Array.isArray(utterance.words)) {
+      // utterance 内部有 words 数组
+      for (const w of utterance.words) {
+        const word = (w.word || w.text || '').trim();
+        const startTime = w.start_time ?? w.startTime ?? w.start ?? 0;
+        const endTime = w.end_time ?? w.endTime ?? w.end ?? 0;
+        
+        if (word && startTime < endTime) {
+          words.push({ word, start_time: startTime, end_time: endTime });
+        }
+      }
+    } else {
+      // utterance 本身可能就是一个单词或短语
+      const text = (utterance.text || utterance.word || '').trim();
+      const startTime = utterance.start_time ?? utterance.startTime ?? utterance.start ?? 0;
+      const endTime = utterance.end_time ?? utterance.endTime ?? utterance.end ?? 0;
+      
+      if (text) {
+        // 判断这是一个单词还是多个单词
+        const textWords = text.split(/\s+/).filter((w: string) => w.length > 0);
+        
+        if (textWords.length === 1 && startTime < endTime) {
+          // 单个单词，直接添加
+          words.push({ word: text, start_time: startTime, end_time: endTime });
+        } else if (textWords.length > 1 && startTime < endTime) {
+          // 多个单词，需要按比例分配时间
+          const duration = endTime - startTime;
+          const avgWordDuration = duration / textWords.length;
+          
+          for (let i = 0; i < textWords.length; i++) {
+            words.push({
+              word: textWords[i],
+              start_time: startTime + i * avgWordDuration,
+              end_time: startTime + (i + 1) * avgWordDuration,
+            });
+          }
+        }
+      }
+    }
+  }
+  
+  return words;
 }
 
 /**
