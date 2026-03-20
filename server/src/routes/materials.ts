@@ -5,6 +5,8 @@ import { getSupabaseClient } from '../storage/database/supabase-client';
 import { S3Storage, ASRClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
 
 const router = Router();
+
+// 用于处理上传的内存存储
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 500 * 1024 * 1024 } // 500MB - 支持视频文件
@@ -17,6 +19,160 @@ const storage = new S3Storage({
   secretKey: '',
   bucketName: process.env.COZE_BUCKET_NAME,
   region: 'cn-beijing',
+});
+
+// 用于存储分块上传的临时数据
+const uploadChunks: Map<string, { chunks: Buffer[], fileName: string, contentType: string }> = new Map();
+
+/**
+ * POST /api/v1/materials/chunk
+ * 分块上传 - 上传文件块
+ * Body: FormData { chunk: File, chunkIndex: number, totalChunks: number, uploadId: string, fileName: string, contentType: string }
+ */
+router.post('/chunk', upload.single('chunk'), async (req: Request, res: Response) => {
+  try {
+    const { chunkIndex, totalChunks, uploadId, fileName, contentType } = req.body;
+    const chunk = req.file;
+
+    if (!chunk || !uploadId || !fileName) {
+      return res.status(400).json({ error: '缺少必要参数' });
+    }
+
+    const index = parseInt(chunkIndex);
+    const total = parseInt(totalChunks);
+
+    // 初始化或获取上传会话
+    if (!uploadChunks.has(uploadId)) {
+      uploadChunks.set(uploadId, {
+        chunks: new Array(total),
+        fileName,
+        contentType: contentType || 'application/octet-stream',
+      });
+    }
+
+    const session = uploadChunks.get(uploadId)!;
+    session.chunks[index] = chunk.buffer;
+
+    // 检查是否所有块都已上传
+    const uploadedCount = session.chunks.filter(c => c !== undefined).length;
+    
+    res.json({ 
+      success: true, 
+      chunkIndex: index, 
+      uploaded: uploadedCount,
+      total: total,
+    });
+  } catch (error) {
+    console.error('上传块失败:', error);
+    res.status(500).json({ error: '上传块失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * POST /api/v1/materials/complete
+ * 分块上传 - 完成上传并处理
+ * Body: { uploadId: string, title: string, description?: string, duration?: number }
+ */
+router.post('/complete', async (req: Request, res: Response) => {
+  try {
+    const { uploadId, title, description, duration } = req.body;
+
+    if (!uploadId || !title) {
+      return res.status(400).json({ error: '缺少必要参数' });
+    }
+
+    const session = uploadChunks.get(uploadId);
+    if (!session) {
+      return res.status(400).json({ error: '上传会话不存在或已过期' });
+    }
+
+    // 合并所有块
+    const totalBuffer = Buffer.concat(session.chunks);
+    console.log(`合并文件: ${session.fileName}, 大小: ${totalBuffer.length} bytes`);
+
+    // 上传到对象存储
+    const fileKey = await storage.uploadFile({
+      fileContent: totalBuffer,
+      fileName: `audio/${Date.now()}_${session.fileName}`,
+      contentType: session.contentType,
+    });
+
+    // 清理会话
+    uploadChunks.delete(uploadId);
+
+    // 生成签名 URL 用于 ASR
+    const audioUrl = await storage.generatePresignedUrl({
+      key: fileKey,
+      expireTime: 86400 * 7,
+    });
+
+    console.log('\n===== 开始处理文件 =====');
+    console.log('文件 Key:', fileKey);
+
+    // 使用 ASR 识别音频
+    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+    const asrClient = new ASRClient(new Config(), customHeaders);
+    
+    const asrResult = await asrClient.recognize({
+      uid: 'user',
+      url: audioUrl,
+    });
+
+    // 打印 ASR 响应
+    console.log('\n===== ASR 原始响应 =====');
+    console.log('顶层键:', Object.keys(asrResult));
+    console.log('========================\n');
+
+    // 处理句子和时间戳
+    const sentences = processASRResult(asrResult);
+    
+    const asrDuration = asrResult.duration || asrResult.rawData?.duration;
+    const lastSentenceEndTime = sentences.length > 0 ? sentences[sentences.length - 1].end_time : 0;
+    const totalDuration = duration || asrDuration || lastSentenceEndTime || sentences.length * 2000;
+    
+    // 存储到数据库
+    const supabase = getSupabaseClient();
+    
+    const { data: material, error: materialError } = await supabase
+      .from('materials')
+      .insert({
+        title,
+        description: description || '',
+        audio_url: fileKey,
+        duration: totalDuration,
+      })
+      .select()
+      .single();
+
+    if (materialError || !material) {
+      throw new Error(materialError?.message || '创建材料失败');
+    }
+
+    // 插入句子
+    if (sentences.length > 0) {
+      const sentencesData = sentences.map((item, index) => ({
+        material_id: material.id,
+        sentence_index: index,
+        text: item.text,
+        start_time: item.start_time,
+        end_time: item.end_time,
+      }));
+
+      await supabase.from('sentences').insert(sentencesData);
+    }
+
+    res.json({
+      success: true,
+      material: {
+        ...material,
+        audio_url: audioUrl,
+        sentences_count: sentences.length,
+      },
+    });
+  } catch (error) {
+    console.error('完成上传失败:', error);
+    res.status(500).json({ error: '处理文件失败', message: (error as Error).message });
+  }
 });
 
 /**

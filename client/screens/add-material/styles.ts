@@ -186,14 +186,35 @@ export const createStyles = (theme: Theme) => {
       justifyContent: 'center',
       alignItems: 'center',
       paddingVertical: Spacing['6xl'],
+      paddingHorizontal: Spacing.xl,
     },
     uploadingText: {
       marginTop: Spacing.lg,
+      textAlign: 'center',
     },
     uploadingHint: {
       marginTop: Spacing.sm,
       textAlign: 'center',
       paddingHorizontal: Spacing['2xl'],
+    },
+    // Progress Bar
+    progressBarContainer: {
+      width: '80%',
+      height: 8,
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.full,
+      marginTop: Spacing.lg,
+      overflow: 'hidden',
+    },
+    progressBarFill: {
+      height: '100%',
+      backgroundColor: theme.primary,
+      borderRadius: BorderRadius.full,
+    },
+    progressText: {
+      marginTop: Spacing.sm,
+      fontSize: 12,
+      color: theme.textMuted,
     },
   });
 };

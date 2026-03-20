@@ -16,7 +16,6 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
-import { createFormDataFile } from '@/utils';
 
 interface FileInfo {
   uri: string;
@@ -27,20 +26,9 @@ interface FileInfo {
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
 
-// Web 端兼容的 Alert
-const showAlert = (title: string, message: string, buttons?: { text: string; onPress?: () => void }[]) => {
-  if (Platform.OS === 'web') {
-    const confirmed = window.confirm(`${title}\n\n${message}`);
-    if (confirmed && buttons && buttons.length > 1) {
-      // 用户点击确定
-      buttons[1]?.onPress?.();
-    } else if (!confirmed && buttons && buttons.length > 0) {
-      // 用户点击取消
-      buttons[0]?.onPress?.();
-    }
-  } else {
-    Alert.alert(title, message, buttons);
-  }
+// 生成本地 ID
+const generateUploadId = () => {
+  return `${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
 };
 
 export default function AddMaterialScreen() {
@@ -53,6 +41,7 @@ export default function AddMaterialScreen() {
   const [file, setFile] = useState<FileInfo | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string>('');
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
   const pickAudioFile = async () => {
@@ -142,64 +131,95 @@ export default function AddMaterialScreen() {
 
     setUploading(true);
     setUploadStatus('准备上传...');
+    setUploadProgress(0);
 
     try {
-      // 创建 FormData
-      const formData = new FormData();
+      const baseUrl = EXPO_PUBLIC_BACKEND_BASE_URL || '';
+      const uploadId = generateUploadId();
+      const CHUNK_SIZE = 512 * 1024; // 512KB 每块，确保小于代理限制
       
-      setUploadStatus('处理文件中...');
-      
-      // 使用 createFormDataFile 创建跨平台兼容的文件对象
-      const audioFile = await createFormDataFile(
-        file.uri,
-        file.name,
-        file.mimeType || 'audio/mpeg'
-      );
-      formData.append('file', audioFile as any);
-      formData.append('title', title);
-      formData.append('description', description);
-
-      setUploadStatus('上传中...');
-      
-      // 确定后端 URL：
-      // - 移动端（iOS/Android）：使用 localhost:9091（开发时连接本地后端）
-      // - Web 端：使用 EXPO_PUBLIC_BACKEND_BASE_URL（通过代理访问后端）
-      let baseUrl: string;
+      // 获取文件数据
+      let fileData: ArrayBuffer;
       if (Platform.OS === 'web') {
-        // Web 端必须使用配置的 URL（通过代理）
-        baseUrl = EXPO_PUBLIC_BACKEND_BASE_URL || '';
+        // Web 端直接从 URI 获取文件
+        const response = await fetch(file.uri);
+        fileData = await response.arrayBuffer();
       } else {
-        // 移动端直接连接本地后端
-        baseUrl = __DEV__ ? 'http://localhost:9091' : (EXPO_PUBLIC_BACKEND_BASE_URL || '');
+        // 移动端需要读取文件
+        const response = await fetch(file.uri);
+        fileData = await response.arrayBuffer();
       }
-      const url = `${baseUrl}/api/v1/materials`;
-      console.log('上传 URL:', url);
-      console.log('平台:', Platform.OS, '文件信息:', { name: file.name, size: file.size, type: file.mimeType });
+
+      const totalSize = fileData.byteLength;
+      const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
       
+      console.log('文件信息:', { name: file.name, size: totalSize, chunks: totalChunks });
+
+      // 分块上传
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, totalSize);
+        const chunk = fileData.slice(start, end);
+        
+        const progress = Math.round(((i + 1) / totalChunks) * 100);
+        setUploadProgress(progress);
+        setUploadStatus(`上传中 ${progress}% (${i + 1}/${totalChunks} 块)`);
+
+        const formData = new FormData();
+        const chunkBlob = new Blob([chunk], { type: file.mimeType || 'application/octet-stream' });
+        formData.append('chunk', chunkBlob, `chunk_${i}`);
+        formData.append('chunkIndex', i.toString());
+        formData.append('totalChunks', totalChunks.toString());
+        formData.append('uploadId', uploadId);
+        formData.append('fileName', file.name);
+        formData.append('contentType', file.mimeType || 'application/octet-stream');
+
+        /**
+         * 服务端文件：server/src/routes/materials.ts
+         * 接口：POST /api/v1/materials/chunk
+         * FormData 参数：chunk: File, chunkIndex: number, totalChunks: number, uploadId: string, fileName: string, contentType: string
+         */
+        const chunkResponse = await fetch(`${baseUrl}/api/v1/materials/chunk`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!chunkResponse.ok) {
+          const errorText = await chunkResponse.text();
+          throw new Error(`上传块 ${i + 1} 失败: ${errorText.substring(0, 100)}`);
+        }
+
+        const chunkResult = await chunkResponse.json();
+        console.log(`块 ${i + 1}/${totalChunks} 上传成功`);
+      }
+
+      setUploadStatus('处理中，正在识别语音...');
+
+      // 完成上传
       /**
        * 服务端文件：server/src/routes/materials.ts
-       * 接口：POST /api/v1/materials
-       * FormData 参数：file: File, title: string, description?: string
+       * 接口：POST /api/v1/materials/complete
+       * Body 参数：uploadId: string, title: string, description?: string
        */
-      const response = await fetch(url, {
+      const completeResponse = await fetch(`${baseUrl}/api/v1/materials/complete`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uploadId,
+          title,
+          description,
+        }),
       });
 
-      console.log('响应状态:', response.status, response.statusText);
-      
-      // 先获取响应文本，再尝试解析 JSON
-      const responseText = await response.text();
-      console.log('响应内容:', responseText.substring(0, 500));
-      
+      const responseText = await completeResponse.text();
       let data;
       try {
         data = JSON.parse(responseText);
-      } catch (parseError) {
+      } catch {
         throw new Error(`服务器返回非 JSON 格式: ${responseText.substring(0, 200)}`);
       }
 
-      if (response.ok && data.success) {
+      if (completeResponse.ok && data.success) {
         setUploadStatus('上传成功！');
         setUploadSuccess(true);
         
@@ -226,7 +246,7 @@ export default function AddMaterialScreen() {
           ]);
         }
       } else {
-        throw new Error(data.error || data.message || '上传失败');
+        throw new Error(data.error || data.message || '处理失败');
       }
     } catch (error) {
       console.error('上传失败:', error);
@@ -265,8 +285,23 @@ export default function AddMaterialScreen() {
           <ThemedText variant="body" color={theme.textPrimary} style={styles.uploadingText}>
             {uploadStatus || '正在处理音频...'}
           </ThemedText>
+          
+          {/* 进度条 */}
+          {uploadProgress > 0 && (
+            <View style={styles.progressBarContainer}>
+              <View 
+                style={[
+                  styles.progressBarFill, 
+                  { width: `${uploadProgress}%` }
+                ]} 
+              />
+            </View>
+          )}
+          
           <ThemedText variant="small" color={theme.textMuted} style={styles.uploadingHint}>
-            正在识别音频内容并分句，请稍候
+            {uploadProgress > 0 && uploadProgress < 100 
+              ? '正在上传文件，请勿关闭页面...' 
+              : '正在识别音频内容并分句，请稍候'}
           </ThemedText>
         </View>
       </Screen>
