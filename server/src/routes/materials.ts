@@ -121,6 +121,19 @@ router.post('/complete', async (req: Request, res: Response) => {
     // 打印 ASR 响应
     console.log('\n===== ASR 原始响应 =====');
     console.log('顶层键:', Object.keys(asrResult));
+    console.log('顶层 utterances:', asrResult.utterances);
+    console.log('rawData 键:', asrResult.rawData ? Object.keys(asrResult.rawData) : 'null');
+    console.log('rawData.utterances:', asrResult.rawData?.utterances ? `exists, length=${asrResult.rawData.utterances.length}` : 'null');
+    console.log('rawData.segments:', asrResult.rawData?.segments ? `exists, length=${asrResult.rawData.segments.length}` : 'null');
+    console.log('rawData.audio_info:', JSON.stringify(asrResult.rawData?.audio_info));
+    
+    // 打印 rawData 的完整结构（第一个 utterance/segment）
+    if (asrResult.rawData?.utterances?.[0]) {
+      console.log('rawData.utterances[0]:', JSON.stringify(asrResult.rawData.utterances[0], null, 2));
+    }
+    if (asrResult.rawData?.segments?.[0]) {
+      console.log('rawData.segments[0]:', JSON.stringify(asrResult.rawData.segments[0], null, 2));
+    }
     console.log('========================\n');
 
     // 处理句子和时间戳
@@ -223,7 +236,23 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     console.log('\n===== ASR 原始响应 =====');
     console.log('响应类型:', typeof asrResult);
     console.log('顶层键:', Object.keys(asrResult));
-    console.log('完整响应:', JSON.stringify(asrResult, null, 2));
+    console.log('顶层 utterances:', asrResult.utterances);
+    console.log('rawData 键:', asrResult.rawData ? Object.keys(asrResult.rawData) : 'null');
+    console.log('rawData.utterances:', asrResult.rawData?.utterances ? `exists, length=${asrResult.rawData.utterances.length}` : 'null');
+    console.log('rawData.segments:', asrResult.rawData?.segments ? `exists, length=${asrResult.rawData.segments.length}` : 'null');
+    console.log('rawData.audio_info:', JSON.stringify(asrResult.rawData?.audio_info));
+    
+    // 打印前3个 utterance/segment
+    if (asrResult.rawData?.utterances?.[0]) {
+      console.log('rawData.utterances[0]:', JSON.stringify(asrResult.rawData.utterances[0], null, 2));
+      console.log('rawData.utterances[1]:', JSON.stringify(asrResult.rawData.utterances[1], null, 2));
+      console.log('rawData.utterances[2]:', JSON.stringify(asrResult.rawData.utterances[2], null, 2));
+    }
+    if (asrResult.rawData?.segments?.[0]) {
+      console.log('rawData.segments[0]:', JSON.stringify(asrResult.rawData.segments[0], null, 2));
+      console.log('rawData.segments[1]:', JSON.stringify(asrResult.rawData.segments[1], null, 2));
+      console.log('rawData.segments[2]:', JSON.stringify(asrResult.rawData.segments[2], null, 2));
+    }
     console.log('========================\n');
 
     // 处理句子和时间戳
@@ -531,27 +560,48 @@ function processASRResult(asrResult: { text: string; duration?: number; utteranc
       wordIndex = endIdx;
     }
   } else if (totalDuration > 0) {
-    // 没有时间戳数据，但有总时长，按文本比例分配时间
-    console.log('\n按文本比例分配时间');
+    // 没有时间戳数据，但有总时长，改进的时间分配算法
+    console.log('\n使用改进的时间分配算法');
     
-    const totalWords = sentenceTexts.reduce((sum, s) => sum + s.split(/\s+/).filter(w => w.length > 0).length, 0);
-    const avgWordDuration = totalDuration / totalWords;
-    console.log(`总词数: ${totalWords}, 平均每词: ${avgWordDuration.toFixed(0)}ms`);
+    // 计算总"权重"：每个单词算1，每个句子结束加停顿权重
+    // 这样可以更准确地模拟实际语音的时间分布
+    const PAUSE_BETWEEN_SENTENCES = 0.5; // 句间停顿权重（相当于半个词的时间）
     
-    let currentTime = 0;
+    let totalWeight = 0;
+    const sentenceWeights: number[] = [];
     
     for (const sentenceText of sentenceTexts) {
       const words = sentenceText.split(/\s+/).filter(w => w.length > 0);
-      const duration = Math.round(words.length * avgWordDuration);
+      const wordCount = words.length;
+      // 权重 = 单词数 + 句间停顿
+      const weight = Math.max(wordCount, 1) + PAUSE_BETWEEN_SENTENCES;
+      sentenceWeights.push(weight);
+      totalWeight += weight;
+    }
+    
+    // 每个权重单位对应的时间
+    const timePerWeight = totalDuration / totalWeight;
+    console.log(`总权重: ${totalWeight}, 每单位: ${timePerWeight.toFixed(0)}ms`);
+    
+    let currentTime = 0;
+    
+    for (let i = 0; i < sentenceTexts.length; i++) {
+      const sentenceText = sentenceTexts[i];
+      const words = sentenceText.split(/\s+/).filter(w => w.length > 0);
+      const weight = sentenceWeights[i];
+      
+      // 句子持续时间 = 权重 * 单位时间 - 句间停顿（停顿作为下一句的开始缓冲）
+      const sentenceDuration = Math.round((weight - PAUSE_BETWEEN_SENTENCES) * timePerWeight);
+      const pauseTime = Math.round(PAUSE_BETWEEN_SENTENCES * timePerWeight);
       
       result.push({
         text: sentenceText,
-        start_time: currentTime,
-        end_time: currentTime + duration,
+        start_time: currentTime + Math.round(pauseTime * 0.3), // 稍微延迟开始，避免切到上一句尾巴
+        end_time: currentTime + sentenceDuration,
       });
       
-      console.log(`句子: "${sentenceText.substring(0, 30)}..." ${currentTime}ms - ${currentTime + duration}ms`);
-      currentTime += duration;
+      console.log(`句子 ${i}: "${sentenceText.substring(0, 30)}..." ${currentTime}ms - ${currentTime + sentenceDuration}ms (权重: ${weight.toFixed(1)})`);
+      currentTime += sentenceDuration + pauseTime;
     }
   } else {
     // 最后兜底：每个句子默认2秒
@@ -583,6 +633,21 @@ function extractWordsWithTimestamps(asrResult: { text: string; duration?: number
   // 尝试从多个可能的位置获取带时间戳的数据
   let utterances: any[] = [];
   
+  console.log('\n===== extractWordsWithTimestamps 调试 =====');
+  console.log('asrResult.utterances:', asrResult.utterances ? `exists, type=${typeof asrResult.utterances}, isArray=${Array.isArray(asrResult.utterances)}` : 'null/undefined');
+  console.log('asrResult.rawData:', asrResult.rawData ? `exists, keys=${Object.keys(asrResult.rawData).join(', ')}` : 'null/undefined');
+  
+  // 打印 rawData 的所有键及其类型
+  if (asrResult.rawData) {
+    for (const key of Object.keys(asrResult.rawData)) {
+      const value = (asrResult.rawData as any)[key];
+      const type = typeof value;
+      const isArray = Array.isArray(value);
+      const length = isArray ? value.length : (type === 'object' ? Object.keys(value || {}).length : '-');
+      console.log(`  rawData.${key}: type=${type}, isArray=${isArray}, length=${length}`);
+    }
+  }
+  
   // 1. 检查顶层 utterances
   if (asrResult.utterances && Array.isArray(asrResult.utterances)) {
     utterances = asrResult.utterances;
@@ -598,11 +663,25 @@ function extractWordsWithTimestamps(asrResult: { text: string; duration?: number
     utterances = asrResult.rawData.segments;
     console.log('使用 rawData.segments，数量:', utterances.length);
   }
+  // 4. 检查 rawData.result 中的 utterances/segments
+  else if (asrResult.rawData?.result) {
+    const result = asrResult.rawData.result;
+    console.log('rawData.result keys:', Object.keys(result).join(', '));
+    
+    if (result.utterances && Array.isArray(result.utterances)) {
+      utterances = result.utterances;
+      console.log('使用 rawData.result.utterances，数量:', utterances.length);
+    } else if (result.segments && Array.isArray(result.segments)) {
+      utterances = result.segments;
+      console.log('使用 rawData.result.segments，数量:', utterances.length);
+    }
+  }
   
   // 打印第一个 utterance 的完整结构以便调试
   if (utterances.length > 0) {
     console.log('第一个 utterance 结构:', JSON.stringify(utterances[0], null, 2));
   }
+  console.log('==========================================\n');
 
   // 检查是否有单词级别的时间戳
   // 有些 ASR 返回的 utterances 中每个元素就是一个单词
