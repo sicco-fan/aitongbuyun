@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import multer from 'multer';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { getSupabaseClient } from '../storage/database/supabase-client';
 import { S3Storage, ASRClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
 
+const execAsync = promisify(exec);
 const router = Router();
 
 // 用于处理上传的内存存储
@@ -136,8 +139,8 @@ router.post('/complete', async (req: Request, res: Response) => {
     }
     console.log('========================\n');
 
-    // 处理句子和时间戳
-    const sentences = processASRResult(asrResult);
+    // 处理句子和时间戳（传入音频 URL 进行静音检测）
+    const sentences = await processASRResultWithSilence(asrResult, audioUrl);
     
     const asrDuration = asrResult.duration || asrResult.rawData?.duration;
     const lastSentenceEndTime = sentences.length > 0 ? sentences[sentences.length - 1].end_time : 0;
@@ -255,8 +258,8 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     }
     console.log('========================\n');
 
-    // 处理句子和时间戳
-    const sentences = processASRResult(asrResult);
+    // 处理句子和时间戳（传入音频 URL 进行静音检测）
+    const sentences = await processASRResultWithSilence(asrResult, audioUrl);
     
     // 计算总时长：优先使用 ASR 返回的时长，否则使用最后一句的结束时间，最后才用估算
     const asrDuration = asrResult.duration || asrResult.rawData?.duration;
@@ -504,29 +507,98 @@ interface WordWithTime {
   end_time: number;
 }
 
-function processASRResult(asrResult: { text: string; duration?: number; utterances?: any[]; rawData?: any }): SentenceWithTime[] {
-  const MAX_WORDS = 6;
+interface SilenceSegment {
+  start: number;  // 静音开始时间（秒）
+  end: number;    // 静音结束时间（秒）
+}
+
+/**
+ * 使用 ffmpeg 检测音频中的静音段落
+ * 静音段落通常对应句子的停顿，可以用来辅助分割句子
+ */
+async function detectSilenceSegments(audioUrl: string, minSilenceDuration: number = 0.3): Promise<SilenceSegment[]> {
+  console.log('\n===== 静音检测开始 =====');
+  console.log('音频 URL:', audioUrl.substring(0, 100));
+  
+  try {
+    // 使用 ffmpeg silencedetect 滤镜检测静音
+    // -noise_threshold: 噪声阈值（dB），低于此值视为静音
+    // -d: 最小静音持续时间（秒）
+    const { stdout, stderr } = await execAsync(
+      `ffmpeg -i "${audioUrl}" -af "silencedetect=noise=-30dB:d=${minSilenceDuration}" -f null - 2>&1`,
+      { maxBuffer: 10 * 1024 * 1024 } // 10MB buffer
+    );
+    
+    const output = stdout + stderr;
+    const silenceSegments: SilenceSegment[] = [];
+    
+    // 解析 ffmpeg 输出
+    // 格式: [silencedetect @ ...] silence_start: 1.23
+    // [silencedetect @ ...] silence_end: 1.45 | silence_duration: 0.22
+    let currentStart: number | null = null;
+    
+    const lines = output.split('\n');
+    for (const line of lines) {
+      const startMatch = line.match(/silence_start:\s*([\d.]+)/);
+      const endMatch = line.match(/silence_end:\s*([\d.]+)/);
+      
+      if (startMatch) {
+        currentStart = parseFloat(startMatch[1]);
+      } else if (endMatch && currentStart !== null) {
+        const end = parseFloat(endMatch[1]);
+        silenceSegments.push({ start: currentStart, end });
+        currentStart = null;
+      }
+    }
+    
+    console.log(`检测到 ${silenceSegments.length} 个静音段落`);
+    silenceSegments.forEach((seg, i) => {
+      console.log(`  静音 ${i}: ${seg.start.toFixed(2)}s - ${seg.end.toFixed(2)}s (时长: ${(seg.end - seg.start).toFixed(2)}s)`);
+    });
+    console.log('===== 静音检测结束 =====\n');
+    
+    return silenceSegments;
+  } catch (error) {
+    console.error('静音检测失败:', error);
+    return [];
+  }
+}
+
+function processASRResultWithSilence(
+  asrResult: { text: string; duration?: number; utterances?: any[]; rawData?: any },
+  audioUrl?: string
+): Promise<SentenceWithTime[]> {
+  return processASRResultWithSilenceAsync(asrResult, audioUrl);
+}
+
+/**
+ * 异步处理 ASR 结果，使用静音检测辅助时间戳分配
+ */
+async function processASRResultWithSilenceAsync(
+  asrResult: { text: string; duration?: number; utterances?: any[]; rawData?: any },
+  audioUrl?: string
+): Promise<SentenceWithTime[]> {
   const result: SentenceWithTime[] = [];
 
-  console.log('\n========== ASR 处理开始 ==========');
+  console.log('\n========== ASR 处理开始（静音检测辅助）==========');
   console.log('顶层字段:', Object.keys(asrResult));
   console.log('完整文本:', asrResult.text?.substring(0, 200));
   console.log('顶层 duration:', asrResult.duration);
-  console.log('顶层 utterances:', asrResult.utterances);
-  console.log('rawData.audio_info:', asrResult.rawData?.audio_info);
-  console.log('rawData.result:', asrResult.rawData?.result ? 'exists' : 'null');
+  console.log('音频 URL:', audioUrl || '无');
+  console.log('rawData.audio_info:', JSON.stringify(asrResult.rawData?.audio_info));
 
   // 步骤1：提取所有带时间戳的单词
   const wordsWithTime: WordWithTime[] = extractWordsWithTimestamps(asrResult);
   
   console.log(`\n提取到 ${wordsWithTime.length} 个带时间戳的单词`);
 
-  // 步骤2：正确提取总时长
+  // 步骤2：正确提取总时长（优先从 rawData.audio_info.duration 获取）
   const totalDuration = asrResult.duration || 
                         asrResult.rawData?.audio_info?.duration || 
                         asrResult.rawData?.duration || 
                         0;
-  console.log('总时长 (ms):', totalDuration);
+  const totalDurationMs = totalDuration * 1000; // 转换为毫秒
+  console.log('总时长 (ms):', totalDurationMs);
 
   // 步骤3：按文字内容分割句子
   const fullText = asrResult.text || asrResult.rawData?.result?.text || '';
@@ -559,49 +631,79 @@ function processASRResult(asrResult: { text: string; duration?: number; utteranc
       
       wordIndex = endIdx;
     }
-  } else if (totalDuration > 0) {
-    // 没有时间戳数据，但有总时长，改进的时间分配算法
-    console.log('\n使用改进的时间分配算法');
+  } else if (totalDurationMs > 0) {
+    // 没有时间戳数据，但有总时长
+    console.log('\n使用静音检测辅助的时间分配算法');
     
-    // 计算总"权重"：每个单词算1，每个句子结束加停顿权重
-    // 这样可以更准确地模拟实际语音的时间分布
-    const PAUSE_BETWEEN_SENTENCES = 0.5; // 句间停顿权重（相当于半个词的时间）
+    // 步骤4：静音检测（如果有音频 URL）
+    let silenceSegments: SilenceSegment[] = [];
     
-    let totalWeight = 0;
-    const sentenceWeights: number[] = [];
-    
-    for (const sentenceText of sentenceTexts) {
-      const words = sentenceText.split(/\s+/).filter(w => w.length > 0);
-      const wordCount = words.length;
-      // 权重 = 单词数 + 句间停顿
-      const weight = Math.max(wordCount, 1) + PAUSE_BETWEEN_SENTENCES;
-      sentenceWeights.push(weight);
-      totalWeight += weight;
+    if (audioUrl) {
+      try {
+        silenceSegments = await detectSilenceSegments(audioUrl, 0.3);
+        console.log(`检测到 ${silenceSegments.length} 个静音段`);
+      } catch (err) {
+        console.log('静音检测失败，使用默认算法:', err);
+      }
     }
     
-    // 每个权重单位对应的时间
-    const timePerWeight = totalDuration / totalWeight;
-    console.log(`总权重: ${totalWeight}, 每单位: ${timePerWeight.toFixed(0)}ms`);
+    // 策略：基于字符数估算时长，结合静音段调整边界
+    const charCounts = sentenceTexts.map(s => s.length);
+    const totalChars = charCounts.reduce((a, b) => a + b, 0);
+    
+    // 基础时长分配（按字符比例）
+    const avgCharDuration = totalDurationMs / totalChars;
+    console.log(`总字符数: ${totalChars}, 平均每字符: ${avgCharDuration.toFixed(0)}ms`);
     
     let currentTime = 0;
     
     for (let i = 0; i < sentenceTexts.length; i++) {
       const sentenceText = sentenceTexts[i];
-      const words = sentenceText.split(/\s+/).filter(w => w.length > 0);
-      const weight = sentenceWeights[i];
+      const charCount = charCounts[i];
       
-      // 句子持续时间 = 权重 * 单位时间 - 句间停顿（停顿作为下一句的开始缓冲）
-      const sentenceDuration = Math.round((weight - PAUSE_BETWEEN_SENTENCES) * timePerWeight);
-      const pauseTime = Math.round(PAUSE_BETWEEN_SENTENCES * timePerWeight);
+      // 基于字符数估算基础时长
+      let baseDuration = charCount * avgCharDuration;
+      
+      // 查找当前时间点附近的静音段
+      const expectedEndTime = (currentTime + baseDuration) / 1000; // 转换为秒
+      
+      // 找到最近的静音段（在预期的结束时间附近 ±0.5 秒）
+      const nearbySilence = silenceSegments.find(seg => 
+        seg.start >= expectedEndTime - 0.5 && 
+        seg.start <= expectedEndTime + 0.5
+      );
+      
+      let startTime = currentTime;
+      let endTime: number;
+      
+      if (nearbySilence) {
+        // 如果找到静音段，将句子结束时间设在静音开始前
+        endTime = nearbySilence.start * 1000 - 50; // 提前 50ms
+        console.log(`句子 ${i + 1} 使用静音段调整: 结束时间 ${endTime.toFixed(0)}ms`);
+      } else {
+        // 没有静音段，使用基础估算
+        endTime = currentTime + baseDuration;
+        console.log(`句子 ${i + 1} 使用估算: ${startTime.toFixed(0)}-${endTime.toFixed(0)}ms`);
+      }
+      
+      // 确保不超过总时长
+      if (endTime > totalDurationMs - 100) {
+        endTime = totalDurationMs - 100;
+      }
       
       result.push({
         text: sentenceText,
-        start_time: currentTime + Math.round(pauseTime * 0.3), // 稍微延迟开始，避免切到上一句尾巴
-        end_time: currentTime + sentenceDuration,
+        start_time: Math.max(0, startTime),
+        end_time: Math.max(startTime + 100, endTime), // 至少 100ms
       });
       
-      console.log(`句子 ${i}: "${sentenceText.substring(0, 30)}..." ${currentTime}ms - ${currentTime + sentenceDuration}ms (权重: ${weight.toFixed(1)})`);
-      currentTime += sentenceDuration + pauseTime;
+      // 更新当前时间（加入句间停顿）
+      currentTime = endTime + 150; // 假设句间停顿 150ms
+    }
+    
+    // 调整最后一句的结束时间，确保覆盖到音频末尾
+    if (result.length > 0) {
+      result[result.length - 1].end_time = totalDurationMs - 50;
     }
   } else {
     // 最后兜底：每个句子默认2秒
@@ -619,8 +721,11 @@ function processASRResult(asrResult: { text: string; duration?: number; utteranc
     }
   }
 
-  console.log(`\n最终生成 ${result.length} 个句子`);
-  console.log('===================================\n');
+  console.log(`\n最终生成 ${result.length} 个句子:`);
+  result.forEach((s, i) => {
+    console.log(`  ${i + 1}. [${s.start_time.toFixed(0)}-${s.end_time.toFixed(0)}ms] "${s.text.substring(0, 30)}..."`);
+  });
+  console.log('========== ASR 处理结束 ==========\n');
   return result;
 }
 
