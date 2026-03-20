@@ -3,21 +3,67 @@ import { Spacing, BorderRadius, Theme } from '@/constants/theme';
 
 export const createStyles = (theme: Theme) => {
   return StyleSheet.create({
+    // Header Bar
+    headerBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: Spacing.lg,
+      paddingVertical: Spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+      backgroundColor: theme.backgroundRoot,
+    },
+    backButton: {
+      width: 44,
+      height: 44,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.backgroundTertiary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    placeholder: {
+      width: 44,
+    },
+    
+    // Scroll Content
     scrollContent: {
       flexGrow: 1,
-      paddingHorizontal: Spacing['2xl'],
-      paddingTop: Spacing['2xl'],
+      paddingHorizontal: Spacing.xl,
+      paddingTop: Spacing.xl,
       paddingBottom: Spacing['5xl'],
     },
-    header: {
-      marginBottom: Spacing['3xl'],
+    
+    // Success Banner
+    successBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: 'rgba(34, 197, 94, 0.1)',
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.lg,
+      marginBottom: Spacing.xl,
+      gap: Spacing.sm,
     },
-    title: {},
-    subtitle: {
-      marginTop: Spacing.sm,
+    successText: {
+      flex: 1,
     },
+    
+    // Info Section
+    infoSection: {
+      flexDirection: 'row',
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.lg,
+      marginBottom: Spacing.xl,
+      gap: Spacing.md,
+    },
+    infoIcon: {
+      marginTop: 2,
+    },
+    
+    // Form
     formGroup: {
-      marginBottom: Spacing['2xl'],
+      marginBottom: Spacing.xl,
     },
     label: {
       marginBottom: Spacing.sm,
@@ -35,36 +81,53 @@ export const createStyles = (theme: Theme) => {
       minHeight: 100,
       textAlignVertical: 'top',
     },
+    
+    // File Picker
     filePicker: {
       backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.lg,
-      borderWidth: 1,
-      borderColor: theme.border,
+      borderWidth: 2,
+      borderColor: theme.primary,
       borderStyle: 'dashed',
       padding: Spacing['2xl'],
       alignItems: 'center',
       justifyContent: 'center',
-      minHeight: 150,
+      minHeight: 160,
     },
-    filePickerIcon: {
+    filePickerIconContainer: {
+      width: 72,
+      height: 72,
+      borderRadius: BorderRadius.full,
+      backgroundColor: `${theme.primary}15`,
+      alignItems: 'center',
+      justifyContent: 'center',
       marginBottom: Spacing.md,
     },
     filePickerText: {
       textAlign: 'center',
+      marginBottom: Spacing.xs,
     },
     filePickerHint: {
-      marginTop: Spacing.sm,
+      textAlign: 'center',
     },
+    
+    // File Info
     fileInfo: {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
       borderWidth: 1,
-      borderColor: theme.border,
+      borderColor: theme.primary,
       padding: Spacing.lg,
     },
-    fileIcon: {
+    fileIconContainer: {
+      width: 48,
+      height: 48,
+      borderRadius: BorderRadius.lg,
+      backgroundColor: `${theme.primary}15`,
+      alignItems: 'center',
+      justifyContent: 'center',
       marginRight: Spacing.md,
     },
     fileDetails: {
@@ -75,10 +138,17 @@ export const createStyles = (theme: Theme) => {
     },
     fileSize: {},
     removeFile: {
-      padding: Spacing.sm,
+      width: 36,
+      height: 36,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.backgroundTertiary,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
+    
+    // Supported Formats
     supportedFormats: {
-      marginTop: Spacing.lg,
+      marginTop: Spacing.md,
       padding: Spacing.lg,
       backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.lg,
@@ -86,26 +156,31 @@ export const createStyles = (theme: Theme) => {
     formatTitle: {
       marginBottom: Spacing.sm,
     },
-    formatList: {},
-    buttonRow: {
+    
+    // Submit Button
+    submitButton: {
       flexDirection: 'row',
-      gap: Spacing.md,
-      marginTop: Spacing['3xl'],
-    },
-    button: {
-      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.primary,
       borderRadius: BorderRadius.lg,
       paddingVertical: Spacing.lg,
-      alignItems: 'center',
+      paddingHorizontal: Spacing['2xl'],
+      marginTop: Spacing['2xl'],
     },
-    primaryButton: {
-      backgroundColor: theme.primary,
+    submitButtonDisabled: {
+      backgroundColor: theme.textMuted,
+      opacity: 0.6,
     },
-    secondaryButton: {
-      backgroundColor: theme.backgroundTertiary,
-      borderWidth: 1,
-      borderColor: theme.border,
+    buttonIcon: {
+      marginRight: Spacing.sm,
     },
+    submitHint: {
+      textAlign: 'center',
+      marginTop: Spacing.md,
+    },
+    
+    // Uploading State
     uploadingContainer: {
       flex: 1,
       justifyContent: 'center',
@@ -118,6 +193,7 @@ export const createStyles = (theme: Theme) => {
     uploadingHint: {
       marginTop: Spacing.sm,
       textAlign: 'center',
+      paddingHorizontal: Spacing['2xl'],
     },
   });
 };
