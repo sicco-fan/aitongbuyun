@@ -6,6 +6,7 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useSafeSearchParams } from '@/hooks/useSafeRouter';
@@ -74,11 +75,13 @@ export default function PracticeScreen() {
   // 语音输入状态
   const [isRecording, setIsRecording] = useState(false);
   const [hasRecordingPermission, setHasRecordingPermission] = useState(false);
+  const [recordingCount, setRecordingCount] = useState(0); // 录音次数计数
   
   const recordingRef = useRef<Audio.Recording | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   const isLoopingRef = useRef(true);
   const sentenceTimesRef = useRef({ start: 0, end: 0 });
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null); // 定时识别间隔
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -285,10 +288,10 @@ export default function PracticeScreen() {
     }
   }, [isPlaying, pausePlayback, resumePlayback, startSentenceLoopPlayback]);
 
-  // 验证单词
+  // 验证单词（不显示错误提示）
   const checkWord = useCallback((inputWord: string) => {
     const normalizedInput = normalizeWord(inputWord);
-    if (!normalizedInput) return;
+    if (!normalizedInput) return false;
 
     let matched = false;
     setWordStatuses(prev => {
@@ -304,24 +307,18 @@ export default function PracticeScreen() {
     });
 
     setTotalAttempts(prev => prev + 1);
-    setFeedbackWord(inputWord);
 
     if (matched) {
+      setFeedbackWord(inputWord);
       setFeedback('correct');
       setTimeout(() => {
+        setFeedback(null);
         checkSentenceComplete();
       }, 300);
-    } else {
-      setFeedback('incorrect');
     }
-
-    // 清空输入框
-    setCurrentInput('');
+    // 不再显示错误提示
     
-    // 清除反馈
-    setTimeout(() => {
-      setFeedback(null);
-    }, 1500);
+    return matched;
   }, []);
 
   // 检查句子是否完成
@@ -364,23 +361,23 @@ export default function PracticeScreen() {
   const handleSubmit = () => {
     if (currentInput.trim()) {
       checkWord(currentInput.trim());
+      setCurrentInput('');
     }
   };
 
-  // 开始语音录音
-  const startRecording = async () => {
+  // 持续录音模式 - 开始录音
+  const startContinuousRecording = async () => {
     if (!hasRecordingPermission) {
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('需要权限', '请授予麦克风权限');
+        if (Platform.OS === 'web') {
+          alert('需要麦克风权限');
+        } else {
+          Alert.alert('需要权限', '请授予麦克风权限');
+        }
         return;
       }
       setHasRecordingPermission(true);
-    }
-
-    if (recordingRef.current) {
-      await recordingRef.current.stopAndUnloadAsync();
-      recordingRef.current = null;
     }
 
     try {
@@ -391,26 +388,58 @@ export default function PracticeScreen() {
         allowsRecordingIOS: true, 
         playsInSilentModeIOS: true 
       });
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await recording.startAsync();
-      recordingRef.current = recording;
+      
       setIsRecording(true);
+      setRecordingCount(0);
+      
+      // 开始第一段录音
+      await startNewRecordingSegment();
+      
     } catch (error) {
       console.error('录音失败:', error);
+      setIsRecording(false);
       resumePlayback();
     }
   };
 
-  // 停止录音并识别
-  const stopRecordingAndRecognize = async () => {
+  // 开始新的录音片段
+  const startNewRecordingSegment = async () => {
+    if (recordingRef.current) {
+      try {
+        await recordingRef.current.stopAndUnloadAsync();
+      } catch (e) {
+        // 忽略
+      }
+      recordingRef.current = null;
+    }
+
+    try {
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await recording.startAsync();
+      recordingRef.current = recording;
+      
+      // 2秒后自动识别并继续录音
+      recordingIntervalRef.current = setTimeout(async () => {
+        if (isRecording && recordingRef.current) {
+          await recognizeAndContinue();
+        }
+      }, 2500); // 每2.5秒识别一次
+      
+    } catch (error) {
+      console.error('录音片段失败:', error);
+    }
+  };
+
+  // 识别当前录音并继续
+  const recognizeAndContinue = async () => {
     if (!recordingRef.current) return;
 
     try {
       await recordingRef.current.stopAndUnloadAsync();
       const uri = recordingRef.current.getURI();
       recordingRef.current = null;
-      setIsRecording(false);
+      setRecordingCount(prev => prev + 1);
 
       if (uri) {
         const formData = new FormData();
@@ -430,13 +459,63 @@ export default function PracticeScreen() {
           }
         }
       }
+      
+      // 继续下一段录音（如果还在录音状态）
+      if (isRecording) {
+        await startNewRecordingSegment();
+      }
+      
     } catch (error) {
       console.error('语音识别失败:', error);
-      Alert.alert('提示', '语音识别失败，请重试');
-    } finally {
-      // 语音输入结束后恢复播放
-      resumePlayback();
+      // 即使识别失败，也继续录音
+      if (isRecording) {
+        await startNewRecordingSegment();
+      }
     }
+  };
+
+  // 停止持续录音
+  const stopContinuousRecording = async () => {
+    setIsRecording(false);
+    
+    // 清除定时器
+    if (recordingIntervalRef.current) {
+      clearTimeout(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+    
+    // 识别最后一段录音
+    if (recordingRef.current) {
+      try {
+        await recordingRef.current.stopAndUnloadAsync();
+        const uri = recordingRef.current.getURI();
+        recordingRef.current = null;
+
+        if (uri) {
+          const formData = new FormData();
+          const audioFile = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
+          formData.append('file', audioFile as any);
+
+          const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech-recognize`, {
+            method: 'POST',
+            body: formData,
+          });
+
+          const data = await response.json();
+          if (data.text) {
+            const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
+            for (const word of words) {
+              checkWord(word);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('最后识别失败:', error);
+      }
+    }
+    
+    // 恢复播放
+    resumePlayback();
   };
 
   // 显示提示
@@ -444,38 +523,52 @@ export default function PracticeScreen() {
     const newLevel = Math.min(hintLevel + 1, 3);
     setHintLevel(newLevel);
 
+    const hiddenWords = wordStatuses.filter(w => !w.revealed);
+    
+    let message = '';
     if (newLevel === 1) {
-      const hiddenWord = wordStatuses.find(w => !w.revealed);
-      if (hiddenWord) {
-        Alert.alert('提示', `第一个未猜出的单词以 "${hiddenWord.word[0]}" 开头`);
+      const firstHidden = hiddenWords[0];
+      if (firstHidden) {
+        message = `第一个未猜出的单词以 "${firstHidden.word[0].toUpperCase()}" 开头`;
       }
     } else if (newLevel === 2) {
-      Alert.alert('提示', `还剩 ${wordStatuses.filter(w => !w.revealed).length} 个单词未猜出`);
+      message = `还剩 ${hiddenWords.length} 个单词未猜出`;
     } else if (newLevel === 3) {
-      Alert.alert('答案', currentSentence?.text || '');
+      message = `答案：${currentSentence?.text || ''}`;
+    }
+
+    if (Platform.OS === 'web') {
+      alert(`提示 ${newLevel}/3\n\n${message}`);
+    } else {
+      Alert.alert(`提示 ${newLevel}/3`, message);
     }
   };
 
   // 跳过当前句子
   const skipSentence = () => {
-    Alert.alert(
-      '跳过句子',
-      '确定要跳过这个句子吗？',
-      [
-        { text: '取消', style: 'cancel' },
-        { 
-          text: '确定', 
-          onPress: () => {
-            stopPlayback();
-            if (currentIndex < sentences.length - 1) {
-              setCurrentIndex(prev => prev + 1);
-            } else {
-              setCompleted(true);
-            }
-          }
-        }
-      ]
-    );
+    const doSkip = () => {
+      stopPlayback();
+      if (currentIndex < sentences.length - 1) {
+        setCurrentIndex(prev => prev + 1);
+      } else {
+        setCompleted(true);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('确定要跳过这个句子吗？')) {
+        doSkip();
+      }
+    } else {
+      Alert.alert(
+        '跳过句子',
+        '确定要跳过这个句子吗？',
+        [
+          { text: '取消', style: 'cancel' },
+          { text: '确定', onPress: doSkip }
+        ]
+      );
+    }
   };
 
   if (loading) {
@@ -662,7 +755,7 @@ export default function PracticeScreen() {
             />
             <TouchableOpacity
               style={[styles.voiceButton, isRecording && styles.voiceButtonActive]}
-              onPress={isRecording ? stopRecordingAndRecognize : startRecording}
+              onPress={isRecording ? stopContinuousRecording : startContinuousRecording}
             >
               <FontAwesome6
                 name={isRecording ? 'stop' : 'microphone'}
@@ -671,23 +764,20 @@ export default function PracticeScreen() {
               />
             </TouchableOpacity>
           </View>
+          {isRecording && (
+            <ThemedText variant="caption" color={theme.primary} style={{ marginTop: 8, textAlign: 'center' }}>
+              正在录音... 已识别 {recordingCount} 次 · 点击停止
+            </ThemedText>
+          )}
         </View>
 
-        {/* Feedback */}
+        {/* Feedback - 只显示正确提示 */}
         <View style={styles.feedbackSection}>
           {feedback === 'correct' && (
             <View style={styles.feedbackCorrect}>
               <FontAwesome6 name="check" size={16} color={theme.success} />
               <ThemedText variant="smallMedium" style={styles.feedbackCorrectText}>
                 「{feedbackWord}」正确！
-              </ThemedText>
-            </View>
-          )}
-          {feedback === 'incorrect' && (
-            <View style={styles.feedbackIncorrect}>
-              <FontAwesome6 name="xmark" size={16} color={theme.error} />
-              <ThemedText variant="smallMedium" style={styles.feedbackIncorrectText}>
-                「{feedbackWord}」不正确，再试一次
               </ThemedText>
             </View>
           )}
