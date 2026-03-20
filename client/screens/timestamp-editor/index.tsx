@@ -43,6 +43,7 @@ export default function TimestampEditorScreen() {
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [detecting, setDetecting] = useState(false);
   
   const soundRef = useRef<Audio.Sound | null>(null);
   
@@ -65,6 +66,7 @@ export default function TimestampEditorScreen() {
       
       if (data.material) {
         setAudioUrl(data.material.audio_url || '');
+        // 时长可能很大，先设置，后面加载音频时会获取真实时长
         setDuration(data.material.duration || 0);
       }
       
@@ -98,6 +100,38 @@ export default function TimestampEditorScreen() {
     };
   }, [fetchData]);
 
+  // 加载音频并获取真实时长
+  const loadAudio = async () => {
+    if (!audioUrl) return null;
+    
+    try {
+      // 先卸载旧音频
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+      }
+      
+      const { sound, status } = await Audio.Sound.createAsync(
+        { uri: audioUrl },
+        { shouldPlay: false },
+        onPlaybackStatusUpdate
+      );
+      
+      soundRef.current = sound;
+      
+      // 获取真实时长
+      if (status.isLoaded) {
+        const realDuration = status.durationMillis || 0;
+        console.log(`音频真实时长: ${realDuration}ms`);
+        setDuration(realDuration);
+        return realDuration;
+      }
+      return null;
+    } catch (error) {
+      console.error('加载音频失败:', error);
+      return null;
+    }
+  };
+
   // 当切换句子时，自动跳转到该句的开始时间
   useEffect(() => {
     if (currentSentence && soundRef.current) {
@@ -106,28 +140,6 @@ export default function TimestampEditorScreen() {
       setPosition(startPos);
     }
   }, [currentIndex]);
-
-  // 加载音频
-  const loadAudio = async () => {
-    if (!audioUrl) return;
-    
-    try {
-      // 先卸载旧音频
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
-      }
-      
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: audioUrl },
-        { shouldPlay: false },
-        onPlaybackStatusUpdate
-      );
-      
-      soundRef.current = sound;
-    } catch (error) {
-      console.error('加载音频失败:', error);
-    }
-  };
 
   // 播放状态更新
   const onPlaybackStatusUpdate = (status: any) => {
@@ -141,6 +153,14 @@ export default function TimestampEditorScreen() {
     }
   };
 
+  // 停止播放
+  const stopPlaying = async () => {
+    if (soundRef.current) {
+      await soundRef.current.pauseAsync();
+      setIsPlaying(false);
+    }
+  };
+
   // 播放/暂停
   const togglePlay = async () => {
     if (!soundRef.current) {
@@ -149,8 +169,7 @@ export default function TimestampEditorScreen() {
     
     if (soundRef.current) {
       if (isPlaying) {
-        await soundRef.current.pauseAsync();
-        setIsPlaying(false);
+        await stopPlaying();
       } else {
         await soundRef.current.playAsync();
         setIsPlaying(true);
@@ -176,8 +195,11 @@ export default function TimestampEditorScreen() {
     setSentences(newSentences);
   };
 
-  // 设置结束时间（核心功能：自动连锁到下一句）
-  const setEndTime = () => {
+  // 设置结束时间（核心功能：立即停止 + 自动连锁到下一句）
+  const setEndTime = async () => {
+    // 立即停止播放
+    await stopPlaying();
+    
     const endTime = Math.round(position);
     const newSentences = [...sentences];
     
@@ -200,6 +222,55 @@ export default function TimestampEditorScreen() {
     // 自动跳到下一句
     if (currentIndex < sentences.length - 1) {
       setCurrentIndex(currentIndex + 1);
+    }
+  };
+
+  // 自动检测语音开始位置（调用后端静音检测）
+  const autoDetectStart = async () => {
+    if (!soundRef.current) {
+      await loadAudio();
+    }
+    
+    setDetecting(true);
+    try {
+      // 调用后端 API 检测语音开始位置
+      const response = await fetch(
+        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/detect-speech-start`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            from_time: currentSentence?.start_time || 0 
+          }),
+        }
+      );
+      
+      const data = await response.json();
+      
+      if (data.speech_start !== undefined) {
+        // 跳转到检测到的语音开始位置
+        await seekTo(data.speech_start);
+        
+        // 设置开始时间
+        const newSentences = [...sentences];
+        newSentences[currentIndex] = {
+          ...newSentences[currentIndex],
+          start_time: Math.round(data.speech_start),
+        };
+        setSentences(newSentences);
+        
+        setDialog({ 
+          visible: true, 
+          message: `检测到语音开始位置: ${formatTime(data.speech_start)}` 
+        });
+      } else {
+        throw new Error(data.error || '检测失败');
+      }
+    } catch (error) {
+      console.error('检测语音开始失败:', error);
+      setDialog({ visible: true, message: `检测失败: ${(error as Error).message}` });
+    } finally {
+      setDetecting(false);
     }
   };
 
@@ -341,7 +412,7 @@ export default function TimestampEditorScreen() {
           </TouchableOpacity>
         </View>
         <ThemedText variant="body" color={theme.textMuted} style={styles.subtitle}>
-          {title}
+          {title} | 总时长: {formatTime(duration)}
         </ThemedText>
       </View>
 
@@ -436,11 +507,11 @@ export default function TimestampEditorScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.playSentenceBtn} onPress={playCurrentSentence}>
               <FontAwesome6 name="repeat" size={16} color={theme.buttonPrimaryText} />
-              <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>播放当前句</ThemedText>
+              <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>当前句</ThemedText>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.playSentenceBtn, { backgroundColor: theme.textSecondary }]} onPress={playRemaining}>
               <FontAwesome6 name="forward" size={16} color={theme.buttonPrimaryText} />
-              <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>播放剩余</ThemedText>
+              <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>剩余</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -449,34 +520,62 @@ export default function TimestampEditorScreen() {
         <View style={styles.timestampButtons}>
           {/* 第一句需要设置开始时间，其他句自动继承 */}
           {currentIndex === 0 ? (
-            <TouchableOpacity style={[styles.timestampBtn, styles.startBtn]} onPress={setStartTime}>
-              <FontAwesome6 name="play" size={16} color={theme.buttonPrimaryText} />
+            <>
+              <TouchableOpacity 
+                style={[styles.timestampBtn, styles.startBtn]} 
+                onPress={setStartTime}
+              >
+                <FontAwesome6 name="play" size={16} color={theme.buttonPrimaryText} />
+                <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
+                  设为开始
+                </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.timestampBtn, styles.detectBtn]} 
+                onPress={autoDetectStart}
+                disabled={detecting}
+              >
+                {detecting ? (
+                  <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
+                ) : (
+                  <FontAwesome6 name="wand-magic-sparkles" size={16} color={theme.buttonPrimaryText} />
+                )}
+                <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
+                  自动检测
+                </ThemedText>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity 
+              style={[styles.timestampBtn, styles.detectBtn]} 
+              onPress={autoDetectStart}
+              disabled={detecting}
+            >
+              {detecting ? (
+                <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
+              ) : (
+                <FontAwesome6 name="wand-magic-sparkles" size={16} color={theme.buttonPrimaryText} />
+              )}
               <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
-                设为开始 ({formatTime(position)})
+                自动检测语音开始
               </ThemedText>
             </TouchableOpacity>
-          ) : (
-            <View style={[styles.timestampBtn, styles.autoStartBtn]}>
-              <FontAwesome6 name="link" size={16} color={theme.textMuted} />
-              <ThemedText variant="smallMedium" color={theme.textMuted}>
-                开始时间已自动设置
-              </ThemedText>
-            </View>
           )}
-          
-          <TouchableOpacity style={[styles.timestampBtn, styles.endBtn]} onPress={setEndTime}>
-            <FontAwesome6 name="stop" size={16} color={theme.buttonPrimaryText} />
-            <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
-              设为结束 ({formatTime(position)})
-            </ThemedText>
-          </TouchableOpacity>
         </View>
+
+        {/* 设为结束按钮 - 突出显示 */}
+        <TouchableOpacity style={styles.endBtnLarge} onPress={setEndTime}>
+          <FontAwesome6 name="stop" size={20} color={theme.buttonPrimaryText} />
+          <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
+            设为结束 ({formatTime(position)})
+          </ThemedText>
+        </TouchableOpacity>
 
         {/* 使用提示 */}
         <View style={styles.tipBox}>
           <FontAwesome6 name="lightbulb" size={14} color={theme.accent} />
           <ThemedText variant="small" color={theme.textSecondary}>
-            设置结束时间后会自动跳到下一句，下一句开始时间自动设为当前结束时间
+            点击「设为结束」会立即停止播放，并自动跳到下一句
           </ThemedText>
         </View>
 

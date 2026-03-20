@@ -134,6 +134,9 @@ export const createStyles = (theme: Theme) => {
     startBtn: {
       backgroundColor: theme.primary,
     },
+    detectBtn: {
+      backgroundColor: theme.accent,
+    },
     autoStartBtn: {
       backgroundColor: theme.backgroundTertiary,
       borderWidth: 1,
@@ -141,6 +144,16 @@ export const createStyles = (theme: Theme) => {
     },
     endBtn: {
       backgroundColor: theme.success,
+    },
+    endBtnLarge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.success,
+      paddingVertical: Spacing.xl,
+      borderRadius: BorderRadius.lg,
+      gap: Spacing.sm,
+      marginBottom: Spacing.md,
     },
     tipBox: {
       flexDirection: 'row',

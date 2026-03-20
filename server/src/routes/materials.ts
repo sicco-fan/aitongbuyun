@@ -541,6 +541,114 @@ router.post('/:id/save-sentences', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/v1/materials/:id/detect-speech-start
+ * 检测语音真正的开始位置（去掉前面静音部分）
+ * Body: { from_time?: number } 从哪个时间点开始检测（毫秒）
+ */
+router.post('/:id/detect-speech-start', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { from_time = 0 } = req.body;
+    
+    const supabase = getSupabaseClient();
+    
+    // 获取材料
+    const { data: material, error: materialError } = await supabase
+      .from('materials')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (materialError || !material) {
+      return res.status(404).json({ error: '材料不存在' });
+    }
+
+    // 生成签名 URL
+    const audioUrl = await storage.generatePresignedUrl({
+      key: material.audio_url,
+      expireTime: 86400,
+    });
+
+    console.log(`\n===== 检测语音开始位置 =====`);
+    console.log('材料 ID:', id);
+    console.log('从时间点:', from_time, 'ms');
+
+    // 下载音频文件到临时目录
+    const tempAudioPath = `/tmp/audio_${Date.now()}.mp4`;
+    
+    const audioResponse = await fetch(audioUrl);
+    const arrayBuffer = await audioResponse.arrayBuffer();
+    const fs = await import('fs');
+    fs.writeFileSync(tempAudioPath, Buffer.from(arrayBuffer));
+    
+    console.log('音频已下载到:', tempAudioPath);
+
+    // 使用 ffmpeg 检测静音，找到第一个非静音点
+    // silencedetect 参数：
+    // - noise: 静音阈值（-30dB 以下视为静音）
+    // - d: 最小静音持续时间（0.1秒）
+    const { stdout, stderr } = await execAsync(
+      `ffmpeg -i "${tempAudioPath}" -af "silencedetect=noise=-30dB:d=0.1" -f null - 2>&1`,
+      { maxBuffer: 10 * 1024 * 1024 }
+    );
+    
+    // 清理临时文件
+    fs.unlinkSync(tempAudioPath);
+    
+    const output = stdout + stderr;
+    
+    // 解析静音检测结果
+    // 格式: silence_start: 1.23
+    //       silence_end: 2.45
+    const silenceStarts: number[] = [];
+    const silenceEnds: number[] = [];
+    
+    const startRegex = /silence_start:\s*([\d.]+)/g;
+    const endRegex = /silence_end:\s*([\d.]+)/g;
+    
+    let match;
+    while ((match = startRegex.exec(output)) !== null) {
+      silenceStarts.push(parseFloat(match[1]));
+    }
+    while ((match = endRegex.exec(output)) !== null) {
+      silenceEnds.push(parseFloat(match[1]));
+    }
+    
+    console.log('静音开始点:', silenceStarts);
+    console.log('静音结束点:', silenceEnds);
+    
+    // 从 from_time 开始，找到第一个非静音点
+    const fromTimeSec = from_time / 1000;
+    let speechStart = fromTimeSec; // 默认从 from_time 开始
+    
+    // 如果第一个静音段在 from_time 之后，那么语音开始就是静音结束点
+    if (silenceEnds.length > 0) {
+      for (const endTime of silenceEnds) {
+        if (endTime >= fromTimeSec) {
+          speechStart = endTime;
+          break;
+        }
+      }
+    }
+    
+    // 转换为毫秒
+    const speechStartMs = Math.round(speechStart * 1000);
+    
+    console.log(`检测到语音开始位置: ${speechStartMs}ms`);
+    console.log('========== 检测结束 ==========\n');
+
+    res.json({ 
+      speech_start: speechStartMs,
+      silence_starts: silenceStarts.map(s => Math.round(s * 1000)),
+      silence_ends: silenceEnds.map(s => Math.round(s * 1000)),
+    });
+  } catch (error) {
+    console.error('检测语音开始失败:', error);
+    res.status(500).json({ error: '检测语音开始失败', message: (error as Error).message });
+  }
+});
+
+/**
  * DELETE /api/v1/materials/:id
  * 删除材料
  */
