@@ -29,6 +29,7 @@ export default function RootLayout() {
             <Stack.Screen name="admin" options={{ title: "材料管理" }} />
             <Stack.Screen name="admin-sentences" options={{ title: "句子编辑" }} />
             <Stack.Screen name="text-split" options={{ title: "文本切分" }} />
+            <Stack.Screen name="timestamp-editor" options={{ title: "时间戳设置" }} />
           </Stack>
           <Toast />
         </GestureHandlerRootView>

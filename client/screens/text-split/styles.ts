@@ -29,7 +29,7 @@ export const createStyles = (theme: Theme) => {
     },
     actionBar: {
       flexDirection: 'row',
-      gap: Spacing.md,
+      gap: Spacing.sm,
       marginBottom: Spacing.lg,
     },
     actionBtn: {
@@ -37,12 +37,15 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: Spacing.lg,
+      paddingVertical: Spacing.md,
       borderRadius: BorderRadius.lg,
-      gap: Spacing.sm,
+      gap: Spacing.xs,
     },
     extractBtn: {
       backgroundColor: theme.primary,
+    },
+    autoSplitBtn: {
+      backgroundColor: theme.accent,
     },
     saveBtn: {
       backgroundColor: theme.success,
@@ -59,34 +62,25 @@ export const createStyles = (theme: Theme) => {
       gap: Spacing.sm,
       marginBottom: Spacing.lg,
     },
-    editorSection: {
-      marginBottom: Spacing.xl,
-    },
-    sectionLabel: {
-      marginBottom: Spacing.sm,
-    },
-    textInput: {
-      backgroundColor: theme.backgroundTertiary,
-      borderRadius: BorderRadius.lg,
-      padding: Spacing.lg,
-      fontSize: 16,
-      color: theme.textPrimary,
-      minHeight: 200,
-      borderWidth: 1,
-      borderColor: theme.borderLight,
-    },
     previewSection: {
       marginBottom: Spacing.xl,
     },
-    sentenceItem: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
+    sectionLabel: {
+      marginBottom: Spacing.md,
+    },
+    sentenceCard: {
       backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
       padding: Spacing.md,
-      borderRadius: BorderRadius.md,
       marginBottom: Spacing.sm,
       borderWidth: 1,
       borderColor: theme.borderLight,
+    },
+    sentenceHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.sm,
     },
     sentenceNumber: {
       width: 28,
@@ -95,12 +89,32 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: theme.primary,
       justifyContent: 'center',
       alignItems: 'center',
-      marginRight: Spacing.md,
-      marginTop: 2,
     },
-    sentenceText: {
-      flex: 1,
-      lineHeight: 22,
+    sentenceActions: {
+      flexDirection: 'row',
+      gap: Spacing.sm,
+    },
+    smallBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: theme.backgroundTertiary,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    sentenceInput: {
+      fontSize: 16,
+      color: theme.textPrimary,
+      lineHeight: 24,
+      minHeight: 44,
+      textAlignVertical: 'top',
+    },
+    emptyState: {
+      alignItems: 'center',
+      paddingVertical: Spacing['3xl'],
+    },
+    emptyText: {
+      marginTop: Spacing.md,
     },
   });
 };
