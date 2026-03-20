@@ -5,8 +5,6 @@ import {
   View,
   TextInput,
   ActivityIndicator,
-  Alert,
-  Platform,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
@@ -16,6 +14,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 interface FileInfo {
   uri: string;
@@ -43,6 +42,19 @@ export default function AddMaterialScreen() {
   const [uploadStatus, setUploadStatus] = useState<string>('');
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  
+  // 上传成功对话框状态
+  const [successDialog, setSuccessDialog] = useState<{
+    visible: boolean;
+    materialId: number;
+    title: string;
+  }>({ visible: false, materialId: 0, title: '' });
+  
+  // 错误对话框状态
+  const [errorDialog, setErrorDialog] = useState<{ visible: boolean; message: string }>({
+    visible: false,
+    message: '',
+  });
 
   const pickAudioFile = async () => {
     try {
@@ -91,11 +103,7 @@ export default function AddMaterialScreen() {
       }
     } catch (error) {
       console.error('选择文件失败:', error);
-      if (Platform.OS === 'web') {
-        alert('选择文件失败');
-      } else {
-        Alert.alert('错误', '选择文件失败');
-      }
+      setErrorDialog({ visible: true, message: '选择文件失败，请重试' });
     }
   };
 
@@ -112,20 +120,12 @@ export default function AddMaterialScreen() {
 
   const handleSubmit = async () => {
     if (!title.trim()) {
-      if (Platform.OS === 'web') {
-        alert('请输入材料标题');
-      } else {
-        Alert.alert('提示', '请输入材料标题');
-      }
+      setErrorDialog({ visible: true, message: '请输入材料标题' });
       return;
     }
 
     if (!file) {
-      if (Platform.OS === 'web') {
-        alert('请选择音频或视频文件');
-      } else {
-        Alert.alert('提示', '请选择音频或视频文件');
-      }
+      setErrorDialog({ visible: true, message: '请选择音频或视频文件' });
       return;
     }
 
@@ -139,16 +139,8 @@ export default function AddMaterialScreen() {
       const CHUNK_SIZE = 512 * 1024; // 512KB 每块，确保小于代理限制
       
       // 获取文件数据
-      let fileData: ArrayBuffer;
-      if (Platform.OS === 'web') {
-        // Web 端直接从 URI 获取文件
-        const response = await fetch(file.uri);
-        fileData = await response.arrayBuffer();
-      } else {
-        // 移动端需要读取文件
-        const response = await fetch(file.uri);
-        fileData = await response.arrayBuffer();
-      }
+      const response = await fetch(file.uri);
+      const fileData = await response.arrayBuffer();
 
       const totalSize = fileData.byteLength;
       const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
@@ -189,7 +181,6 @@ export default function AddMaterialScreen() {
           throw new Error(`上传块 ${i + 1} 失败: ${errorText.substring(0, 100)}`);
         }
 
-        const chunkResult = await chunkResponse.json();
         console.log(`块 ${i + 1}/${totalChunks} 上传成功`);
       }
 
@@ -222,41 +213,19 @@ export default function AddMaterialScreen() {
       if (completeResponse.ok && data.success) {
         setUploadStatus('上传成功！');
         setUploadSuccess(true);
-        
-        // 显示成功提示
-        if (Platform.OS === 'web') {
-          const goToPractice = window.confirm(
-            '材料上传成功！\n\n点击"确定"开始学习，点击"取消"返回首页'
-          );
-          if (goToPractice) {
-            router.replace('/practice', { 
-              materialId: data.material.id, 
-              title: data.material.title 
-            });
-          } else {
-            router.replace('/');
-          }
-        } else {
-          Alert.alert('成功', '材料上传成功！', [
-            { text: '返回首页', onPress: () => router.replace('/') },
-            { text: '开始学习', onPress: () => router.replace('/practice', { 
-              materialId: data.material.id, 
-              title: data.material.title 
-            })},
-          ]);
-        }
+        // 显示成功确认对话框
+        setSuccessDialog({
+          visible: true,
+          materialId: data.material.id,
+          title: data.material.title,
+        });
       } else {
         throw new Error(data.error || data.message || '处理失败');
       }
     } catch (error) {
       console.error('上传失败:', error);
-      const errorMsg = `上传失败：${(error as Error).message}`;
       setUploadStatus('');
-      if (Platform.OS === 'web') {
-        alert(errorMsg);
-      } else {
-        Alert.alert('错误', errorMsg);
-      }
+      setErrorDialog({ visible: true, message: `上传失败：${(error as Error).message}` });
     } finally {
       setUploading(false);
     }
@@ -447,6 +416,37 @@ export default function AddMaterialScreen() {
           上传后系统将自动识别语音内容并分割成句子
         </ThemedText>
       </ScrollView>
+
+      {/* 错误确认对话框 */}
+      <ConfirmDialog
+        visible={errorDialog.visible}
+        title="提示"
+        message={errorDialog.message}
+        confirmText="确定"
+        cancelText=""
+        onConfirm={() => setErrorDialog({ visible: false, message: '' })}
+        onCancel={() => setErrorDialog({ visible: false, message: '' })}
+      />
+
+      {/* 上传成功确认对话框 */}
+      <ConfirmDialog
+        visible={successDialog.visible}
+        title="上传成功"
+        message="材料已上传成功！语音识别完成后即可开始学习。"
+        confirmText="开始学习"
+        cancelText="返回首页"
+        onConfirm={() => {
+          setSuccessDialog({ visible: false, materialId: 0, title: '' });
+          router.replace('/practice', { 
+            materialId: successDialog.materialId, 
+            title: successDialog.title 
+          });
+        }}
+        onCancel={() => {
+          setSuccessDialog({ visible: false, materialId: 0, title: '' });
+          router.replace('/');
+        }}
+      />
     </Screen>
   );
 }

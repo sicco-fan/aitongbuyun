@@ -5,8 +5,6 @@ import {
   View,
   TextInput,
   ActivityIndicator,
-  Alert,
-  Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
@@ -17,6 +15,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { Spacing } from '@/constants/theme';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
 
@@ -39,6 +38,18 @@ export default function AdminScreen() {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
+  
+  // 删除确认对话框状态
+  const [deleteDialog, setDeleteDialog] = useState<{
+    visible: boolean;
+    material: Material | null;
+  }>({ visible: false, material: null });
+  
+  // 删除成功提示
+  const [successDialog, setSuccessDialog] = useState<{ visible: boolean; message: string }>({
+    visible: false,
+    message: '',
+  });
 
   const fetchMaterials = useCallback(async () => {
     try {
@@ -54,7 +65,6 @@ export default function AdminScreen() {
       }
     } catch (error) {
       console.error('获取材料列表失败:', error);
-      Alert.alert('错误', '获取材料列表失败');
     } finally {
       setLoading(false);
     }
@@ -66,39 +76,39 @@ export default function AdminScreen() {
     }, [fetchMaterials])
   );
 
-  const deleteMaterial = async (id: number, title: string) => {
-    Alert.alert(
-      '删除材料',
-      `确定要删除「${title}」吗？此操作不可恢复。`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              /**
-               * 服务端文件：server/src/routes/materials.ts
-               * 接口：DELETE /api/v1/materials/:id
-               */
-              const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${id}`, {
-                method: 'DELETE',
-              });
-              
-              if (response.ok) {
-                setMaterials(prev => prev.filter(m => m.id !== id));
-                Alert.alert('成功', '材料已删除');
-              } else {
-                throw new Error('删除失败');
-              }
-            } catch (error) {
-              console.error('删除材料失败:', error);
-              Alert.alert('错误', '删除材料失败');
-            }
-          },
-        },
-      ]
-    );
+  const handleDeleteClick = (material: Material) => {
+    setDeleteDialog({ visible: true, material });
+  };
+
+  const handleDeleteConfirm = async () => {
+    const material = deleteDialog.material;
+    if (!material) return;
+    
+    setDeleteDialog({ visible: false, material: null });
+    
+    try {
+      /**
+       * 服务端文件：server/src/routes/materials.ts
+       * 接口：DELETE /api/v1/materials/:id
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${material.id}`, {
+        method: 'DELETE',
+      });
+      
+      if (response.ok) {
+        setMaterials(prev => prev.filter(m => m.id !== material.id));
+        setSuccessDialog({ visible: true, message: '材料已删除' });
+      } else {
+        throw new Error('删除失败');
+      }
+    } catch (error) {
+      console.error('删除材料失败:', error);
+      setSuccessDialog({ visible: true, message: '删除失败，请重试' });
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialog({ visible: false, material: null });
   };
 
   const formatDuration = (ms: number) => {
@@ -198,7 +208,7 @@ export default function AdminScreen() {
                 
                 <TouchableOpacity
                   style={[styles.actionButton, styles.deleteButton]}
-                  onPress={() => deleteMaterial(material.id, material.title)}
+                  onPress={() => handleDeleteClick(material)}
                 >
                   <FontAwesome6 name="trash" size={14} color={theme.error} />
                   <ThemedText variant="smallMedium" color={theme.error}>删除</ThemedText>
@@ -217,6 +227,28 @@ export default function AdminScreen() {
           )}
         </View>
       </ScrollView>
+      
+      {/* 删除确认对话框 */}
+      <ConfirmDialog
+        visible={deleteDialog.visible}
+        title="删除材料"
+        message={`确定要删除「${deleteDialog.material?.title}」吗？\n此操作不可恢复。`}
+        confirmText="删除"
+        cancelText="取消"
+        confirmStyle="destructive"
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+      />
+      
+      {/* 成功提示对话框 */}
+      <ConfirmDialog
+        visible={successDialog.visible}
+        title="提示"
+        message={successDialog.message}
+        confirmText="确定"
+        onConfirm={() => setSuccessDialog({ visible: false, message: '' })}
+        onCancel={() => setSuccessDialog({ visible: false, message: '' })}
+      />
     </Screen>
   );
 }
