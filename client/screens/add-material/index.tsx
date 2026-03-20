@@ -157,7 +157,7 @@ export default function AddMaterialScreen() {
             添加学习材料
           </ThemedText>
           <ThemedText variant="body" color={theme.textMuted} style={styles.subtitle}>
-            上传音频文件，系统将自动识别并分句
+            上传音频或视频文件，系统将自动识别语音并分句
           </ThemedText>
         </ThemedView>
 
@@ -193,12 +193,12 @@ export default function AddMaterialScreen() {
         {/* File Picker */}
         <View style={styles.formGroup}>
           <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.label}>
-            音频文件
+            音频或视频文件
           </ThemedText>
           
           {file ? (
             <View style={styles.fileInfo}>
-              <FontAwesome6 name="file-audio" size={24} color={theme.primary} style={styles.fileIcon} />
+              <FontAwesome6 name={file.mimeType?.startsWith('video') ? 'file-video' : 'file-audio'} size={24} color={theme.primary} style={styles.fileIcon} />
               <View style={styles.fileDetails}>
                 <ThemedText variant="smallMedium" color={theme.textPrimary} style={styles.fileName}>
                   {file.name}
@@ -215,10 +215,10 @@ export default function AddMaterialScreen() {
             <TouchableOpacity style={styles.filePicker} onPress={pickAudioFile}>
               <FontAwesome6 name="cloud-arrow-up" size={48} color={theme.textMuted} style={styles.filePickerIcon} />
               <ThemedText variant="body" color={theme.textPrimary} style={styles.filePickerText}>
-                点击选择音频文件
+                点击选择音频或视频文件
               </ThemedText>
               <ThemedText variant="caption" color={theme.textMuted} style={styles.filePickerHint}>
-                支持 MP3、WAV、M4A 等格式
+                支持 MP3、WAV、M4A、MP4 等格式
               </ThemedText>
             </TouchableOpacity>
           )}
@@ -227,13 +227,16 @@ export default function AddMaterialScreen() {
         {/* Supported Formats */}
         <View style={styles.supportedFormats}>
           <ThemedText variant="captionMedium" color={theme.textSecondary} style={styles.formatTitle}>
-            支持的音频格式
+            支持的音视频格式
           </ThemedText>
           <ThemedText variant="caption" color={theme.textMuted} style={styles.formatList}>
-            MP3、WAV、M4A、OGG、FLAC 等常见音频格式
+            音频：MP3、WAV、M4A、OGG、FLAC
           </ThemedText>
           <ThemedText variant="caption" color={theme.textMuted}>
-            最大文件大小：100MB
+            视频：MP4、MOV、AVI 等（自动提取音频）
+          </ThemedText>
+          <ThemedText variant="caption" color={theme.textMuted}>
+            最大文件大小：500MB
           </ThemedText>
         </View>
 

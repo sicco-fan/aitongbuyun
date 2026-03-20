@@ -7,7 +7,7 @@ import { S3Storage, ASRClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
 const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 } // 100MB
+  limits: { fileSize: 500 * 1024 * 1024 } // 500MB - 支持视频文件
 });
 
 // 初始化对象存储
@@ -21,13 +21,13 @@ const storage = new S3Storage({
 
 /**
  * POST /api/v1/materials
- * 上传音频文件并创建学习材料
- * Body: FormData { file: audio file, title: string, description?: string }
+ * 上传音频或视频文件并创建学习材料
+ * Body: FormData { file: audio/video file, title: string, description?: string }
  */
 router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: '请上传音频文件' });
+      return res.status(400).json({ error: '请上传音频或视频文件' });
     }
 
     const { title, description } = req.body;
@@ -290,11 +290,11 @@ router.delete('/:id', async (req: Request, res: Response) => {
 });
 
 /**
- * 将文本分割成短句（每句控制在10-15个单词以内）
+ * 将文本分割成短句（每句控制在5-6个单词以内，确保容易记忆）
  */
 function splitIntoSentences(text: string): string[] {
-  // 最大单词数限制
-  const MAX_WORDS = 12;
+  // 最大单词数限制 - 改为6，确保短小易记
+  const MAX_WORDS = 6;
   
   // 先按主要标点符号分割
   const primarySplit = text

@@ -55,8 +55,6 @@ export default function PracticeScreen() {
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playCount, setPlayCount] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [totalAttempts, setTotalAttempts] = useState(0);
 
@@ -66,6 +64,12 @@ export default function PracticeScreen() {
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
   const [feedbackWord, setFeedbackWord] = useState('');
   const [hintLevel, setHintLevel] = useState(0);
+  
+  // 音频控制状态
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playCount, setPlayCount] = useState(0);
+  const [volume, setVolume] = useState(1.0); // 音量 0-1，可以超过1
+  const [isLooping, setIsLooping] = useState(true); // 循环播放
   
   // 语音输入状态
   const [isRecording, setIsRecording] = useState(false);
@@ -117,7 +121,7 @@ export default function PracticeScreen() {
     fetchMaterial();
   }, [materialId]);
 
-  // 当切换句子时，初始化单词状态
+  // 当切换句子时，初始化单词状态并开始播放
   useEffect(() => {
     if (currentSentence) {
       const words = extractWords(currentSentence.text);
@@ -130,7 +134,14 @@ export default function PracticeScreen() {
       setFeedback(null);
       setHintLevel(0);
       setPlayCount(0);
+      
+      // 自动开始循环播放
+      startLoopPlayback();
     }
+    
+    return () => {
+      stopPlayback();
+    };
   }, [currentSentence]);
 
   // 清理音频
@@ -159,43 +170,91 @@ export default function PracticeScreen() {
     return word.toLowerCase().replace(/\W/g, '').trim();
   };
 
-  // 播放当前句子音频
-  const playSentence = useCallback(async () => {
-    if (!material?.audio_url || isPlaying) return;
+  // 开始循环播放
+  const startLoopPlayback = useCallback(async () => {
+    if (!material?.audio_url) return;
 
     try {
-      setIsPlaying(true);
-
+      // 停止之前的播放
       if (soundRef.current) {
         await soundRef.current.unloadAsync();
+        soundRef.current = null;
       }
 
       const { sound } = await Audio.Sound.createAsync(
         { uri: material.audio_url },
-        { shouldPlay: true, isLooping: false },
+        { 
+          shouldPlay: true, 
+          isLooping: true,
+          volume: volume,
+        },
         (status) => {
           if (status.isLoaded && status.didJustFinish) {
-            setIsPlaying(false);
+            setPlayCount(prev => prev + 1);
           }
         }
       );
 
       soundRef.current = sound;
-      setPlayCount((prev) => prev + 1);
+      setIsPlaying(true);
+      setIsLooping(true);
     } catch (error) {
       console.error('播放失败:', error);
-      setIsPlaying(false);
-      Alert.alert('提示', '音频播放失败');
     }
-  }, [material?.audio_url, isPlaying]);
+  }, [material?.audio_url, volume]);
 
   // 停止播放
-  const stopPlaying = async () => {
+  const stopPlayback = useCallback(async () => {
     if (soundRef.current) {
-      await soundRef.current.stopAsync();
+      try {
+        await soundRef.current.stopAsync();
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      } catch (e) {
+        // 忽略错误
+      }
+      setIsPlaying(false);
+      setIsLooping(false);
+    }
+  }, []);
+
+  // 暂停播放
+  const pausePlayback = useCallback(async () => {
+    if (soundRef.current) {
+      await soundRef.current.pauseAsync();
       setIsPlaying(false);
     }
-  };
+  }, []);
+
+  // 恢复播放
+  const resumePlayback = useCallback(async () => {
+    if (soundRef.current) {
+      await soundRef.current.playAsync();
+      setIsPlaying(true);
+    }
+  }, []);
+
+  // 设置音量
+  const handleVolumeChange = useCallback(async (newVolume: number) => {
+    const clampedVolume = Math.max(0, Math.min(2, newVolume)); // 允许放大到2倍
+    setVolume(clampedVolume);
+    if (soundRef.current) {
+      await soundRef.current.setVolumeAsync(clampedVolume);
+    }
+  }, []);
+
+  // 切换播放/暂停
+  const togglePlayback = useCallback(async () => {
+    if (isPlaying) {
+      await pausePlayback();
+    } else {
+      if (soundRef.current) {
+        await resumePlayback();
+      } else {
+        await startLoopPlayback();
+      }
+    }
+  }, [isPlaying, pausePlayback, resumePlayback, startLoopPlayback]);
 
   // 验证单词
   const checkWord = useCallback((inputWord: string) => {
@@ -221,7 +280,6 @@ export default function PracticeScreen() {
 
     if (matched) {
       setFeedback('correct');
-      setCurrentInput('');
       // 检查是否完成
       setTimeout(() => {
         checkSentenceComplete();
@@ -230,6 +288,9 @@ export default function PracticeScreen() {
       setFeedback('incorrect');
     }
 
+    // 清空输入框，继续输入
+    setCurrentInput('');
+    
     // 清除反馈
     setTimeout(() => {
       setFeedback(null);
@@ -240,6 +301,9 @@ export default function PracticeScreen() {
   const checkSentenceComplete = useCallback(() => {
     const allRevealed = wordStatuses.every(w => w.revealed);
     if (allRevealed && currentSentence) {
+      // 停止播放
+      stopPlayback();
+      
       // 更新服务器状态
       fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records`, {
         method: 'POST',
@@ -267,7 +331,7 @@ export default function PracticeScreen() {
         }
       }, 1000);
     }
-  }, [wordStatuses, currentSentence, currentIndex, sentences.length, totalAttempts]);
+  }, [wordStatuses, currentSentence, currentIndex, sentences.length, totalAttempts, stopPlayback]);
 
   // 处理输入提交
   const handleSubmit = () => {
@@ -293,6 +357,9 @@ export default function PracticeScreen() {
     }
 
     try {
+      // 语音输入时暂停播放
+      await pausePlayback();
+      
       await Audio.setAudioModeAsync({ 
         allowsRecordingIOS: true, 
         playsInSilentModeIOS: true 
@@ -304,6 +371,8 @@ export default function PracticeScreen() {
       setIsRecording(true);
     } catch (error) {
       console.error('录音失败:', error);
+      // 录音失败，恢复播放
+      resumePlayback();
     }
   };
 
@@ -340,6 +409,9 @@ export default function PracticeScreen() {
     } catch (error) {
       console.error('语音识别失败:', error);
       Alert.alert('提示', '语音识别失败，请重试');
+    } finally {
+      // 语音输入结束后恢复播放
+      resumePlayback();
     }
   };
 
@@ -349,16 +421,13 @@ export default function PracticeScreen() {
     setHintLevel(newLevel);
 
     if (newLevel === 1) {
-      // 提示一个未揭示的单词
       const hiddenWord = wordStatuses.find(w => !w.revealed);
       if (hiddenWord) {
         Alert.alert('提示', `第一个未猜出的单词以 "${hiddenWord.word[0]}" 开头`);
       }
     } else if (newLevel === 2) {
-      // 显示单词数量
       Alert.alert('提示', `还剩 ${wordStatuses.filter(w => !w.revealed).length} 个单词未猜出`);
     } else if (newLevel === 3) {
-      // 显示完整句子
       Alert.alert('答案', currentSentence?.text || '');
     }
   };
@@ -373,6 +442,7 @@ export default function PracticeScreen() {
         { 
           text: '确定', 
           onPress: () => {
+            stopPlayback();
             if (currentIndex < sentences.length - 1) {
               setCurrentIndex(prev => prev + 1);
             } else {
@@ -466,18 +536,48 @@ export default function PracticeScreen() {
 
         {/* Audio Section */}
         <View style={styles.audioSection}>
-          <TouchableOpacity
-            style={[styles.playButton, isPlaying && styles.playButtonDisabled]}
-            onPress={isPlaying ? stopPlaying : playSentence}
-          >
-            <FontAwesome6
-              name={isPlaying ? 'stop' : 'play'}
-              size={28}
-              color={theme.buttonPrimaryText}
-            />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.md }}>
+            <TouchableOpacity
+              style={[styles.playButton, { width: 56, height: 56 }]}
+              onPress={togglePlayback}
+            >
+              <FontAwesome6
+                name={isPlaying ? 'pause' : 'play'}
+                size={24}
+                color={theme.buttonPrimaryText}
+              />
+            </TouchableOpacity>
+            
+            {/* 音量控制 */}
+            <View style={{ flex: 1, marginLeft: Spacing.lg }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.xs }}>
+                <ThemedText variant="caption" color={theme.textMuted}>音量</ThemedText>
+                <ThemedText variant="caption" color={theme.textPrimary}>{Math.round(volume * 100)}%</ThemedText>
+              </View>
+              <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+                <TouchableOpacity
+                  style={{ padding: Spacing.sm, backgroundColor: theme.backgroundTertiary, borderRadius: 8 }}
+                  onPress={() => handleVolumeChange(volume - 0.2)}
+                >
+                  <FontAwesome6 name="minus" size={14} color={theme.textPrimary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ padding: Spacing.sm, backgroundColor: theme.backgroundTertiary, borderRadius: 8 }}
+                  onPress={() => handleVolumeChange(volume + 0.2)}
+                >
+                  <FontAwesome6 name="plus" size={14} color={theme.textPrimary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ padding: Spacing.sm, backgroundColor: volume > 1 ? theme.primary : theme.backgroundTertiary, borderRadius: 8 }}
+                  onPress={() => handleVolumeChange(volume > 1 ? 1 : 1.5)}
+                >
+                  <FontAwesome6 name="volume-high" size={14} color={volume > 1 ? theme.buttonPrimaryText : theme.textPrimary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
           <ThemedText variant="caption" color={theme.textMuted}>
-            已播放 {playCount} 次 · 点击播放音频
+            {isPlaying ? '循环播放中' : '已暂停'} · 已播放 {playCount} 次
           </ThemedText>
         </View>
 
@@ -520,7 +620,7 @@ export default function PracticeScreen() {
         {/* Input Section */}
         <View style={styles.inputSection}>
           <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.inputLabel}>
-            输入单词（空格或回车提交）
+            输入单词（空格或回车提交，自动继续）
           </ThemedText>
           <View style={styles.inputRow}>
             <TextInput
