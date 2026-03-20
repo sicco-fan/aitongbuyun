@@ -83,7 +83,7 @@ export default function PracticeScreen() {
   const soundRef = useRef<Audio.Sound | null>(null);
   const isLoopingRef = useRef(true);
   const sentenceTimesRef = useRef({ start: 0, end: 0 });
-  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null); // 定时识别间隔
+  const isRecordingRef = useRef(false); // 使用 ref 跟踪录音状态，避免闭包问题
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -421,6 +421,7 @@ export default function PracticeScreen() {
       });
       
       setIsRecording(true);
+      isRecordingRef.current = true; // 同步设置 ref
       setRecordingCount(0);
       
       // 开始第一段录音
@@ -429,12 +430,14 @@ export default function PracticeScreen() {
     } catch (error) {
       console.error('录音失败:', error);
       setIsRecording(false);
+      isRecordingRef.current = false;
       resumePlayback();
     }
   };
 
   // 开始新的录音片段
   const startNewRecordingSegment = async () => {
+    // 先清理之前的录音
     if (recordingRef.current) {
       try {
         await recordingRef.current.stopAndUnloadAsync();
@@ -444,27 +447,40 @@ export default function PracticeScreen() {
       recordingRef.current = null;
     }
 
+    // 检查是否还在录音状态
+    if (!isRecordingRef.current) return;
+
     try {
       const recording = new Audio.Recording();
       await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       await recording.startAsync();
       recordingRef.current = recording;
       
-      // 600ms后自动识别并继续录音（更快响应）
-      recordingIntervalRef.current = setTimeout(async () => {
-        if (isRecording && recordingRef.current) {
+      // 500ms后自动识别并继续录音（快速响应）
+      setTimeout(async () => {
+        if (isRecordingRef.current) {
           await recognizeAndContinue();
         }
-      }, 600);
+      }, 500);
       
     } catch (error) {
       console.error('录音片段失败:', error);
+      // 出错后尝试继续录音
+      if (isRecordingRef.current) {
+        setTimeout(() => startNewRecordingSegment(), 100);
+      }
     }
   };
 
   // 识别当前录音并继续
   const recognizeAndContinue = async () => {
-    if (!recordingRef.current) return;
+    if (!recordingRef.current) {
+      // 如果没有录音，直接开始新录音
+      if (isRecordingRef.current) {
+        await startNewRecordingSegment();
+      }
+      return;
+    }
 
     try {
       await recordingRef.current.stopAndUnloadAsync();
@@ -492,14 +508,14 @@ export default function PracticeScreen() {
       }
       
       // 继续下一段录音（如果还在录音状态）
-      if (isRecording) {
+      if (isRecordingRef.current) {
         await startNewRecordingSegment();
       }
       
     } catch (error) {
       console.error('语音识别失败:', error);
       // 即使识别失败，也继续录音
-      if (isRecording) {
+      if (isRecordingRef.current) {
         await startNewRecordingSegment();
       }
     }
@@ -508,12 +524,7 @@ export default function PracticeScreen() {
   // 停止持续录音
   const stopContinuousRecording = async () => {
     setIsRecording(false);
-    
-    // 清除定时器
-    if (recordingIntervalRef.current) {
-      clearTimeout(recordingIntervalRef.current);
-      recordingIntervalRef.current = null;
-    }
+    isRecordingRef.current = false; // 同步设置 ref
     
     // 识别最后一段录音
     if (recordingRef.current) {
@@ -832,7 +843,7 @@ export default function PracticeScreen() {
           </View>
           {isRecording && (
             <ThemedText variant="caption" color={theme.primary} style={{ marginTop: 8, textAlign: 'center' }}>
-              正在录音... 已识别 {recordingCount} 次 · 点击停止
+              正在识别... 说对的单词会自动填入 · 已识别 {recordingCount} 次
             </ThemedText>
           )}
         </View>
