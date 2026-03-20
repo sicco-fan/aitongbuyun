@@ -482,30 +482,36 @@ function processASRResult(asrResult: { text: string; duration?: number; utteranc
   console.log('\n========== ASR 处理开始 ==========');
   console.log('顶层字段:', Object.keys(asrResult));
   console.log('完整文本:', asrResult.text?.substring(0, 200));
-  console.log('总时长:', asrResult.duration);
+  console.log('顶层 duration:', asrResult.duration);
+  console.log('顶层 utterances:', asrResult.utterances);
+  console.log('rawData.audio_info:', asrResult.rawData?.audio_info);
+  console.log('rawData.result:', asrResult.rawData?.result ? 'exists' : 'null');
 
   // 步骤1：提取所有带时间戳的单词
   const wordsWithTime: WordWithTime[] = extractWordsWithTimestamps(asrResult);
   
   console.log(`\n提取到 ${wordsWithTime.length} 个带时间戳的单词`);
-  if (wordsWithTime.length > 0) {
-    console.log('前5个单词:', wordsWithTime.slice(0, 5).map(w => `${w.word}(${w.start_time}-${w.end_time})`).join(', '));
-  }
 
-  // 步骤2：按文字内容分割句子
-  const fullText = asrResult.text || '';
+  // 步骤2：正确提取总时长
+  const totalDuration = asrResult.duration || 
+                        asrResult.rawData?.audio_info?.duration || 
+                        asrResult.rawData?.duration || 
+                        0;
+  console.log('总时长 (ms):', totalDuration);
+
+  // 步骤3：按文字内容分割句子
+  const fullText = asrResult.text || asrResult.rawData?.result?.text || '';
   const sentenceTexts = splitIntoSentences(fullText);
   console.log(`\n按文字分割为 ${sentenceTexts.length} 个句子`);
 
   if (wordsWithTime.length > 0) {
-    // 步骤3：根据单词时间戳确定每个句子的时间范围
+    // 有单词级别的时间戳，精确匹配
     let wordIndex = 0;
     
     for (const sentenceText of sentenceTexts) {
       const sentenceWords = sentenceText.split(/\s+/).filter(w => w.length > 0);
       const sentenceWordCount = sentenceWords.length;
       
-      // 找到这个句子对应的单词范围
       const startIdx = wordIndex;
       const endIdx = Math.min(wordIndex + sentenceWordCount, wordsWithTime.length);
       
@@ -524,44 +530,42 @@ function processASRResult(asrResult: { text: string; duration?: number; utteranc
       
       wordIndex = endIdx;
     }
-  } else {
-    // 步骤4：没有时间戳数据，按比例估算
-    console.log('\n警告：无单词时间戳数据，按比例估算时间');
+  } else if (totalDuration > 0) {
+    // 没有时间戳数据，但有总时长，按文本比例分配时间
+    console.log('\n按文本比例分配时间');
     
-    const totalDuration = asrResult.duration || asrResult.rawData?.duration || 0;
     const totalWords = sentenceTexts.reduce((sum, s) => sum + s.split(/\s+/).filter(w => w.length > 0).length, 0);
+    const avgWordDuration = totalDuration / totalWords;
+    console.log(`总词数: ${totalWords}, 平均每词: ${avgWordDuration.toFixed(0)}ms`);
     
-    if (totalDuration > 0 && totalWords > 0) {
-      const avgWordDuration = totalDuration / totalWords;
-      let currentTime = 0;
+    let currentTime = 0;
+    
+    for (const sentenceText of sentenceTexts) {
+      const words = sentenceText.split(/\s+/).filter(w => w.length > 0);
+      const duration = Math.round(words.length * avgWordDuration);
       
-      for (const sentenceText of sentenceTexts) {
-        const words = sentenceText.split(/\s+/).filter(w => w.length > 0);
-        const duration = Math.round(words.length * avgWordDuration);
-        
-        result.push({
-          text: sentenceText,
-          start_time: currentTime,
-          end_time: currentTime + duration,
-        });
-        
-        console.log(`句子: "${sentenceText.substring(0, 30)}..." ${currentTime}ms - ${currentTime + duration}ms (估算)`);
-        currentTime += duration;
-      }
-    } else {
-      // 最后兜底：每个句子默认2秒
-      console.log('警告：无法计算时间，使用默认2秒/句');
-      let currentTime = 0;
+      result.push({
+        text: sentenceText,
+        start_time: currentTime,
+        end_time: currentTime + duration,
+      });
       
-      for (const sentenceText of sentenceTexts) {
-        const duration = 2000;
-        result.push({
-          text: sentenceText,
-          start_time: currentTime,
-          end_time: currentTime + duration,
-        });
-        currentTime += duration;
-      }
+      console.log(`句子: "${sentenceText.substring(0, 30)}..." ${currentTime}ms - ${currentTime + duration}ms`);
+      currentTime += duration;
+    }
+  } else {
+    // 最后兜底：每个句子默认2秒
+    console.log('警告：无法计算时间，使用默认2秒/句');
+    let currentTime = 0;
+    
+    for (const sentenceText of sentenceTexts) {
+      const duration = 2000;
+      result.push({
+        text: sentenceText,
+        start_time: currentTime,
+        end_time: currentTime + duration,
+      });
+      currentTime += duration;
     }
   }
 
