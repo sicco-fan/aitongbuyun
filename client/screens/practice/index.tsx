@@ -66,6 +66,7 @@ export default function PracticeScreen() {
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
   const [feedbackWord, setFeedbackWord] = useState('');
   const [hintLevel, setHintLevel] = useState(0);
+  const [selectedWordIndex, setSelectedWordIndex] = useState<number | null>(null); // 选中的单词索引
   
   // 音频控制状态
   const [isPlaying, setIsPlaying] = useState(false);
@@ -357,7 +358,21 @@ export default function PracticeScreen() {
     }
   }, [wordStatuses, currentSentence, currentIndex, sentences.length, totalAttempts, stopPlayback]);
 
-  // 处理输入提交
+  // 处理输入变化（检测空格自动提交）
+  const handleInputChange = (text: string) => {
+    // 检测到空格时自动提交
+    if (text.includes(' ')) {
+      const word = text.replace(/\s/g, '').trim();
+      if (word) {
+        checkWord(word);
+      }
+      setCurrentInput('');
+    } else {
+      setCurrentInput(text);
+    }
+  };
+
+  // 处理键盘提交
   const handleSubmit = () => {
     if (currentInput.trim()) {
       checkWord(currentInput.trim());
@@ -419,12 +434,12 @@ export default function PracticeScreen() {
       await recording.startAsync();
       recordingRef.current = recording;
       
-      // 2秒后自动识别并继续录音
+      // 1秒后自动识别并继续录音
       recordingIntervalRef.current = setTimeout(async () => {
         if (isRecording && recordingRef.current) {
           await recognizeAndContinue();
         }
-      }, 2500); // 每2.5秒识别一次
+      }, 1000); // 每1秒识别一次
       
     } catch (error) {
       console.error('录音片段失败:', error);
@@ -518,29 +533,49 @@ export default function PracticeScreen() {
     resumePlayback();
   };
 
-  // 显示提示
-  const showHint = () => {
-    const newLevel = Math.min(hintLevel + 1, 3);
-    setHintLevel(newLevel);
-
-    const hiddenWords = wordStatuses.filter(w => !w.revealed);
+  // 提示指定单词
+  const showHintForWord = (index: number) => {
+    const wordStatus = wordStatuses[index];
+    if (!wordStatus) return;
     
-    let message = '';
-    if (newLevel === 1) {
-      const firstHidden = hiddenWords[0];
-      if (firstHidden) {
-        message = `第一个未猜出的单词以 "${firstHidden.word[0].toUpperCase()}" 开头`;
+    if (wordStatus.revealed) {
+      // 已经答对了，不需要提示
+      if (Platform.OS === 'web') {
+        alert(`「${wordStatus.word}」已经答对了！`);
+      } else {
+        Alert.alert('提示', `「${wordStatus.word}」已经答对了！`);
       }
-    } else if (newLevel === 2) {
-      message = `还剩 ${hiddenWords.length} 个单词未猜出`;
-    } else if (newLevel === 3) {
-      message = `答案：${currentSentence?.text || ''}`;
+      return;
     }
-
+    
+    // 提示这个单词
+    const word = wordStatus.word;
+    const hint = `答案：${word}`;
+    
     if (Platform.OS === 'web') {
-      alert(`提示 ${newLevel}/3\n\n${message}`);
+      alert(hint);
     } else {
-      Alert.alert(`提示 ${newLevel}/3`, message);
+      Alert.alert('提示', hint);
+    }
+  };
+
+  // 提示下一个未答出的单词
+  const showHint = () => {
+    const nextHidden = wordStatuses.find(w => !w.revealed);
+    if (!nextHidden) {
+      if (Platform.OS === 'web') {
+        alert('恭喜！所有单词都已答对！');
+      } else {
+        Alert.alert('提示', '恭喜！所有单词都已答对！');
+      }
+      return;
+    }
+    
+    const hint = `下一个单词：${nextHidden.word}`;
+    if (Platform.OS === 'web') {
+      alert(hint);
+    } else {
+      Alert.alert('提示', hint);
     }
   };
 
@@ -705,7 +740,7 @@ export default function PracticeScreen() {
           </ThemedText>
           <View style={styles.wordsContainer}>
             {wordStatuses.map((ws, idx) => (
-              <View 
+              <TouchableOpacity 
                 key={idx} 
                 style={[
                   styles.wordSlot, 
@@ -713,6 +748,8 @@ export default function PracticeScreen() {
                   // 根据单词长度动态调整宽度
                   ws.revealed ? null : { minWidth: Math.max(ws.charLength * 8 + 16, 32) }
                 ]}
+                onPress={() => !ws.revealed && showHintForWord(idx)}
+                activeOpacity={0.7}
               >
                 {ws.revealed ? (
                   <ThemedText 
@@ -731,9 +768,12 @@ export default function PracticeScreen() {
                     {'_'.repeat(Math.min(ws.charLength, 8))}
                   </ThemedText>
                 )}
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
+          <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 8, textAlign: 'center' }}>
+            点击未答出的单词可以查看提示
+          </ThemedText>
         </View>
 
         {/* Input Section */}
@@ -745,7 +785,7 @@ export default function PracticeScreen() {
             <TextInput
               style={styles.textInput}
               value={currentInput}
-              onChangeText={setCurrentInput}
+              onChangeText={handleInputChange}
               onSubmitEditing={handleSubmit}
               placeholder="输入你听到的单词..."
               placeholderTextColor={theme.textMuted}
@@ -788,7 +828,7 @@ export default function PracticeScreen() {
           <TouchableOpacity style={styles.hintButton} onPress={showHint}>
             <FontAwesome6 name="lightbulb" size={18} color="#F59E0B" />
             <ThemedText variant="smallMedium" style={styles.hintButtonText}>
-              提示 ({hintLevel}/3)
+              提示下一个单词
             </ThemedText>
           </TouchableOpacity>
         </View>
