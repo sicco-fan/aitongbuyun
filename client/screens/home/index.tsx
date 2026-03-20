@@ -5,6 +5,7 @@ import {
   View,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
@@ -14,6 +15,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
+import { Spacing } from '@/constants/theme';
 
 interface Material {
   id: number;
@@ -79,6 +81,38 @@ export default function HomeScreen() {
 
   const handleMaterialPress = (material: Material) => {
     router.push('/practice', { materialId: material.id, title: material.title });
+  };
+
+  const handleDeleteMaterial = (material: Material) => {
+    Alert.alert(
+      '删除材料',
+      `确定要删除「${material.title}」吗？\n此操作将删除该材料及其所有句子数据，且不可恢复。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await fetch(
+                `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${material.id}`,
+                { method: 'DELETE' }
+              );
+
+              if (response.ok) {
+                setMaterials(prev => prev.filter(m => m.id !== material.id));
+                Alert.alert('成功', '材料已删除');
+              } else {
+                throw new Error('删除失败');
+              }
+            } catch (error) {
+              console.error('删除材料失败:', error);
+              Alert.alert('错误', '删除材料失败');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleAddMaterial = () => {
@@ -163,49 +197,61 @@ export default function HomeScreen() {
           </View>
         ) : (
           materials.map((material) => (
-            <TouchableOpacity
+            <View
               key={material.id}
               style={styles.materialCard}
-              onPress={() => handleMaterialPress(material)}
-              activeOpacity={0.7}
             >
-              <ThemedText variant="title" color={theme.textPrimary} style={styles.materialTitle}>
-                {material.title}
-              </ThemedText>
-              {material.description ? (
-                <ThemedText variant="small" color={theme.textMuted} numberOfLines={2}>
-                  {material.description}
+              <TouchableOpacity 
+                style={{ flex: 1 }}
+                onPress={() => handleMaterialPress(material)}
+                activeOpacity={0.7}
+              >
+                <ThemedText variant="title" color={theme.textPrimary} style={styles.materialTitle}>
+                  {material.title}
                 </ThemedText>
-              ) : null}
-              
-              <View style={styles.materialMeta}>
-                <View style={styles.materialMetaItem}>
-                  <FontAwesome6 name="clock" size={12} color={theme.textMuted} style={styles.materialMetaIcon} />
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    {formatDuration(material.duration)}
+                {material.description ? (
+                  <ThemedText variant="small" color={theme.textMuted} numberOfLines={2}>
+                    {material.description}
                   </ThemedText>
-                </View>
-                <View style={styles.materialMetaItem}>
-                  <FontAwesome6 name="list" size={12} color={theme.textMuted} style={styles.materialMetaIcon} />
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    {material.sentences_count} 句
-                  </ThemedText>
-                </View>
-              </View>
-
-              {material.sentences_count > 0 && (
-                <View style={styles.progressContainer}>
-                  <View style={styles.progressBar}>
-                    <View 
-                      style={[styles.progressFill, { width: `${getProgress(material)}%` }]} 
-                    />
+                ) : null}
+                
+                <View style={styles.materialMeta}>
+                  <View style={styles.materialMetaItem}>
+                    <FontAwesome6 name="clock" size={12} color={theme.textMuted} style={styles.materialMetaIcon} />
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      {formatDuration(material.duration)}
+                    </ThemedText>
                   </View>
-                  <ThemedText variant="tiny" color={theme.textMuted} style={styles.progressText}>
-                    {material.completed_count}/{material.sentences_count} 已完成 ({Math.round(getProgress(material))}%)
-                  </ThemedText>
+                  <View style={styles.materialMetaItem}>
+                    <FontAwesome6 name="list" size={12} color={theme.textMuted} style={styles.materialMetaIcon} />
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      {material.sentences_count} 句
+                    </ThemedText>
+                  </View>
                 </View>
-              )}
-            </TouchableOpacity>
+
+                {material.sentences_count > 0 && (
+                  <View style={styles.progressContainer}>
+                    <View style={styles.progressBar}>
+                      <View 
+                        style={[styles.progressFill, { width: `${getProgress(material)}%` }]} 
+                      />
+                    </View>
+                    <ThemedText variant="tiny" color={theme.textMuted} style={styles.progressText}>
+                      {material.completed_count}/{material.sentences_count} 已完成 ({Math.round(getProgress(material))}%)
+                    </ThemedText>
+                  </View>
+                )}
+              </TouchableOpacity>
+              
+              {/* 删除按钮 */}
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={() => handleDeleteMaterial(material)}
+              >
+                <FontAwesome6 name="trash" size={16} color={theme.error} />
+              </TouchableOpacity>
+            </View>
           ))
         )}
       </ScrollView>

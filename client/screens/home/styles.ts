@@ -51,6 +51,8 @@ export const createStyles = (theme: Theme) => {
       borderColor: theme.border,
       padding: Spacing.lg,
       marginBottom: Spacing.md,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
     },
     materialTitle: {
       marginBottom: Spacing.xs,
@@ -83,6 +85,11 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.full,
     },
     progressText: {
+      marginTop: Spacing.xs,
+    },
+    deleteButton: {
+      padding: Spacing.sm,
+      marginLeft: Spacing.sm,
       marginTop: Spacing.xs,
     },
     emptyContainer: {

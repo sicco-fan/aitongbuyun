@@ -299,24 +299,54 @@ function processASRResult(asrResult: { text: string; duration?: number; utteranc
   const MAX_WORDS = 6;
   const result: SentenceWithTime[] = [];
 
-  // 尝试从 rawData 中获取 utterances（带时间戳的片段）
-  const utterances = asrResult.utterances || asrResult.rawData?.utterances || [];
+  // 打印原始ASR结果，方便调试
+  console.log('ASR Result:', JSON.stringify({
+    text: asrResult.text?.substring(0, 100),
+    duration: asrResult.duration,
+    utterancesCount: asrResult.utterances?.length,
+    rawDataUtterancesCount: asrResult.rawData?.utterances?.length,
+    rawDataKeys: asrResult.rawData ? Object.keys(asrResult.rawData) : [],
+  }, null, 2));
+
+  // 尝试从 utterances 获取时间戳（可能在顶层或rawData中）
+  let utterances = asrResult.utterances || [];
+  
+  // 如果顶层没有，检查rawData
+  if ((!utterances || utterances.length === 0) && asrResult.rawData) {
+    utterances = asrResult.rawData.utterances || 
+                 asrResult.rawData.segments || 
+                 asrResult.rawData.words || 
+                 [];
+  }
+
+  // 打印utterances样例
+  if (utterances.length > 0) {
+    console.log('Sample utterance:', JSON.stringify(utterances[0], null, 2));
+  }
 
   if (utterances && utterances.length > 0) {
     // 使用 ASR 返回的时间戳
     for (const utterance of utterances) {
-      const text = (utterance.text || '').trim();
-      const startTime = utterance.start_time || 0;
-      const endTime = utterance.end_time || 0;
+      const text = (utterance.text || utterance.word || '').trim();
+      // 时间可能是毫秒或秒，需要判断
+      let startTime = utterance.start_time ?? utterance.startTime ?? utterance.start ?? 0;
+      let endTime = utterance.end_time ?? utterance.endTime ?? utterance.end ?? 0;
+      
+      // 如果时间看起来是秒（小于1000），转换为毫秒
+      if (endTime > 0 && endTime < 1000 && asrResult.duration && asrResult.duration > 1000) {
+        startTime = startTime * 1000;
+        endTime = endTime * 1000;
+      }
+      
       const duration = endTime - startTime;
 
-      if (!text) continue;
+      if (!text || duration <= 0) continue;
 
       const words = text.split(/\s+/).filter((w: string) => w.length > 0);
 
       if (words.length <= MAX_WORDS) {
         // 长度合适，直接添加
-        result.push({ text, start_time: startTime, end_time: endTime });
+        result.push({ text, start_time: Math.round(startTime), end_time: Math.round(endTime) });
       } else {
         // 太长，按单词分割并按比例估算时间
         const wordCount = words.length;
@@ -332,15 +362,20 @@ function processASRResult(asrResult: { text: string; duration?: number; utteranc
         }
       }
     }
-  } else {
-    // 没有时间戳信息，使用文本分割并估算时间
+  }
+  
+  // 如果没有获取到带时间戳的句子，或者结果太少，回退到文本分割
+  if (result.length === 0 && asrResult.text) {
+    console.log('No utterances found, falling back to text splitting');
+    
     const totalDuration = asrResult.duration || 0;
     const sentences = splitIntoSentences(asrResult.text);
+    console.log(`Split into ${sentences.length} sentences, total duration: ${totalDuration}ms`);
 
     if (sentences.length > 0) {
       // 计算总单词数
       const totalWords = sentences.reduce((sum, s) => sum + s.split(/\s+/).filter(w => w.length > 0).length, 0);
-      const avgWordDuration = totalDuration / totalWords;
+      const avgWordDuration = totalWords > 0 ? totalDuration / totalWords : 500; // 默认每个词500ms
 
       let currentTime = 0;
       for (const text of sentences) {
@@ -353,6 +388,7 @@ function processASRResult(asrResult: { text: string; duration?: number; utteranc
     }
   }
 
+  console.log(`Processed ${result.length} sentences with timestamps`);
   return result;
 }
 

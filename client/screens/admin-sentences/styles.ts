@@ -22,24 +22,6 @@ export const createStyles = (theme: Theme) => {
       flex: 1,
       textAlign: 'center',
     },
-    audioControls: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: Spacing.md,
-      marginBottom: Spacing.lg,
-    },
-    audioButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: theme.primary,
-      paddingVertical: Spacing.sm,
-      paddingHorizontal: Spacing.lg,
-      borderRadius: BorderRadius.lg,
-      gap: Spacing.sm,
-    },
-    audioButtonActive: {
-      backgroundColor: theme.error,
-    },
     sentencesSection: {
       gap: Spacing.md,
     },
@@ -63,6 +45,12 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: theme.primary,
       justifyContent: 'center',
       alignItems: 'center',
+    },
+    sentenceDuration: {
+      backgroundColor: theme.primary + '15',
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: Spacing.xs,
+      borderRadius: BorderRadius.sm,
     },
     sentenceText: {
       marginBottom: Spacing.md,
@@ -130,16 +118,14 @@ export const createStyles = (theme: Theme) => {
     saveButton: {
       backgroundColor: theme.primary,
     },
-    splitOriginal: {
-      marginBottom: Spacing.lg,
-      lineHeight: 22,
-    },
-    splitPreview: {
-      backgroundColor: theme.backgroundTertiary,
+    infoBox: {
       padding: Spacing.md,
       borderRadius: BorderRadius.md,
-      gap: Spacing.sm,
-      marginBottom: Spacing.lg,
+    },
+    previewBox: {
+      padding: Spacing.md,
+      borderRadius: BorderRadius.md,
+      borderWidth: 1,
     },
   });
 };
