@@ -734,87 +734,85 @@ function extractWordsWithTimestamps(asrResult: { text: string; duration?: number
 }
 
 /**
- * 将文本分割成短句（每句控制在5-6个单词以内，确保容易记忆）
+ * 将文本分割成句子
+ * 核心原则：严格按照标点符号分割，不强行切开句子
  */
 function splitIntoSentences(text: string): string[] {
-  // 最大单词数限制 - 改为6，确保短小易记
-  const MAX_WORDS = 6;
+  console.log('\n===== splitIntoSentences 开始 =====');
+  console.log('输入文本长度:', text.length);
   
-  // 先按主要标点符号分割
+  // 第一步：按主要句子结束标点分割（句号、问号、感叹号、换行）
+  // 这些是自然的句子边界，应该严格遵守
+  const sentenceDelimiters = /([。！？.!?\n]+)/g;
   const primarySplit = text
-    .replace(/([。！？.!?\n]+)/g, '|||SPLIT|||')
-    .split('|||SPLIT|||')
+    .replace(sentenceDelimiters, '|||SENTENCE|||')
+    .split('|||SENTENCE|||')
     .map(s => s.trim())
     .filter(s => s.length > 0);
+  
+  console.log('第一轮分割（按句号/问号/感叹号）:', primarySplit.length, '段');
   
   const result: string[] = [];
   
   for (const segment of primarySplit) {
-    const words = segment.split(/\s+/).filter(w => w.length > 0);
+    if (!segment.trim()) continue;
     
-    if (words.length <= MAX_WORDS) {
-      // 长度合适，直接添加
-      if (segment.trim()) {
-        result.push(segment.trim());
-      }
+    // 第二步：对于较长的段落，按逗号/分号分割
+    // 但不强行切开，保持自然停顿
+    const commaDelimiters = /([，,;；]+)/g;
+    const commaSplit = segment
+      .replace(commaDelimiters, '|||COMMA|||')
+      .split('|||COMMA|||')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    
+    if (commaSplit.length === 1) {
+      // 没有逗号，整个段落就是一个句子
+      result.push(segment.trim());
     } else {
-      // 太长，需要进一步分割
-      // 尝试按逗号分割
-      const commaSplit = segment
-        .replace(/([，,;；])/g, '|||COMMA|||')
-        .split('|||COMMA|||')
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
+      // 有逗号，按逗号分割成子句
+      // 但要考虑合并短句，避免太碎片化
+      const MIN_WORDS_TO_SPLIT = 3; // 少于3个词的子句尝试合并
       
-      let currentChunk: string[] = [];
+      let currentClause: string[] = [];
+      let currentWordCount = 0;
       
-      for (const part of commaSplit) {
-        const partWords = part.split(/\s+/).filter(w => w.length > 0);
+      for (const clause of commaSplit) {
+        const clauseWords = clause.split(/\s+/).filter(w => w.length > 0).length;
         
-        if (currentChunk.length + partWords.length <= MAX_WORDS) {
-          currentChunk.push(part);
+        // 如果当前子句很短，且前面有内容，尝试合并
+        if (clauseWords < MIN_WORDS_TO_SPLIT && currentClause.length > 0) {
+          currentClause.push(clause);
+          currentWordCount += clauseWords;
         } else {
-          // 当前块已满，保存并开始新块
-          if (currentChunk.length > 0) {
-            result.push(currentChunk.join(', '));
+          // 保存当前累积的内容
+          if (currentClause.length > 0) {
+            result.push(currentClause.join(', '));
           }
-          currentChunk = [part];
-          
-          // 如果单个部分就超过限制，强制按单词数分割
-          if (partWords.length > MAX_WORDS) {
-            for (let i = 0; i < partWords.length; i += MAX_WORDS) {
-              const chunk = partWords.slice(i, i + MAX_WORDS).join(' ');
-              if (chunk) {
-                result.push(chunk);
-              }
-            }
-            currentChunk = [];
-          }
+          currentClause = [clause];
+          currentWordCount = clauseWords;
         }
       }
       
-      if (currentChunk.length > 0) {
-        result.push(currentChunk.join(', '));
+      // 保存最后一段
+      if (currentClause.length > 0) {
+        result.push(currentClause.join(', '));
       }
     }
   }
   
-  // 如果结果太少，强制按单词数分割
-  if (result.length < 2 && text.trim()) {
-    const words = text.split(/\s+/).filter(w => w.length > 0);
-    const chunks: string[] = [];
-    
-    for (let i = 0; i < words.length; i += MAX_WORDS) {
-      const chunk = words.slice(i, i + MAX_WORDS).join(' ');
-      if (chunk) {
-        chunks.push(chunk);
-      }
-    }
-    
-    return chunks;
-  }
+  // 过滤空字符串
+  const finalResult = result.filter(s => s.trim().length > 0);
   
-  return result.filter(s => s.trim().length > 0);
+  console.log('最终分割结果:', finalResult.length, '句');
+  console.log('句子列表:');
+  finalResult.forEach((s, i) => {
+    const words = s.split(/\s+/).filter(w => w.length > 0).length;
+    console.log(`  ${i}: "${s.substring(0, 50)}${s.length > 50 ? '...' : ''}" (${words} 词)`);
+  });
+  console.log('=====================================\n');
+  
+  return finalResult;
 }
 
 // ============== 后台管理 API ==============
