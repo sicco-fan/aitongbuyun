@@ -57,8 +57,31 @@ export default function AddMaterialScreen() {
 
   const pickAudioFile = async () => {
     try {
+      // 支持所有常见的音视频格式
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['audio/*', 'video/*'],
+        type: [
+          // 音频格式
+          'audio/*',
+          'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/wave', 'audio/x-wav',
+          'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/aac',
+          'audio/ogg', 'audio/vorbis', 'audio/flac', 'audio/x-flac',
+          'audio/wma', 'audio/x-ms-wma',
+          'audio/aiff', 'audio/x-aiff',
+          // 视频格式
+          'video/*',
+          'video/mp4', 'video/x-m4v',
+          'video/quicktime', 'video/x-quicktime',
+          'video/x-msvideo', 'video/avi',
+          'video/x-matroska', 'video/mkv',
+          'video/webm',
+          'video/x-flv', 'video/flv',
+          'video/3gpp', 'video/3gpp2',
+          'video/x-mng',
+          'video/ogg',
+          'video/x-ms-wmv', 'video/wmv',
+          // 通用
+          'application/octet-stream',
+        ],
         copyToCacheDirectory: true,
       });
 
@@ -138,14 +161,20 @@ export default function AddMaterialScreen() {
 
       setUploadStatus('上传中...');
       
-      // 对于文件上传，使用本地后端 URL 以避免代理服务器的请求大小限制
-      // 开发环境直接连接本地后端，生产环境使用配置的 URL
-      const isDev = __DEV__;
-      const baseUrl = isDev ? 'http://localhost:9091' : EXPO_PUBLIC_BACKEND_BASE_URL;
+      // 确定后端 URL：
+      // - 移动端（iOS/Android）：使用 localhost:9091（开发时连接本地后端）
+      // - Web 端：使用 EXPO_PUBLIC_BACKEND_BASE_URL（通过代理访问后端）
+      let baseUrl: string;
+      if (Platform.OS === 'web') {
+        // Web 端必须使用配置的 URL（通过代理）
+        baseUrl = EXPO_PUBLIC_BACKEND_BASE_URL || '';
+      } else {
+        // 移动端直接连接本地后端
+        baseUrl = __DEV__ ? 'http://localhost:9091' : (EXPO_PUBLIC_BACKEND_BASE_URL || '');
+      }
       const url = `${baseUrl}/api/v1/materials`;
       console.log('上传 URL:', url);
-      console.log('文件信息:', { name: file.name, size: file.size, type: file.mimeType });
-      console.log('开发模式:', isDev);
+      console.log('平台:', Platform.OS, '文件信息:', { name: file.name, size: file.size, type: file.mimeType });
       
       /**
        * 服务端文件：server/src/routes/materials.ts
@@ -341,7 +370,7 @@ export default function AddMaterialScreen() {
                 点击选择音频或视频文件
               </ThemedText>
               <ThemedText variant="caption" color={theme.textMuted} style={styles.filePickerHint}>
-                支持 MP3、WAV、M4A、MP4 等格式
+                支持 MP3、WAV、MP4、MKV 等多种格式
               </ThemedText>
             </TouchableOpacity>
           )}
@@ -353,13 +382,13 @@ export default function AddMaterialScreen() {
             支持的音视频格式
           </ThemedText>
           <ThemedText variant="caption" color={theme.textMuted}>
-            音频：MP3、WAV、M4A、OGG、FLAC
+            音频：MP3、WAV、M4A、AAC、OGG、FLAC、WMA、AIFF
           </ThemedText>
           <ThemedText variant="caption" color={theme.textMuted}>
-            视频：MP4、MOV、AVI 等（自动提取音频）
+            视频：MP4、MOV、AVI、MKV、WebM、FLV、3GP、WMV
           </ThemedText>
           <ThemedText variant="caption" color={theme.textMuted}>
-            最大文件大小：500MB
+            最大文件大小：500MB（视频将自动提取音频）
           </ThemedText>
         </View>
 
