@@ -290,26 +290,87 @@ router.delete('/:id', async (req: Request, res: Response) => {
 });
 
 /**
- * 将文本分割成句子
+ * 将文本分割成短句（每句控制在10-15个单词以内）
  */
 function splitIntoSentences(text: string): string[] {
-  // 按标点符号分割
-  const sentences = text
-    .replace(/([。！？.!?])/g, '$1\n')
-    .split('\n')
+  // 最大单词数限制
+  const MAX_WORDS = 12;
+  
+  // 先按主要标点符号分割
+  const primarySplit = text
+    .replace(/([。！？.!?\n]+)/g, '|||SPLIT|||')
+    .split('|||SPLIT|||')
     .map(s => s.trim())
     .filter(s => s.length > 0);
   
-  // 如果分割后句子太少，尝试按逗号分割
-  if (sentences.length < 3) {
-    return text
-      .replace(/([，,。！？.!?])/g, '$1\n')
-      .split('\n')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
+  const result: string[] = [];
+  
+  for (const segment of primarySplit) {
+    const words = segment.split(/\s+/).filter(w => w.length > 0);
+    
+    if (words.length <= MAX_WORDS) {
+      // 长度合适，直接添加
+      if (segment.trim()) {
+        result.push(segment.trim());
+      }
+    } else {
+      // 太长，需要进一步分割
+      // 尝试按逗号分割
+      const commaSplit = segment
+        .replace(/([，,;；])/g, '|||COMMA|||')
+        .split('|||COMMA|||')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+      
+      let currentChunk: string[] = [];
+      
+      for (const part of commaSplit) {
+        const partWords = part.split(/\s+/).filter(w => w.length > 0);
+        
+        if (currentChunk.length + partWords.length <= MAX_WORDS) {
+          currentChunk.push(part);
+        } else {
+          // 当前块已满，保存并开始新块
+          if (currentChunk.length > 0) {
+            result.push(currentChunk.join(', '));
+          }
+          currentChunk = [part];
+          
+          // 如果单个部分就超过限制，强制按单词数分割
+          if (partWords.length > MAX_WORDS) {
+            for (let i = 0; i < partWords.length; i += MAX_WORDS) {
+              const chunk = partWords.slice(i, i + MAX_WORDS).join(' ');
+              if (chunk) {
+                result.push(chunk);
+              }
+            }
+            currentChunk = [];
+          }
+        }
+      }
+      
+      if (currentChunk.length > 0) {
+        result.push(currentChunk.join(', '));
+      }
+    }
   }
   
-  return sentences;
+  // 如果结果太少，强制按单词数分割
+  if (result.length < 2 && text.trim()) {
+    const words = text.split(/\s+/).filter(w => w.length > 0);
+    const chunks: string[] = [];
+    
+    for (let i = 0; i < words.length; i += MAX_WORDS) {
+      const chunk = words.slice(i, i + MAX_WORDS).join(' ');
+      if (chunk) {
+        chunks.push(chunk);
+      }
+    }
+    
+    return chunks;
+  }
+  
+  return result.filter(s => s.trim().length > 0);
 }
 
 export default router;

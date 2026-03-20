@@ -3,6 +3,9 @@ import { Spacing, BorderRadius, Theme } from '@/constants/theme';
 
 export const createStyles = (theme: Theme) => {
   return StyleSheet.create({
+    container: {
+      flex: 1,
+    },
     scrollContent: {
       flexGrow: 1,
       paddingHorizontal: Spacing['2xl'],
@@ -10,12 +13,12 @@ export const createStyles = (theme: Theme) => {
       paddingBottom: Spacing['5xl'],
     },
     header: {
-      marginBottom: Spacing['3xl'],
+      marginBottom: Spacing['2xl'],
     },
     progressHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: Spacing.lg,
+      marginBottom: Spacing.md,
     },
     progressBadge: {
       backgroundColor: theme.primary,
@@ -26,86 +29,176 @@ export const createStyles = (theme: Theme) => {
     },
     progressBadgeText: {},
     sentenceCounter: {},
-    sentenceCard: {
+    
+    // 音频控制区
+    audioSection: {
+      alignItems: 'center',
+      marginBottom: Spacing['2xl'],
+      padding: Spacing.xl,
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.xl,
       borderWidth: 1,
       borderColor: theme.border,
-      padding: Spacing['2xl'],
-      marginBottom: Spacing['2xl'],
-    },
-    audioControl: {
-      alignItems: 'center',
-      marginBottom: Spacing['2xl'],
     },
     playButton: {
-      width: 80,
-      height: 80,
+      width: 72,
+      height: 72,
       borderRadius: BorderRadius.full,
       backgroundColor: theme.primary,
       justifyContent: 'center',
       alignItems: 'center',
-      shadowColor: theme.primary,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 12,
-      elevation: 8,
+      marginBottom: Spacing.md,
     },
     playButtonDisabled: {
       backgroundColor: theme.textMuted,
-      shadowOpacity: 0,
     },
-    playCount: {
-      marginTop: Spacing.md,
-    },
-    inputSection: {
+    playCount: {},
+    
+    // 句子显示区
+    sentenceSection: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.xl,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: Spacing.xl,
       marginBottom: Spacing['2xl'],
+      minHeight: 120,
+    },
+    sentenceLabel: {
+      marginBottom: Spacing.md,
+    },
+    wordsContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: Spacing.sm,
+    },
+    wordSlot: {
+      minWidth: 60,
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.md,
+      borderRadius: BorderRadius.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 36,
+    },
+    wordCorrect: {
+      backgroundColor: '#10B98120',
+      borderColor: theme.success,
+    },
+    wordHidden: {
+      borderColor: theme.borderLight,
+      backgroundColor: theme.backgroundTertiary,
+    },
+    wordText: {},
+    wordTextCorrect: {},
+    wordTextHidden: {
+      color: theme.textMuted,
+    },
+    wordIndex: {
+      fontSize: 10,
+      color: theme.textMuted,
+    },
+    
+    // 输入区
+    inputSection: {
+      marginBottom: Spacing.xl,
     },
     inputLabel: {
       marginBottom: Spacing.md,
     },
-    input: {
+    inputRow: {
+      flexDirection: 'row',
+      gap: Spacing.md,
+    },
+    textInput: {
+      flex: 1,
       backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.lg,
       borderWidth: 1,
       borderColor: theme.border,
-      padding: Spacing.lg,
-      fontSize: 16,
+      paddingHorizontal: Spacing.lg,
+      paddingVertical: Spacing.md,
+      fontSize: 18,
       color: theme.textPrimary,
-      minHeight: 100,
-      textAlignVertical: 'top',
     },
-    resultSection: {
-      marginBottom: Spacing['2xl'],
-    },
-    resultCard: {
+    voiceButton: {
+      width: 56,
+      height: 56,
       borderRadius: BorderRadius.lg,
-      padding: Spacing.lg,
-      marginBottom: Spacing.md,
+      backgroundColor: theme.accent,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
-    resultSuccess: {
+    voiceButtonActive: {
+      backgroundColor: theme.error,
+    },
+    
+    // 反馈区
+    feedbackSection: {
+      marginBottom: Spacing.xl,
+      minHeight: 50,
+    },
+    feedbackCorrect: {
+      flexDirection: 'row',
+      alignItems: 'center',
       backgroundColor: '#10B98120',
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.md,
       borderWidth: 1,
       borderColor: theme.success,
     },
-    resultError: {
+    feedbackCorrectText: {
+      marginLeft: Spacing.sm,
+      color: theme.success,
+    },
+    feedbackIncorrect: {
+      flexDirection: 'row',
+      alignItems: 'center',
       backgroundColor: '#EF444420',
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.md,
       borderWidth: 1,
       borderColor: theme.error,
     },
-    resultHeader: {
+    feedbackIncorrectText: {
+      marginLeft: Spacing.sm,
+      color: theme.error,
+    },
+    
+    // 提示区
+    hintSection: {
+      marginBottom: Spacing.xl,
+    },
+    hintButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: Spacing.sm,
+      justifyContent: 'center',
+      backgroundColor: '#F59E0B20',
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.md,
+      borderWidth: 1,
+      borderColor: '#F59E0B',
     },
-    resultIcon: {
-      marginRight: Spacing.sm,
+    hintButtonText: {
+      marginLeft: Spacing.sm,
+      color: '#F59E0B',
     },
-    resultTitle: {},
-    resultText: {},
+    hintContent: {
+      marginTop: Spacing.md,
+      padding: Spacing.lg,
+      backgroundColor: '#F59E0B10',
+      borderRadius: BorderRadius.lg,
+      borderWidth: 1,
+      borderColor: '#F59E0B',
+    },
+    
+    // 按钮区
     buttonRow: {
       flexDirection: 'row',
       gap: Spacing.md,
+      marginTop: Spacing.lg,
     },
     button: {
       flex: 1,
@@ -121,20 +214,8 @@ export const createStyles = (theme: Theme) => {
       borderWidth: 1,
       borderColor: theme.border,
     },
-    hintButton: {
-      backgroundColor: '#F59E0B20',
-      borderWidth: 1,
-      borderColor: '#F59E0B',
-    },
-    buttonText: {},
-    hintText: {
-      marginTop: Spacing.lg,
-      padding: Spacing.lg,
-      backgroundColor: '#F59E0B10',
-      borderRadius: BorderRadius.lg,
-      borderWidth: 1,
-      borderColor: '#F59E0B',
-    },
+    
+    // 完成界面
     completedContainer: {
       flex: 1,
       justifyContent: 'center',
@@ -162,11 +243,22 @@ export const createStyles = (theme: Theme) => {
     statValue: {
       marginBottom: Spacing.xs,
     },
-    hiddenAnswer: {
-      backgroundColor: theme.backgroundTertiary,
-      padding: Spacing.lg,
-      borderRadius: BorderRadius.lg,
-      marginTop: Spacing.md,
+    
+    // 统计信息
+    statsBar: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      paddingVertical: Spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+      marginTop: Spacing.lg,
     },
+    statBarItem: {
+      alignItems: 'center',
+    },
+    statBarValue: {
+      marginBottom: Spacing.xs,
+    },
+    statBarLabel: {},
   });
 };

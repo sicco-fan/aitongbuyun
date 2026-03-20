@@ -16,6 +16,8 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
+import { Spacing } from '@/constants/theme';
+import { createFormDataFile } from '@/utils';
 
 interface Sentence {
   id: number;
@@ -35,6 +37,12 @@ interface Material {
   duration: number;
 }
 
+interface WordStatus {
+  word: string;
+  revealed: boolean;
+  index: number;
+}
+
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
 
 export default function PracticeScreen() {
@@ -46,20 +54,40 @@ export default function PracticeScreen() {
   const [material, setMaterial] = useState<Material | null>(null);
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [userInput, setUserInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playCount, setPlayCount] = useState(0);
-  const [result, setResult] = useState<'correct' | 'incorrect' | null>(null);
-  const [showHint, setShowHint] = useState(false);
-  const [hintLevel, setHintLevel] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [totalAttempts, setTotalAttempts] = useState(0);
 
+  // 单词状态管理
+  const [wordStatuses, setWordStatuses] = useState<WordStatus[]>([]);
+  const [currentInput, setCurrentInput] = useState('');
+  const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
+  const [feedbackWord, setFeedbackWord] = useState('');
+  const [hintLevel, setHintLevel] = useState(0);
+  
+  // 语音输入状态
+  const [isRecording, setIsRecording] = useState(false);
+  const [hasRecordingPermission, setHasRecordingPermission] = useState(false);
+  const recordingRef = useRef<Audio.Recording | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
+  
+  // 计算完成进度
+  const correctCount = wordStatuses.filter(w => w.revealed).length;
+  const totalWords = wordStatuses.length;
+  const sentenceProgress = totalWords > 0 ? Math.round((correctCount / totalWords) * 100) : 0;
+
+  // 初始化录音权限
+  useEffect(() => {
+    (async () => {
+      const { status } = await Audio.requestPermissionsAsync();
+      setHasRecordingPermission(status === 'granted');
+    })();
+  }, []);
 
   // 加载材料数据
   useEffect(() => {
@@ -67,21 +95,14 @@ export default function PracticeScreen() {
       if (!materialId) return;
 
       try {
-        /**
-         * 服务端文件：server/src/routes/materials.ts
-         * 接口：GET /api/v1/materials/:id
-         */
         const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}`);
         const data = await response.json();
 
         if (data.material && data.sentences) {
           setMaterial(data.material);
-          // 找到第一个未完成的句子
           const firstIncomplete = data.sentences.findIndex((s: Sentence) => !s.is_completed);
           setCurrentIndex(firstIncomplete >= 0 ? firstIncomplete : 0);
           setSentences(data.sentences);
-          
-          // 计算已完成的尝试次数
           const total = data.sentences.reduce((sum: number, s: Sentence) => sum + (s.attempts || 0), 0);
           setTotalAttempts(total);
         }
@@ -96,28 +117,59 @@ export default function PracticeScreen() {
     fetchMaterial();
   }, [materialId]);
 
+  // 当切换句子时，初始化单词状态
+  useEffect(() => {
+    if (currentSentence) {
+      const words = extractWords(currentSentence.text);
+      setWordStatuses(words.map((word, index) => ({
+        word,
+        revealed: false,
+        index,
+      })));
+      setCurrentInput('');
+      setFeedback(null);
+      setHintLevel(0);
+      setPlayCount(0);
+    }
+  }, [currentSentence]);
+
   // 清理音频
   useEffect(() => {
     return () => {
       if (soundRef.current) {
         soundRef.current.unloadAsync();
       }
+      if (recordingRef.current) {
+        recordingRef.current.stopAndUnloadAsync();
+      }
     };
   }, []);
 
-  // 播放当前句子
+  // 提取单词（去除标点，统一小写）
+  const extractWords = (text: string): string[] => {
+    return text
+      .toLowerCase()
+      .replace(/[^\w\s]/g, '')
+      .split(/\s+/)
+      .filter(w => w.length > 0);
+  };
+
+  // 标准化单词（用于比较）
+  const normalizeWord = (word: string): string => {
+    return word.toLowerCase().replace(/\W/g, '').trim();
+  };
+
+  // 播放当前句子音频
   const playSentence = useCallback(async () => {
     if (!material?.audio_url || isPlaying) return;
 
     try {
       setIsPlaying(true);
 
-      // 如果已有音频在播放，先停止
       if (soundRef.current) {
         await soundRef.current.unloadAsync();
       }
 
-      // 创建音频
       const { sound } = await Audio.Sound.createAsync(
         { uri: material.audio_url },
         { shouldPlay: true, isLooping: false },
@@ -129,20 +181,13 @@ export default function PracticeScreen() {
       );
 
       soundRef.current = sound;
-      
-      // 如果有时间范围，尝试设置播放位置
-      if (currentSentence?.start_time && currentSentence?.end_time) {
-        await sound.setPositionAsync(currentSentence.start_time);
-        // 注意：完整音频中定位播放需要额外的音频处理
-      }
-
       setPlayCount((prev) => prev + 1);
     } catch (error) {
       console.error('播放失败:', error);
       setIsPlaying(false);
-      Alert.alert('提示', '音频播放失败，请检查音频文件');
+      Alert.alert('提示', '音频播放失败');
     }
-  }, [material?.audio_url, isPlaying, currentSentence]);
+  }, [material?.audio_url, isPlaying]);
 
   // 停止播放
   const stopPlaying = async () => {
@@ -152,107 +197,192 @@ export default function PracticeScreen() {
     }
   };
 
-  // 检查答案
-  const checkAnswer = async () => {
-    if (!currentSentence || !userInput.trim()) {
-      Alert.alert('提示', '请输入你听到的内容');
-      return;
-    }
+  // 验证单词
+  const checkWord = useCallback((inputWord: string) => {
+    const normalizedInput = normalizeWord(inputWord);
+    if (!normalizedInput) return;
 
-    // 标准化比较（去除空格和标点差异）
-    const normalizeText = (text: string) => 
-      text.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
-    
-    const isCorrect = normalizeText(userInput) === normalizeText(currentSentence.text);
-    
-    // 更新尝试次数
-    const newAttempts = (currentSentence.attempts || 0) + 1;
-    
-    /**
-     * 服务端文件：server/src/routes/learning.ts
-     * 接口：POST /api/v1/learning-records
-     * Body 参数：sentence_id: number, attempts: number, is_completed: boolean
-     */
-    await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sentence_id: currentSentence.id,
-        attempts: newAttempts,
-        is_completed: isCorrect,
-      }),
+    // 检查是否匹配任何未揭示的单词
+    let matched = false;
+    setWordStatuses(prev => {
+      const newStatuses = [...prev];
+      for (let i = 0; i < newStatuses.length; i++) {
+        if (!newStatuses[i].revealed && normalizeWord(newStatuses[i].word) === normalizedInput) {
+          newStatuses[i] = { ...newStatuses[i], revealed: true };
+          matched = true;
+          break;
+        }
+      }
+      return newStatuses;
     });
 
-    // 更新本地状态
-    setSentences((prev) =>
-      prev.map((s, i) =>
-        i === currentIndex
-          ? { ...s, attempts: newAttempts, is_completed: isCorrect }
-          : s
-      )
-    );
-    setTotalAttempts((prev) => prev + 1);
+    setTotalAttempts(prev => prev + 1);
+    setFeedbackWord(inputWord);
 
-    if (isCorrect) {
-      setResult('correct');
+    if (matched) {
+      setFeedback('correct');
+      setCurrentInput('');
+      // 检查是否完成
+      setTimeout(() => {
+        checkSentenceComplete();
+      }, 300);
     } else {
-      setResult('incorrect');
+      setFeedback('incorrect');
+    }
+
+    // 清除反馈
+    setTimeout(() => {
+      setFeedback(null);
+    }, 1500);
+  }, []);
+
+  // 检查句子是否完成
+  const checkSentenceComplete = useCallback(() => {
+    const allRevealed = wordStatuses.every(w => w.revealed);
+    if (allRevealed && currentSentence) {
+      // 更新服务器状态
+      fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sentence_id: currentSentence.id,
+          attempts: totalAttempts + 1,
+          is_completed: true,
+        }),
+      });
+
+      // 更新本地状态
+      setSentences(prev => 
+        prev.map((s, i) => 
+          i === currentIndex ? { ...s, is_completed: true } : s
+        )
+      );
+
+      // 自动进入下一句
+      setTimeout(() => {
+        if (currentIndex < sentences.length - 1) {
+          setCurrentIndex(prev => prev + 1);
+        } else {
+          setCompleted(true);
+        }
+      }, 1000);
+    }
+  }, [wordStatuses, currentSentence, currentIndex, sentences.length, totalAttempts]);
+
+  // 处理输入提交
+  const handleSubmit = () => {
+    if (currentInput.trim()) {
+      checkWord(currentInput.trim());
     }
   };
 
-  // 继续下一句
-  const nextSentence = () => {
-    setResult(null);
-    setUserInput('');
-    setShowHint(false);
-    setHintLevel(0);
-    setPlayCount(0);
+  // 开始语音录音
+  const startRecording = async () => {
+    if (!hasRecordingPermission) {
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('需要权限', '请授予麦克风权限');
+        return;
+      }
+      setHasRecordingPermission(true);
+    }
 
-    if (currentIndex < sentences.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-    } else {
-      setCompleted(true);
+    if (recordingRef.current) {
+      await recordingRef.current.stopAndUnloadAsync();
+      recordingRef.current = null;
+    }
+
+    try {
+      await Audio.setAudioModeAsync({ 
+        allowsRecordingIOS: true, 
+        playsInSilentModeIOS: true 
+      });
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await recording.startAsync();
+      recordingRef.current = recording;
+      setIsRecording(true);
+    } catch (error) {
+      console.error('录音失败:', error);
     }
   };
 
-  // 重试当前句
-  const retrySentence = () => {
-    setResult(null);
-    setUserInput('');
-    playSentence();
+  // 停止录音并识别
+  const stopRecordingAndRecognize = async () => {
+    if (!recordingRef.current) return;
+
+    try {
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
+      setIsRecording(false);
+
+      if (uri) {
+        // 上传录音并识别
+        const formData = new FormData();
+        const audioFile = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
+        formData.append('file', audioFile as any);
+
+        const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech-recognize`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await response.json();
+        if (data.text) {
+          // 识别成功，提取单词并验证
+          const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
+          for (const word of words) {
+            checkWord(word);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('语音识别失败:', error);
+      Alert.alert('提示', '语音识别失败，请重试');
+    }
   };
 
   // 显示提示
-  const showHintHandler = () => {
-    if (hintLevel < 3) {
-      setHintLevel((prev) => prev + 1);
-    }
-    setShowHint(true);
-  };
+  const showHint = () => {
+    const newLevel = Math.min(hintLevel + 1, 3);
+    setHintLevel(newLevel);
 
-  // 获取提示文本
-  const getHintText = () => {
-    if (!currentSentence) return '';
-    const text = currentSentence.text;
-    
-    switch (hintLevel) {
-      case 1:
-        // 显示第一个词
-        return `首词提示：${text.split(' ')[0]}...`;
-      case 2:
-        // 显示长度
-        return `单词数：${text.split(' ').length} 个`;
-      case 3:
-        // 显示完整答案
-        return `完整答案：${text}`;
-      default:
-        return '';
+    if (newLevel === 1) {
+      // 提示一个未揭示的单词
+      const hiddenWord = wordStatuses.find(w => !w.revealed);
+      if (hiddenWord) {
+        Alert.alert('提示', `第一个未猜出的单词以 "${hiddenWord.word[0]}" 开头`);
+      }
+    } else if (newLevel === 2) {
+      // 显示单词数量
+      Alert.alert('提示', `还剩 ${wordStatuses.filter(w => !w.revealed).length} 个单词未猜出`);
+    } else if (newLevel === 3) {
+      // 显示完整句子
+      Alert.alert('答案', currentSentence?.text || '');
     }
   };
 
-  // 计算完成统计
-  const completedCount = sentences.filter((s) => s.is_completed).length;
-  const accuracy = totalAttempts > 0 ? Math.round((completedCount / totalAttempts) * 100) : 0;
+  // 跳过当前句子
+  const skipSentence = () => {
+    Alert.alert(
+      '跳过句子',
+      '确定要跳过这个句子吗？',
+      [
+        { text: '取消', style: 'cancel' },
+        { 
+          text: '确定', 
+          onPress: () => {
+            if (currentIndex < sentences.length - 1) {
+              setCurrentIndex(prev => prev + 1);
+            } else {
+              setCompleted(true);
+            }
+          }
+        }
+      ]
+    );
+  };
 
   if (loading) {
     return (
@@ -293,10 +423,10 @@ export default function PracticeScreen() {
             </View>
             <View style={styles.statItem}>
               <ThemedText variant="h2" color={theme.success} style={styles.statValue}>
-                {accuracy}%
+                {sentences.filter(s => s.is_completed).length}
               </ThemedText>
               <ThemedText variant="small" color={theme.textMuted}>
-                正确率
+                已完成
               </ThemedText>
             </View>
           </View>
@@ -316,145 +446,149 @@ export default function PracticeScreen() {
 
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         {/* Header */}
         <ThemedView level="root" style={styles.header}>
           <View style={styles.progressHeader}>
             <View style={styles.progressBadge}>
-              <ThemedText variant="captionMedium" color={theme.buttonPrimaryText} style={styles.progressBadgeText}>
+              <ThemedText variant="captionMedium" color={theme.buttonPrimaryText}>
                 {currentIndex + 1}/{sentences.length}
               </ThemedText>
             </View>
-            <ThemedText variant="body" color={theme.textMuted} style={styles.sentenceCounter}>
+            <ThemedText variant="body" color={theme.textMuted}>
               {Math.round(progress)}% 完成
             </ThemedText>
           </View>
-          <ThemedText variant="h3" color={theme.textPrimary}>
-            {title || material?.title || '听力练习'}
+          <ThemedText variant="h4" color={theme.textPrimary}>
+            {title || material?.title}
           </ThemedText>
         </ThemedView>
 
-        {/* Sentence Card */}
-        <View style={styles.sentenceCard}>
-          {/* Audio Control */}
-          <View style={styles.audioControl}>
-            <TouchableOpacity
-              style={[styles.playButton, isPlaying && styles.playButtonDisabled]}
-              onPress={isPlaying ? stopPlaying : playSentence}
-              disabled={!material?.audio_url}
-            >
-              <FontAwesome6
-                name={isPlaying ? 'stop' : 'play'}
-                size={32}
-                color={theme.buttonPrimaryText}
-              />
-            </TouchableOpacity>
-            <ThemedText variant="caption" color={theme.textMuted} style={styles.playCount}>
-              已播放 {playCount} 次
-            </ThemedText>
-          </View>
-
-          {/* Input */}
-          <View style={styles.inputSection}>
-            <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.inputLabel}>
-              写下你听到的内容
-            </ThemedText>
-            <TextInput
-              style={styles.input}
-              value={userInput}
-              onChangeText={setUserInput}
-              placeholder="输入你听到的句子..."
-              placeholderTextColor={theme.textMuted}
-              multiline
-              editable={!result}
+        {/* Audio Section */}
+        <View style={styles.audioSection}>
+          <TouchableOpacity
+            style={[styles.playButton, isPlaying && styles.playButtonDisabled]}
+            onPress={isPlaying ? stopPlaying : playSentence}
+          >
+            <FontAwesome6
+              name={isPlaying ? 'stop' : 'play'}
+              size={28}
+              color={theme.buttonPrimaryText}
             />
-          </View>
+          </TouchableOpacity>
+          <ThemedText variant="caption" color={theme.textMuted}>
+            已播放 {playCount} 次 · 点击播放音频
+          </ThemedText>
+        </View>
 
-          {/* Result */}
-          {result && (
-            <View style={styles.resultSection}>
-              <View style={[styles.resultCard, result === 'correct' ? styles.resultSuccess : styles.resultError]}>
-                <View style={styles.resultHeader}>
-                  <FontAwesome6
-                    name={result === 'correct' ? 'check-circle' : 'times-circle'}
-                    size={20}
-                    color={result === 'correct' ? theme.success : theme.error}
-                    style={styles.resultIcon}
-                  />
-                  <ThemedText
-                    variant="smallMedium"
-                    color={result === 'correct' ? theme.success : theme.error}
-                    style={styles.resultTitle}
+        {/* Sentence Display */}
+        <View style={styles.sentenceSection}>
+          <ThemedText variant="caption" color={theme.textMuted} style={styles.sentenceLabel}>
+            句子进度：{correctCount}/{totalWords} ({sentenceProgress}%)
+          </ThemedText>
+          <View style={styles.wordsContainer}>
+            {wordStatuses.map((ws, idx) => (
+              <View 
+                key={idx} 
+                style={[
+                  styles.wordSlot, 
+                  ws.revealed ? styles.wordCorrect : styles.wordHidden
+                ]}
+              >
+                {ws.revealed ? (
+                  <ThemedText 
+                    variant="smallMedium" 
+                    color={theme.success}
+                    style={styles.wordTextCorrect}
                   >
-                    {result === 'correct' ? '回答正确！' : '回答错误'}
+                    {ws.word}
                   </ThemedText>
-                </View>
-                {result === 'incorrect' && (
-                  <ThemedText variant="body" color={theme.textPrimary} style={styles.resultText}>
-                    正确答案：{currentSentence?.text}
+                ) : (
+                  <ThemedText 
+                    variant="small" 
+                    color={theme.textMuted}
+                    style={styles.wordTextHidden}
+                  >
+                    ___
                   </ThemedText>
                 )}
               </View>
-            </View>
-          )}
+            ))}
+          </View>
+        </View>
 
-          {/* Hint */}
-          {showHint && hintLevel > 0 && (
-            <View style={styles.hintText}>
-              <ThemedText variant="small" color={theme.textPrimary}>
-                {getHintText()}
+        {/* Input Section */}
+        <View style={styles.inputSection}>
+          <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.inputLabel}>
+            输入单词（空格或回车提交）
+          </ThemedText>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.textInput}
+              value={currentInput}
+              onChangeText={setCurrentInput}
+              onSubmitEditing={handleSubmit}
+              placeholder="输入你听到的单词..."
+              placeholderTextColor={theme.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+            />
+            <TouchableOpacity
+              style={[styles.voiceButton, isRecording && styles.voiceButtonActive]}
+              onPress={isRecording ? stopRecordingAndRecognize : startRecording}
+            >
+              <FontAwesome6
+                name={isRecording ? 'stop' : 'microphone'}
+                size={24}
+                color={theme.buttonPrimaryText}
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Feedback */}
+        <View style={styles.feedbackSection}>
+          {feedback === 'correct' && (
+            <View style={styles.feedbackCorrect}>
+              <FontAwesome6 name="check" size={16} color={theme.success} />
+              <ThemedText variant="smallMedium" style={styles.feedbackCorrectText}>
+                「{feedbackWord}」正确！
               </ThemedText>
             </View>
           )}
+          {feedback === 'incorrect' && (
+            <View style={styles.feedbackIncorrect}>
+              <FontAwesome6 name="xmark" size={16} color={theme.error} />
+              <ThemedText variant="smallMedium" style={styles.feedbackIncorrectText}>
+                「{feedbackWord}」不正确，再试一次
+              </ThemedText>
+            </View>
+          )}
+        </View>
 
-          {/* Buttons */}
-          <View style={styles.buttonRow}>
-            {!result ? (
-              <>
-                <TouchableOpacity
-                  style={[styles.button, styles.hintButton]}
-                  onPress={showHintHandler}
-                >
-                  <ThemedText variant="smallMedium" color="#F59E0B">
-                    {hintLevel === 0 ? '提示' : hintLevel < 3 ? '更多提示' : '显示答案'}
-                  </ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.button, styles.primaryButton]}
-                  onPress={checkAnswer}
-                >
-                  <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
-                    检查答案
-                  </ThemedText>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                {result === 'incorrect' && (
-                  <TouchableOpacity
-                    style={[styles.button, styles.secondaryButton]}
-                    onPress={retrySentence}
-                  >
-                    <ThemedText variant="smallMedium" color={theme.textPrimary}>
-                      重新听
-                    </ThemedText>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={[styles.button, styles.primaryButton]}
-                  onPress={nextSentence}
-                >
-                  <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
-                    {currentIndex < sentences.length - 1 ? '下一句' : '完成'}
-                  </ThemedText>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
+        {/* Hint Section */}
+        <View style={styles.hintSection}>
+          <TouchableOpacity style={styles.hintButton} onPress={showHint}>
+            <FontAwesome6 name="lightbulb" size={18} color="#F59E0B" />
+            <ThemedText variant="smallMedium" style={styles.hintButtonText}>
+              提示 ({hintLevel}/3)
+            </ThemedText>
+          </TouchableOpacity>
+        </View>
+
+        {/* Buttons */}
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[styles.button, styles.secondaryButton]}
+            onPress={skipSentence}
+          >
+            <ThemedText variant="smallMedium" color={theme.textPrimary}>
+              跳过
+            </ThemedText>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </Screen>
   );
 }
-
-import { Spacing } from '@/constants/theme';
