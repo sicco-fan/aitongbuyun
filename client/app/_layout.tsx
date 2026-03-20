@@ -9,7 +9,6 @@ import { ColorSchemeProvider } from '@/hooks/useColorScheme';
 
 LogBox.ignoreLogs([
   "TurboModuleRegistry.getEnforcing(...): 'RNMapsAirModule' could not be found",
-  // 添加其它想暂时忽略的错误或警告信息
 ]);
 
 export default function RootLayout() {
@@ -17,16 +16,16 @@ export default function RootLayout() {
     <AuthProvider>
       <ColorSchemeProvider>
         <GestureHandlerRootView style={{ flex: 1 }}>
-          <StatusBar style="dark"></StatusBar>
+          <StatusBar style="auto"></StatusBar>
           <Stack screenOptions={{
-            // 设置所有页面的切换动画为从右侧滑入，适用于iOS 和 Android
             animation: 'slide_from_right',
             gestureEnabled: true,
             gestureDirection: 'horizontal',
-            // 隐藏自带的头部
             headerShown: false
           }}>
-            <Stack.Screen name="index" options={{ title: "" }} />
+            <Stack.Screen name="(tabs)" options={{ title: "" }} />
+            <Stack.Screen name="practice" options={{ title: "听力练习" }} />
+            <Stack.Screen name="add-material" options={{ title: "添加材料" }} />
           </Stack>
           <Toast />
         </GestureHandlerRootView>

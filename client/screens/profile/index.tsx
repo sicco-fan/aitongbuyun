@@ -1,0 +1,157 @@
+import React, { useState, useCallback, useMemo } from 'react';
+import { ScrollView, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { useTheme } from '@/hooks/useTheme';
+import { Screen } from '@/components/Screen';
+import { ThemedText } from '@/components/ThemedText';
+import { ThemedView } from '@/components/ThemedView';
+import { FontAwesome6 } from '@expo/vector-icons';
+import { createStyles } from './styles';
+
+const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
+
+interface Stats {
+  totalMaterials: number;
+  completedMaterials: number;
+  totalSentences: number;
+  completedSentences: number;
+  totalAttempts: number;
+}
+
+export default function ProfileScreen() {
+  const { theme, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const [stats, setStats] = useState<Stats>({
+    totalMaterials: 0,
+    completedMaterials: 0,
+    totalSentences: 0,
+    completedSentences: 0,
+    totalAttempts: 0,
+  });
+
+  const fetchStats = useCallback(async () => {
+    try {
+      /**
+       * 服务端文件：server/src/routes/materials.ts
+       * 接口：GET /api/v1/materials
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials`);
+      const data = await response.json();
+
+      if (data.materials) {
+        const materials = data.materials;
+        const totalMaterials = materials.length;
+        const completedMaterials = materials.filter(
+          (m: { completed_count: number; sentences_count: number }) => 
+            m.completed_count === m.sentences_count && m.sentences_count > 0
+        ).length;
+        const totalSentences = materials.reduce(
+          (sum: number, m: { sentences_count: number }) => sum + m.sentences_count, 0
+        );
+        const completedSentences = materials.reduce(
+          (sum: number, m: { completed_count: number }) => sum + m.completed_count, 0
+        );
+
+        setStats({
+          totalMaterials,
+          completedMaterials,
+          totalSentences,
+          completedSentences,
+          totalAttempts: 0, // 需要单独统计
+        });
+      }
+    } catch (error) {
+      console.error('获取统计失败:', error);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchStats();
+    }, [fetchStats])
+  );
+
+  const accuracy = stats.totalSentences > 0 
+    ? Math.round((stats.completedSentences / stats.totalSentences) * 100) 
+    : 0;
+
+  return (
+    <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Header */}
+        <ThemedView level="root" style={styles.header}>
+          <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
+            学习统计
+          </ThemedText>
+        </ThemedView>
+
+        {/* Stats Grid */}
+        <View style={styles.statsGrid}>
+          <View style={styles.statCard}>
+            <FontAwesome6 name="folder" size={24} color={theme.primary} style={styles.statIcon} />
+            <ThemedText variant="h2" color={theme.textPrimary} style={styles.statValue}>
+              {stats.totalMaterials}
+            </ThemedText>
+            <ThemedText variant="small" color={theme.textMuted} style={styles.statLabel}>
+              学习材料
+            </ThemedText>
+          </View>
+
+          <View style={[styles.statCard, styles.statCardEven]}>
+            <FontAwesome6 name="circle-check" size={24} color={theme.success} style={styles.statIcon} />
+            <ThemedText variant="h2" color={theme.success} style={styles.statValue}>
+              {stats.completedMaterials}
+            </ThemedText>
+            <ThemedText variant="small" color={theme.textMuted} style={styles.statLabel}>
+              已完成
+            </ThemedText>
+          </View>
+
+          <View style={styles.statCard}>
+            <FontAwesome6 name="list" size={24} color={theme.accent} style={styles.statIcon} />
+            <ThemedText variant="h2" color={theme.textPrimary} style={styles.statValue}>
+              {stats.totalSentences}
+            </ThemedText>
+            <ThemedText variant="small" color={theme.textMuted} style={styles.statLabel}>
+              总句数
+            </ThemedText>
+          </View>
+
+          <View style={[styles.statCard, styles.statCardEven]}>
+            <FontAwesome6 name="percent" size={24} color={theme.primary} style={styles.statIcon} />
+            <ThemedText variant="h2" color={theme.primary} style={styles.statValue}>
+              {accuracy}%
+            </ThemedText>
+            <ThemedText variant="small" color={theme.textMuted} style={styles.statLabel}>
+              完成率
+            </ThemedText>
+          </View>
+        </View>
+
+        {/* Progress Info */}
+        <ThemedText variant="h4" color={theme.textPrimary} style={styles.sectionHeader}>
+          学习进度
+        </ThemedText>
+
+        <View style={styles.infoCard}>
+          <View style={styles.infoRow}>
+            <ThemedText variant="body" color={theme.textSecondary} style={styles.infoLabel}>
+              已完成句子
+            </ThemedText>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoValue}>
+              {stats.completedSentences} / {stats.totalSentences}
+            </ThemedText>
+          </View>
+          <View style={[styles.infoRow, styles.infoRowLast]}>
+            <ThemedText variant="body" color={theme.textSecondary} style={styles.infoLabel}>
+              学习进度
+            </ThemedText>
+            <ThemedText variant="bodyMedium" color={theme.primary} style={styles.infoValue}>
+              {accuracy}%
+            </ThemedText>
+          </View>
+        </View>
+      </ScrollView>
+    </Screen>
+  );
+}
