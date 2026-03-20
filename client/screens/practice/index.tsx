@@ -657,8 +657,19 @@ export default function PracticeScreen() {
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Header */}
+        {/* Header with Back Button */}
         <ThemedView level="root" style={styles.header}>
+          <View style={styles.headerTop}>
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => router.back()}
+            >
+              <FontAwesome6 name="chevron-left" size={16} color={theme.textPrimary} />
+              <ThemedText variant="smallMedium" color={theme.textPrimary} style={{ marginLeft: 4 }}>
+                返回
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
           <View style={styles.progressHeader}>
             <View style={styles.progressBadge}>
               <ThemedText variant="captionMedium" color={theme.buttonPrimaryText}>

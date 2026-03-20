@@ -15,6 +15,19 @@ export const createStyles = (theme: Theme) => {
     header: {
       marginBottom: Spacing['2xl'],
     },
+    headerTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: Spacing.md,
+    },
+    backButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.md,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.backgroundTertiary,
+    },
     progressHeader: {
       flexDirection: 'row',
       alignItems: 'center',
