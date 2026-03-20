@@ -66,8 +66,7 @@ export default function PracticeScreen() {
   const [currentInput, setCurrentInput] = useState('');
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
   const [feedbackWord, setFeedbackWord] = useState('');
-  const [hintLevel, setHintLevel] = useState(0);
-  const [selectedWordIndex, setSelectedWordIndex] = useState<number | null>(null); // 选中的单词索引
+  const [hintWordIndex, setHintWordIndex] = useState<number | null>(null); // 当前显示提示的单词索引
   
   // 音频控制状态
   const [isPlaying, setIsPlaying] = useState(false);
@@ -143,7 +142,7 @@ export default function PracticeScreen() {
       })));
       setCurrentInput('');
       setFeedback(null);
-      setHintLevel(0);
+      setHintWordIndex(null);
       setPlayCount(0);
       
       // 保存当前句子的时间范围
@@ -560,75 +559,38 @@ export default function PracticeScreen() {
     resumePlayback();
   };
 
-  // 提示指定单词
+  // 提示指定单词（在原位置显示3秒）
   const showHintForWord = (index: number) => {
     const wordStatus = wordStatuses[index];
     if (!wordStatus || wordStatus.isPunctuation) return;
     
     if (wordStatus.revealed) {
       // 已经答对了，不需要提示
-      if (Platform.OS === 'web') {
-        alert(`「${wordStatus.displayText}」已经答对了！`);
-      } else {
-        Alert.alert('提示', `「${wordStatus.displayText}」已经答对了！`);
-      }
       return;
     }
     
-    // 提示这个单词
-    const hint = `答案：${wordStatus.displayText}`;
-    
-    if (Platform.OS === 'web') {
-      alert(hint);
-    } else {
-      Alert.alert('提示', hint);
-    }
+    // 在原位置显示单词提示，3秒后消失
+    setHintWordIndex(index);
+    setTimeout(() => {
+      setHintWordIndex(null);
+    }, 3000);
   };
 
-  // 提示下一个未答出的单词
-  const showHint = () => {
-    const nextHidden = wordStatuses.find(w => !w.isPunctuation && !w.revealed);
-    if (!nextHidden) {
-      if (Platform.OS === 'web') {
-        alert('恭喜！所有单词都已答对！');
-      } else {
-        Alert.alert('提示', '恭喜！所有单词都已答对！');
-      }
-      return;
-    }
-    
-    const hint = `下一个单词：${nextHidden.displayText}`;
-    if (Platform.OS === 'web') {
-      alert(hint);
-    } else {
-      Alert.alert('提示', hint);
-    }
-  };
-
-  // 跳过当前句子
-  const skipSentence = () => {
-    const doSkip = () => {
+  // 上一句
+  const goToPrevSentence = () => {
+    if (currentIndex > 0) {
       stopPlayback();
-      if (currentIndex < sentences.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-      } else {
-        setCompleted(true);
-      }
-    };
+      setCurrentIndex(prev => prev - 1);
+    }
+  };
 
-    if (Platform.OS === 'web') {
-      if (window.confirm('确定要跳过这个句子吗？')) {
-        doSkip();
-      }
+  // 下一句
+  const goToNextSentence = () => {
+    stopPlayback();
+    if (currentIndex < sentences.length - 1) {
+      setCurrentIndex(prev => prev + 1);
     } else {
-      Alert.alert(
-        '跳过句子',
-        '确定要跳过这个句子吗？',
-        [
-          { text: '取消', style: 'cancel' },
-          { text: '确定', onPress: doSkip }
-        ]
-      );
+      setCompleted(true);
     }
   };
 
@@ -783,11 +745,13 @@ export default function PracticeScreen() {
                   style={[
                     styles.wordSlot, 
                     ws.revealed ? styles.wordCorrect : styles.wordHidden,
+                    hintWordIndex === idx && styles.wordHint, // 提示状态
                   ]}
                   onPress={() => !ws.revealed && showHintForWord(idx)}
                   activeOpacity={0.7}
                 >
                   {ws.revealed ? (
+                    // 已答对 - 显示绿色
                     <ThemedText 
                       variant="smallMedium" 
                       color={theme.success}
@@ -795,7 +759,17 @@ export default function PracticeScreen() {
                     >
                       {ws.displayText}
                     </ThemedText>
+                  ) : hintWordIndex === idx ? (
+                    // 提示状态 - 显示单词（橙色）
+                    <ThemedText 
+                      variant="smallMedium" 
+                      color="#F59E0B"
+                      style={styles.wordTextHint}
+                    >
+                      {ws.displayText}
+                    </ThemedText>
                   ) : (
+                    // 未答 - 显示下划线
                     <ThemedText 
                       variant="small" 
                       color={theme.textMuted}
@@ -860,25 +834,28 @@ export default function PracticeScreen() {
           )}
         </View>
 
-        {/* Hint Section */}
-        <View style={styles.hintSection}>
-          <TouchableOpacity style={styles.hintButton} onPress={showHint}>
-            <FontAwesome6 name="lightbulb" size={18} color="#F59E0B" />
-            <ThemedText variant="smallMedium" style={styles.hintButtonText}>
-              提示下一个单词
-            </ThemedText>
-          </TouchableOpacity>
-        </View>
-
-        {/* Buttons */}
+        {/* Navigation Buttons */}
         <View style={styles.buttonRow}>
           <TouchableOpacity
-            style={[styles.button, styles.secondaryButton]}
-            onPress={skipSentence}
+            style={[styles.button, styles.secondaryButton, currentIndex === 0 && styles.buttonDisabled]}
+            onPress={goToPrevSentence}
+            disabled={currentIndex === 0}
           >
-            <ThemedText variant="smallMedium" color={theme.textPrimary}>
-              跳过
+            <FontAwesome6 name="chevron-left" size={14} color={currentIndex === 0 ? theme.textMuted : theme.textPrimary} style={{ marginRight: 8 }} />
+            <ThemedText variant="smallMedium" color={currentIndex === 0 ? theme.textMuted : theme.textPrimary}>
+              上一句
             </ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.button, styles.primaryButton]}
+            onPress={goToNextSentence}
+          >
+            <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
+              {currentIndex === sentences.length - 1 ? '完成' : '下一句'}
+            </ThemedText>
+            {currentIndex < sentences.length - 1 && (
+              <FontAwesome6 name="chevron-right" size={14} color={theme.buttonPrimaryText} style={{ marginLeft: 8 }} />
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>

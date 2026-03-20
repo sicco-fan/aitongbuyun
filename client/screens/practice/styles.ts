@@ -91,8 +91,15 @@ export const createStyles = (theme: Theme) => {
       borderColor: theme.borderLight,
       backgroundColor: theme.backgroundTertiary,
     },
+    wordHint: {
+      backgroundColor: '#F59E0B20',
+      borderColor: '#F59E0B',
+    },
     wordText: {},
     wordTextCorrect: {},
+    wordTextHint: {
+      color: '#F59E0B',
+    },
     wordTextHidden: {
       color: theme.textMuted,
     },
@@ -213,6 +220,9 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: theme.backgroundTertiary,
       borderWidth: 1,
       borderColor: theme.border,
+    },
+    buttonDisabled: {
+      opacity: 0.5,
     },
     
     // 完成界面
