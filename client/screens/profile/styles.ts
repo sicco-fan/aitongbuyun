@@ -62,5 +62,27 @@ export const createStyles = (theme: Theme) => {
     },
     infoLabel: {},
     infoValue: {},
+    adminCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: Spacing.lg,
+      marginBottom: Spacing.md,
+    },
+    adminIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.primary + '15',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: Spacing.lg,
+    },
+    adminContent: {
+      flex: 1,
+    },
   });
 };

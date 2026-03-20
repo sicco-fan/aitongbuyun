@@ -26,6 +26,8 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ title: "" }} />
             <Stack.Screen name="practice" options={{ title: "听力练习" }} />
             <Stack.Screen name="add-material" options={{ title: "添加材料" }} />
+            <Stack.Screen name="admin" options={{ title: "材料管理" }} />
+            <Stack.Screen name="admin-sentences" options={{ title: "句子编辑" }} />
           </Stack>
           <Toast />
         </GestureHandlerRootView>

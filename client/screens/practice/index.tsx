@@ -41,6 +41,7 @@ interface WordStatus {
   word: string;
   revealed: boolean;
   index: number;
+  charLength: number; // 单词字符长度
 }
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
@@ -82,10 +83,10 @@ export default function PracticeScreen() {
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
   
-  // 计算完成进度
-  const correctCount = wordStatuses.filter(w => w.revealed).length;
-  const totalWords = wordStatuses.length;
-  const sentenceProgress = totalWords > 0 ? Math.round((correctCount / totalWords) * 100) : 0;
+  // 计算完成进度（根据单词字符长度）
+  const totalChars = wordStatuses.reduce((sum, w) => sum + w.charLength, 0);
+  const completedChars = wordStatuses.filter(w => w.revealed).reduce((sum, w) => sum + w.charLength, 0);
+  const sentenceProgress = totalChars > 0 ? Math.round((completedChars / totalChars) * 100) : 0;
 
   // 初始化录音权限
   useEffect(() => {
@@ -127,10 +128,14 @@ export default function PracticeScreen() {
   useEffect(() => {
     if (currentSentence && material?.audio_url) {
       const words = extractWords(currentSentence.text);
+      // 计算总字符长度
+      const totalChars = words.reduce((sum, w) => sum + w.length, 0);
+      
       setWordStatuses(words.map((word, index) => ({
         word,
         revealed: false,
         index,
+        charLength: word.length,
       })));
       setCurrentInput('');
       setFeedback(null);
@@ -603,7 +608,7 @@ export default function PracticeScreen() {
         {/* Sentence Display */}
         <View style={styles.sentenceSection}>
           <ThemedText variant="caption" color={theme.textMuted} style={styles.sentenceLabel}>
-            句子进度：{correctCount}/{totalWords} ({sentenceProgress}%)
+            句子进度：{completedChars}/{totalChars} 字符 ({sentenceProgress}%)
           </ThemedText>
           <View style={styles.wordsContainer}>
             {wordStatuses.map((ws, idx) => (
@@ -611,7 +616,9 @@ export default function PracticeScreen() {
                 key={idx} 
                 style={[
                   styles.wordSlot, 
-                  ws.revealed ? styles.wordCorrect : styles.wordHidden
+                  ws.revealed ? styles.wordCorrect : styles.wordHidden,
+                  // 根据单词长度动态调整宽度
+                  ws.revealed ? null : { minWidth: Math.max(ws.charLength * 8 + 16, 32) }
                 ]}
               >
                 {ws.revealed ? (
@@ -628,7 +635,7 @@ export default function PracticeScreen() {
                     color={theme.textMuted}
                     style={styles.wordTextHidden}
                   >
-                    ___
+                    {'_'.repeat(Math.min(ws.charLength, 8))}
                   </ThemedText>
                 )}
               </View>

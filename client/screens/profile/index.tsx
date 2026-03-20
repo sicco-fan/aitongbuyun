@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
@@ -21,6 +22,7 @@ interface Stats {
 export default function ProfileScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const router = useSafeRouter();
   const [stats, setStats] = useState<Stats>({
     totalMaterials: 0,
     completedMaterials: 0,
@@ -151,6 +153,29 @@ export default function ProfileScreen() {
             </ThemedText>
           </View>
         </View>
+
+        {/* Admin Section */}
+        <ThemedText variant="h4" color={theme.textPrimary} style={styles.sectionHeader}>
+          管理功能
+        </ThemedText>
+
+        <TouchableOpacity 
+          style={styles.adminCard}
+          onPress={() => router.push('/admin')}
+        >
+          <View style={styles.adminIcon}>
+            <FontAwesome6 name="gear" size={24} color={theme.primary} />
+          </View>
+          <View style={styles.adminContent}>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+              材料管理
+            </ThemedText>
+            <ThemedText variant="small" color={theme.textMuted}>
+              编辑句子、修正识别结果、手动切分
+            </ThemedText>
+          </View>
+          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+        </TouchableOpacity>
       </ScrollView>
     </Screen>
   );

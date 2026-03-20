@@ -440,4 +440,286 @@ function splitIntoSentences(text: string): string[] {
   return result.filter(s => s.trim().length > 0);
 }
 
+// ============== 后台管理 API ==============
+
+/**
+ * PUT /api/v1/materials/:id/sentences/:sentenceId
+ * 更新句子内容（文本、开始时间、结束时间）
+ */
+router.put('/:id/sentences/:sentenceId', async (req: Request, res: Response) => {
+  try {
+    const { id, sentenceId } = req.params;
+    const { text, start_time, end_time, sentence_index } = req.body;
+
+    const supabase = getSupabaseClient();
+    
+    const updateData: Record<string, unknown> = {};
+    if (text !== undefined) updateData.text = text;
+    if (start_time !== undefined) updateData.start_time = start_time;
+    if (end_time !== undefined) updateData.end_time = end_time;
+    if (sentence_index !== undefined) updateData.sentence_index = sentence_index;
+
+    const { error } = await supabase
+      .from('sentences')
+      .update(updateData)
+      .eq('id', sentenceId)
+      .eq('material_id', id);
+
+    if (error) {
+      return res.status(500).json({ error: '更新句子失败' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('更新句子失败:', error);
+    res.status(500).json({ error: '更新句子失败' });
+  }
+});
+
+/**
+ * DELETE /api/v1/materials/:id/sentences/:sentenceId
+ * 删除句子
+ */
+router.delete('/:id/sentences/:sentenceId', async (req: Request, res: Response) => {
+  try {
+    const { id, sentenceId } = req.params;
+    const supabase = getSupabaseClient();
+
+    // 删除句子
+    const { error } = await supabase
+      .from('sentences')
+      .delete()
+      .eq('id', sentenceId)
+      .eq('material_id', id);
+
+    if (error) {
+      return res.status(500).json({ error: '删除句子失败' });
+    }
+
+    // 重新排序剩余句子的索引
+    const { data: sentences } = await supabase
+      .from('sentences')
+      .select('id, sentence_index')
+      .eq('material_id', id)
+      .order('sentence_index', { ascending: true });
+
+    if (sentences) {
+      for (let i = 0; i < sentences.length; i++) {
+        if (sentences[i].sentence_index !== i) {
+          await supabase
+            .from('sentences')
+            .update({ sentence_index: i })
+            .eq('id', sentences[i].id);
+        }
+      }
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('删除句子失败:', error);
+    res.status(500).json({ error: '删除句子失败' });
+  }
+});
+
+/**
+ * POST /api/v1/materials/:id/sentences
+ * 添加新句子
+ */
+router.post('/:id/sentences', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { text, start_time, end_time, after_sentence_id } = req.body;
+
+    if (!text) {
+      return res.status(400).json({ error: '请提供句子文本' });
+    }
+
+    const supabase = getSupabaseClient();
+
+    // 获取当前最大索引
+    let insertIndex = 0;
+    if (after_sentence_id) {
+      // 在指定句子之后插入
+      const { data: afterSentence } = await supabase
+        .from('sentences')
+        .select('sentence_index')
+        .eq('id', after_sentence_id)
+        .single();
+      
+      if (afterSentence) {
+        insertIndex = afterSentence.sentence_index + 1;
+        // 后面的句子索引都加1
+        await supabase
+          .from('sentences')
+          .update({ sentence_index: supabase.rpc('increment', { x: 1 }) })
+          .gte('sentence_index', insertIndex)
+          .eq('material_id', id);
+      }
+    } else {
+      // 添加到最后
+      const { data: maxSentence } = await supabase
+        .from('sentences')
+        .select('sentence_index')
+        .eq('material_id', id)
+        .order('sentence_index', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (maxSentence) {
+        insertIndex = maxSentence.sentence_index + 1;
+      }
+    }
+
+    const { data: newSentence, error } = await supabase
+      .from('sentences')
+      .insert({
+        material_id: parseInt(id as string),
+        text,
+        start_time: start_time || 0,
+        end_time: end_time || 0,
+        sentence_index: insertIndex,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(500).json({ error: '添加句子失败' });
+    }
+
+    res.json({ success: true, sentence: newSentence });
+  } catch (error) {
+    console.error('添加句子失败:', error);
+    res.status(500).json({ error: '添加句子失败' });
+  }
+});
+
+/**
+ * POST /api/v1/materials/:id/split-sentence/:sentenceId
+ * 分割句子
+ */
+router.post('/:id/split-sentence/:sentenceId', async (req: Request, res: Response) => {
+  try {
+    const { id, sentenceId } = req.params;
+    const { split_position, new_start_time, new_end_time } = req.body;
+
+    if (!split_position) {
+      return res.status(400).json({ error: '请提供分割位置' });
+    }
+
+    const supabase = getSupabaseClient();
+
+    // 获取原句子
+    const { data: originalSentence, error: fetchError } = await supabase
+      .from('sentences')
+      .select('*')
+      .eq('id', sentenceId)
+      .eq('material_id', id)
+      .single();
+
+    if (fetchError || !originalSentence) {
+      return res.status(404).json({ error: '句子不存在' });
+    }
+
+    const originalText = originalSentence.text;
+    
+    // 分割文本
+    const textBefore = originalText.substring(0, split_position).trim();
+    const textAfter = originalText.substring(split_position).trim();
+
+    if (!textBefore || !textAfter) {
+      return res.status(400).json({ error: '分割位置无效，无法产生有效文本' });
+    }
+
+    // 更新原句子
+    const { error: updateError } = await supabase
+      .from('sentences')
+      .update({
+        text: textBefore,
+        end_time: new_start_time || originalSentence.end_time,
+      })
+      .eq('id', sentenceId);
+
+    if (updateError) {
+      return res.status(500).json({ error: '更新句子失败' });
+    }
+
+    // 后面的句子索引都加1
+    const materialIdNum = parseInt(id as string);
+    const { data: followingSentences } = await supabase
+      .from('sentences')
+      .select('id, sentence_index')
+      .eq('material_id', materialIdNum)
+      .gt('sentence_index', originalSentence.sentence_index)
+      .order('sentence_index', { ascending: false }); // 从后往前更新避免冲突
+
+    if (followingSentences) {
+      for (const s of followingSentences) {
+        await supabase
+          .from('sentences')
+          .update({ sentence_index: s.sentence_index + 1 })
+          .eq('id', s.id);
+      }
+    }
+
+    // 插入新句子
+    const { data: newSentence, error: insertError } = await supabase
+      .from('sentences')
+      .insert({
+        material_id: materialIdNum,
+        text: textAfter,
+        start_time: new_start_time || originalSentence.end_time,
+        end_time: new_end_time || originalSentence.end_time,
+        sentence_index: originalSentence.sentence_index + 1,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      return res.status(500).json({ error: '创建新句子失败' });
+    }
+
+    res.json({ 
+      success: true, 
+      sentences: [
+        { ...originalSentence, text: textBefore },
+        newSentence
+      ]
+    });
+  } catch (error) {
+    console.error('分割句子失败:', error);
+    res.status(500).json({ error: '分割句子失败' });
+  }
+});
+
+/**
+ * POST /api/v1/materials/:id/reorder-sentences
+ * 重新排序句子
+ */
+router.post('/:id/reorder-sentences', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { sentence_ids } = req.body; // 新顺序的句子ID数组
+
+    if (!Array.isArray(sentence_ids)) {
+      return res.status(400).json({ error: '请提供句子ID数组' });
+    }
+
+    const supabase = getSupabaseClient();
+
+    // 批量更新索引
+    for (let i = 0; i < sentence_ids.length; i++) {
+      await supabase
+        .from('sentences')
+        .update({ sentence_index: i })
+        .eq('id', sentence_ids[i])
+        .eq('material_id', id);
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('重排序句子失败:', error);
+    res.status(500).json({ error: '重排序句子失败' });
+  }
+});
+
 export default router;
