@@ -39,10 +39,11 @@ interface Material {
 }
 
 interface WordStatus {
-  word: string;
+  word: string; // 纯单词（无标点）
+  displayText: string; // 显示文本（包含标点，如 "hello," 或 "world!"）
   revealed: boolean;
   index: number;
-  charLength: number; // 单词字符长度
+  isPunctuation: boolean; // 是否是标点符号
 }
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
@@ -87,10 +88,10 @@ export default function PracticeScreen() {
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
   
-  // 计算完成进度（根据单词字符长度）
-  const totalChars = wordStatuses.reduce((sum, w) => sum + w.charLength, 0);
-  const completedChars = wordStatuses.filter(w => w.revealed).reduce((sum, w) => sum + w.charLength, 0);
-  const sentenceProgress = totalChars > 0 ? Math.round((completedChars / totalChars) * 100) : 0;
+  // 计算完成进度（单词数）
+  const totalWords = wordStatuses.filter(w => !w.isPunctuation).length;
+  const completedWords = wordStatuses.filter(w => !w.isPunctuation && w.revealed).length;
+  const sentenceProgress = totalWords > 0 ? Math.round((completedWords / totalWords) * 100) : 0;
 
   // 初始化录音权限
   useEffect(() => {
@@ -131,15 +132,14 @@ export default function PracticeScreen() {
   // 当切换句子时，初始化单词状态并开始播放
   useEffect(() => {
     if (currentSentence && material?.audio_url) {
-      const words = extractWords(currentSentence.text);
-      // 计算总字符长度
-      const totalChars = words.reduce((sum, w) => sum + w.length, 0);
+      const tokens = extractWords(currentSentence.text);
       
-      setWordStatuses(words.map((word, index) => ({
-        word,
-        revealed: false,
+      setWordStatuses(tokens.map((token, index) => ({
+        word: token.word,
+        displayText: token.displayText,
+        revealed: token.isPunctuation, // 标点符号默认显示
         index,
-        charLength: word.length,
+        isPunctuation: token.isPunctuation,
       })));
       setCurrentInput('');
       setFeedback(null);
@@ -174,13 +174,22 @@ export default function PracticeScreen() {
     };
   }, []);
 
-  // 提取单词（去除标点，统一小写）
-  const extractWords = (text: string): string[] => {
-    return text
-      .toLowerCase()
-      .replace(/[^\w\s]/g, '')
-      .split(/\s+/)
-      .filter(w => w.length > 0);
+  // 提取单词和标点（保留标点符号显示）
+  const extractWords = (text: string): { word: string; displayText: string; isPunctuation: boolean }[] => {
+    const result: { word: string; displayText: string; isPunctuation: boolean }[] = [];
+    // 使用正则分割，保留标点
+    const tokens = text.match(/\w+|[^\w\s]+/g) || [];
+    
+    tokens.forEach((token) => {
+      const isPunctuation = !/\w/.test(token);
+      result.push({
+        word: isPunctuation ? '' : token.toLowerCase().replace(/\W/g, ''),
+        displayText: token,
+        isPunctuation,
+      });
+    });
+    
+    return result;
   };
 
   // 标准化单词（用于比较）
@@ -298,7 +307,8 @@ export default function PracticeScreen() {
     setWordStatuses(prev => {
       const newStatuses = [...prev];
       for (let i = 0; i < newStatuses.length; i++) {
-        if (!newStatuses[i].revealed && normalizeWord(newStatuses[i].word) === normalizedInput) {
+        if (!newStatuses[i].isPunctuation && !newStatuses[i].revealed && 
+            normalizeWord(newStatuses[i].word) === normalizedInput) {
           newStatuses[i] = { ...newStatuses[i], revealed: true };
           matched = true;
           break;
@@ -314,49 +324,55 @@ export default function PracticeScreen() {
       setFeedback('correct');
       setTimeout(() => {
         setFeedback(null);
-        checkSentenceComplete();
       }, 300);
     }
     // 不再显示错误提示
+    // 自动跳转由 useEffect 监听 wordStatuses 变化处理
     
     return matched;
   }, []);
 
-  // 检查句子是否完成
-  const checkSentenceComplete = useCallback(() => {
-    const allRevealed = wordStatuses.every(w => w.revealed);
-    if (allRevealed && currentSentence) {
-      // 停止播放
-      stopPlayback();
-      
-      // 更新服务器状态
-      fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sentence_id: currentSentence.id,
-          attempts: totalAttempts + 1,
-          is_completed: true,
-        }),
-      });
+  // 监听单词状态变化，自动跳转到下一句
+  useEffect(() => {
+    // 检查是否所有非标点单词都已答出
+    const allWordsRevealed = wordStatuses.length > 0 && 
+      wordStatuses.filter(w => !w.isPunctuation).every(w => w.revealed);
+    
+    if (allWordsRevealed && currentSentence && !completed) {
+      // 延迟一下再跳转，让用户看到完成状态
+      const timer = setTimeout(() => {
+        // 停止播放
+        stopPlayback();
+        
+        // 更新服务器状态
+        fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sentence_id: currentSentence.id,
+            attempts: totalAttempts + 1,
+            is_completed: true,
+          }),
+        });
 
-      // 更新本地状态
-      setSentences(prev => 
-        prev.map((s, i) => 
-          i === currentIndex ? { ...s, is_completed: true } : s
-        )
-      );
+        // 更新本地状态
+        setSentences(prev => 
+          prev.map((s, i) => 
+            i === currentIndex ? { ...s, is_completed: true } : s
+          )
+        );
 
-      // 自动进入下一句
-      setTimeout(() => {
+        // 自动进入下一句
         if (currentIndex < sentences.length - 1) {
           setCurrentIndex(prev => prev + 1);
         } else {
           setCompleted(true);
         }
-      }, 1000);
+      }, 800);
+      
+      return () => clearTimeout(timer);
     }
-  }, [wordStatuses, currentSentence, currentIndex, sentences.length, totalAttempts, stopPlayback]);
+  }, [wordStatuses, currentSentence, currentIndex, sentences.length, totalAttempts, stopPlayback, completed]);
 
   // 处理输入变化（检测空格自动提交）
   const handleInputChange = (text: string) => {
@@ -434,12 +450,12 @@ export default function PracticeScreen() {
       await recording.startAsync();
       recordingRef.current = recording;
       
-      // 1秒后自动识别并继续录音
+      // 600ms后自动识别并继续录音（更快响应）
       recordingIntervalRef.current = setTimeout(async () => {
         if (isRecording && recordingRef.current) {
           await recognizeAndContinue();
         }
-      }, 1000); // 每1秒识别一次
+      }, 600);
       
     } catch (error) {
       console.error('录音片段失败:', error);
@@ -536,21 +552,20 @@ export default function PracticeScreen() {
   // 提示指定单词
   const showHintForWord = (index: number) => {
     const wordStatus = wordStatuses[index];
-    if (!wordStatus) return;
+    if (!wordStatus || wordStatus.isPunctuation) return;
     
     if (wordStatus.revealed) {
       // 已经答对了，不需要提示
       if (Platform.OS === 'web') {
-        alert(`「${wordStatus.word}」已经答对了！`);
+        alert(`「${wordStatus.displayText}」已经答对了！`);
       } else {
-        Alert.alert('提示', `「${wordStatus.word}」已经答对了！`);
+        Alert.alert('提示', `「${wordStatus.displayText}」已经答对了！`);
       }
       return;
     }
     
     // 提示这个单词
-    const word = wordStatus.word;
-    const hint = `答案：${word}`;
+    const hint = `答案：${wordStatus.displayText}`;
     
     if (Platform.OS === 'web') {
       alert(hint);
@@ -561,7 +576,7 @@ export default function PracticeScreen() {
 
   // 提示下一个未答出的单词
   const showHint = () => {
-    const nextHidden = wordStatuses.find(w => !w.revealed);
+    const nextHidden = wordStatuses.find(w => !w.isPunctuation && !w.revealed);
     if (!nextHidden) {
       if (Platform.OS === 'web') {
         alert('恭喜！所有单词都已答对！');
@@ -571,7 +586,7 @@ export default function PracticeScreen() {
       return;
     }
     
-    const hint = `下一个单词：${nextHidden.word}`;
+    const hint = `下一个单词：${nextHidden.displayText}`;
     if (Platform.OS === 'web') {
       alert(hint);
     } else {
@@ -736,39 +751,50 @@ export default function PracticeScreen() {
         {/* Sentence Display */}
         <View style={styles.sentenceSection}>
           <ThemedText variant="caption" color={theme.textMuted} style={styles.sentenceLabel}>
-            句子进度：{completedChars}/{totalChars} 字符 ({sentenceProgress}%)
+            句子进度：{completedWords}/{totalWords} 单词 ({sentenceProgress}%)
           </ThemedText>
           <View style={styles.wordsContainer}>
             {wordStatuses.map((ws, idx) => (
-              <TouchableOpacity 
-                key={idx} 
-                style={[
-                  styles.wordSlot, 
-                  ws.revealed ? styles.wordCorrect : styles.wordHidden,
-                  // 根据单词长度动态调整宽度
-                  ws.revealed ? null : { minWidth: Math.max(ws.charLength * 8 + 16, 32) }
-                ]}
-                onPress={() => !ws.revealed && showHintForWord(idx)}
-                activeOpacity={0.7}
-              >
-                {ws.revealed ? (
-                  <ThemedText 
-                    variant="smallMedium" 
-                    color={theme.success}
-                    style={styles.wordTextCorrect}
-                  >
-                    {ws.word}
-                  </ThemedText>
-                ) : (
-                  <ThemedText 
-                    variant="small" 
-                    color={theme.textMuted}
-                    style={styles.wordTextHidden}
-                  >
-                    {'_'.repeat(Math.min(ws.charLength, 8))}
-                  </ThemedText>
-                )}
-              </TouchableOpacity>
+              ws.isPunctuation ? (
+                // 标点符号直接显示
+                <ThemedText 
+                  key={idx}
+                  variant="smallMedium" 
+                  color={theme.textSecondary}
+                  style={{ marginHorizontal: 2 }}
+                >
+                  {ws.displayText}
+                </ThemedText>
+              ) : (
+                // 单词显示
+                <TouchableOpacity 
+                  key={idx} 
+                  style={[
+                    styles.wordSlot, 
+                    ws.revealed ? styles.wordCorrect : styles.wordHidden,
+                  ]}
+                  onPress={() => !ws.revealed && showHintForWord(idx)}
+                  activeOpacity={0.7}
+                >
+                  {ws.revealed ? (
+                    <ThemedText 
+                      variant="smallMedium" 
+                      color={theme.success}
+                      style={styles.wordTextCorrect}
+                    >
+                      {ws.displayText}
+                    </ThemedText>
+                  ) : (
+                    <ThemedText 
+                      variant="small" 
+                      color={theme.textMuted}
+                      style={styles.wordTextHidden}
+                    >
+                      {'_'.repeat(Math.min(ws.word.length, 6))}
+                    </ThemedText>
+                  )}
+                </TouchableOpacity>
+              )
             ))}
           </View>
           <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 8, textAlign: 'center' }}>
