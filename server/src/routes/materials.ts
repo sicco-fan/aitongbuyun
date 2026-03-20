@@ -60,12 +60,9 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       url: audioUrl,
     });
 
-    // 按句子分割文本
-    const sentences = splitIntoSentences(asrResult.text);
-    
-    // 计算每个句子的时间范围（假设平均语速）
+    // 处理句子和时间戳
+    const sentences = processASRResult(asrResult);
     const totalDuration = asrResult.duration || sentences.length * 3000;
-    const avgSentenceDuration = totalDuration / sentences.length;
     
     // 存储到数据库
     const supabase = getSupabaseClient();
@@ -86,12 +83,12 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     }
 
     // 插入句子
-    const sentencesData = sentences.map((text, index) => ({
+    const sentencesData = sentences.map((item, index) => ({
       material_id: material.id,
       sentence_index: index,
-      text,
-      start_time: index * avgSentenceDuration,
-      end_time: (index + 1) * avgSentenceDuration,
+      text: item.text,
+      start_time: item.start_time,
+      end_time: item.end_time,
     }));
 
     const { error: sentencesError } = await supabase
@@ -288,6 +285,76 @@ router.delete('/:id', async (req: Request, res: Response) => {
     res.status(500).json({ error: '删除材料失败' });
   }
 });
+
+/**
+ * 处理 ASR 结果，提取带时间戳的句子
+ */
+interface SentenceWithTime {
+  text: string;
+  start_time: number;
+  end_time: number;
+}
+
+function processASRResult(asrResult: { text: string; duration?: number; utterances?: any[]; rawData?: any }): SentenceWithTime[] {
+  const MAX_WORDS = 6;
+  const result: SentenceWithTime[] = [];
+
+  // 尝试从 rawData 中获取 utterances（带时间戳的片段）
+  const utterances = asrResult.utterances || asrResult.rawData?.utterances || [];
+
+  if (utterances && utterances.length > 0) {
+    // 使用 ASR 返回的时间戳
+    for (const utterance of utterances) {
+      const text = (utterance.text || '').trim();
+      const startTime = utterance.start_time || 0;
+      const endTime = utterance.end_time || 0;
+      const duration = endTime - startTime;
+
+      if (!text) continue;
+
+      const words = text.split(/\s+/).filter((w: string) => w.length > 0);
+
+      if (words.length <= MAX_WORDS) {
+        // 长度合适，直接添加
+        result.push({ text, start_time: startTime, end_time: endTime });
+      } else {
+        // 太长，按单词分割并按比例估算时间
+        const wordCount = words.length;
+        const avgWordDuration = duration / wordCount;
+
+        for (let i = 0; i < wordCount; i += MAX_WORDS) {
+          const chunkWords = words.slice(i, i + MAX_WORDS);
+          const chunkText = chunkWords.join(' ');
+          const chunkStart = startTime + i * avgWordDuration;
+          const chunkEnd = startTime + Math.min(i + MAX_WORDS, wordCount) * avgWordDuration;
+
+          result.push({ text: chunkText, start_time: Math.round(chunkStart), end_time: Math.round(chunkEnd) });
+        }
+      }
+    }
+  } else {
+    // 没有时间戳信息，使用文本分割并估算时间
+    const totalDuration = asrResult.duration || 0;
+    const sentences = splitIntoSentences(asrResult.text);
+
+    if (sentences.length > 0) {
+      // 计算总单词数
+      const totalWords = sentences.reduce((sum, s) => sum + s.split(/\s+/).filter(w => w.length > 0).length, 0);
+      const avgWordDuration = totalDuration / totalWords;
+
+      let currentTime = 0;
+      for (const text of sentences) {
+        const words = text.split(/\s+/).filter(w => w.length > 0);
+        const duration = Math.round(words.length * avgWordDuration);
+
+        result.push({ text, start_time: currentTime, end_time: currentTime + duration });
+        currentTime += duration;
+      }
+    }
+  }
+
+  return result;
+}
 
 /**
  * 将文本分割成短句（每句控制在5-6个单词以内，确保容易记忆）

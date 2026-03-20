@@ -68,14 +68,16 @@ export default function PracticeScreen() {
   // 音频控制状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [playCount, setPlayCount] = useState(0);
-  const [volume, setVolume] = useState(1.0); // 音量 0-1，可以超过1
-  const [isLooping, setIsLooping] = useState(true); // 循环播放
+  const [volume, setVolume] = useState(1.0);
   
   // 语音输入状态
   const [isRecording, setIsRecording] = useState(false);
   const [hasRecordingPermission, setHasRecordingPermission] = useState(false);
+  
   const recordingRef = useRef<Audio.Recording | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const isLoopingRef = useRef(true);
+  const sentenceTimesRef = useRef({ start: 0, end: 0 });
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -123,7 +125,7 @@ export default function PracticeScreen() {
 
   // 当切换句子时，初始化单词状态并开始播放
   useEffect(() => {
-    if (currentSentence) {
+    if (currentSentence && material?.audio_url) {
       const words = extractWords(currentSentence.text);
       setWordStatuses(words.map((word, index) => ({
         word,
@@ -135,14 +137,21 @@ export default function PracticeScreen() {
       setHintLevel(0);
       setPlayCount(0);
       
+      // 保存当前句子的时间范围
+      sentenceTimesRef.current = {
+        start: currentSentence.start_time || 0,
+        end: currentSentence.end_time || 0,
+      };
+      
       // 自动开始循环播放
-      startLoopPlayback();
+      isLoopingRef.current = true;
+      startSentenceLoopPlayback();
     }
     
     return () => {
       stopPlayback();
     };
-  }, [currentSentence]);
+  }, [currentSentence, material?.audio_url]);
 
   // 清理音频
   useEffect(() => {
@@ -170,8 +179,8 @@ export default function PracticeScreen() {
     return word.toLowerCase().replace(/\W/g, '').trim();
   };
 
-  // 开始循环播放
-  const startLoopPlayback = useCallback(async () => {
+  // 开始句子片段循环播放
+  const startSentenceLoopPlayback = useCallback(async () => {
     if (!material?.audio_url) return;
 
     try {
@@ -181,23 +190,37 @@ export default function PracticeScreen() {
         soundRef.current = null;
       }
 
+      const { start, end } = sentenceTimesRef.current;
+      
       const { sound } = await Audio.Sound.createAsync(
         { uri: material.audio_url },
         { 
           shouldPlay: true, 
-          isLooping: true,
+          isLooping: false, // 我们自己控制循环
           volume: volume,
+          positionMillis: start,
         },
         (status) => {
-          if (status.isLoaded && status.didJustFinish) {
-            setPlayCount(prev => prev + 1);
+          if (status.isLoaded) {
+            // 当播放到句子结束位置时，跳回开始位置继续播放
+            if (status.positionMillis >= end && isLoopingRef.current) {
+              soundRef.current?.setPositionAsync(start);
+              setPlayCount(prev => prev + 1);
+            }
+            
+            if (status.didJustFinish && !isLoopingRef.current) {
+              setIsPlaying(false);
+            }
           }
         }
       );
 
       soundRef.current = sound;
       setIsPlaying(true);
-      setIsLooping(true);
+      
+      // 设置初始播放位置
+      await sound.setPositionAsync(start);
+      
     } catch (error) {
       console.error('播放失败:', error);
     }
@@ -205,6 +228,7 @@ export default function PracticeScreen() {
 
   // 停止播放
   const stopPlayback = useCallback(async () => {
+    isLoopingRef.current = false;
     if (soundRef.current) {
       try {
         await soundRef.current.stopAsync();
@@ -214,7 +238,6 @@ export default function PracticeScreen() {
         // 忽略错误
       }
       setIsPlaying(false);
-      setIsLooping(false);
     }
   }, []);
 
@@ -234,9 +257,10 @@ export default function PracticeScreen() {
     }
   }, []);
 
-  // 设置音量
+  // 设置音量（expo-av 限制音量在 0-1 之间）
   const handleVolumeChange = useCallback(async (newVolume: number) => {
-    const clampedVolume = Math.max(0, Math.min(2, newVolume)); // 允许放大到2倍
+    // 将显示值限制在 0-1.0 之间（实际音量）
+    const clampedVolume = Math.max(0, Math.min(1, newVolume));
     setVolume(clampedVolume);
     if (soundRef.current) {
       await soundRef.current.setVolumeAsync(clampedVolume);
@@ -251,17 +275,16 @@ export default function PracticeScreen() {
       if (soundRef.current) {
         await resumePlayback();
       } else {
-        await startLoopPlayback();
+        await startSentenceLoopPlayback();
       }
     }
-  }, [isPlaying, pausePlayback, resumePlayback, startLoopPlayback]);
+  }, [isPlaying, pausePlayback, resumePlayback, startSentenceLoopPlayback]);
 
   // 验证单词
   const checkWord = useCallback((inputWord: string) => {
     const normalizedInput = normalizeWord(inputWord);
     if (!normalizedInput) return;
 
-    // 检查是否匹配任何未揭示的单词
     let matched = false;
     setWordStatuses(prev => {
       const newStatuses = [...prev];
@@ -280,7 +303,6 @@ export default function PracticeScreen() {
 
     if (matched) {
       setFeedback('correct');
-      // 检查是否完成
       setTimeout(() => {
         checkSentenceComplete();
       }, 300);
@@ -288,7 +310,7 @@ export default function PracticeScreen() {
       setFeedback('incorrect');
     }
 
-    // 清空输入框，继续输入
+    // 清空输入框
     setCurrentInput('');
     
     // 清除反馈
@@ -371,7 +393,6 @@ export default function PracticeScreen() {
       setIsRecording(true);
     } catch (error) {
       console.error('录音失败:', error);
-      // 录音失败，恢复播放
       resumePlayback();
     }
   };
@@ -387,7 +408,6 @@ export default function PracticeScreen() {
       setIsRecording(false);
 
       if (uri) {
-        // 上传录音并识别
         const formData = new FormData();
         const audioFile = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
         formData.append('file', audioFile as any);
@@ -399,7 +419,6 @@ export default function PracticeScreen() {
 
         const data = await response.json();
         if (data.text) {
-          // 识别成功，提取单词并验证
           const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
           for (const word of words) {
             checkWord(word);
@@ -557,27 +576,27 @@ export default function PracticeScreen() {
               <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
                 <TouchableOpacity
                   style={{ padding: Spacing.sm, backgroundColor: theme.backgroundTertiary, borderRadius: 8 }}
-                  onPress={() => handleVolumeChange(volume - 0.2)}
+                  onPress={() => handleVolumeChange(Math.max(0, volume - 0.1))}
                 >
                   <FontAwesome6 name="minus" size={14} color={theme.textPrimary} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={{ padding: Spacing.sm, backgroundColor: theme.backgroundTertiary, borderRadius: 8 }}
-                  onPress={() => handleVolumeChange(volume + 0.2)}
+                  onPress={() => handleVolumeChange(Math.min(1, volume + 0.1))}
                 >
                   <FontAwesome6 name="plus" size={14} color={theme.textPrimary} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={{ padding: Spacing.sm, backgroundColor: volume > 1 ? theme.primary : theme.backgroundTertiary, borderRadius: 8 }}
-                  onPress={() => handleVolumeChange(volume > 1 ? 1 : 1.5)}
+                  style={{ padding: Spacing.sm, backgroundColor: volume >= 0.9 ? theme.primary : theme.backgroundTertiary, borderRadius: 8 }}
+                  onPress={() => handleVolumeChange(1.0)}
                 >
-                  <FontAwesome6 name="volume-high" size={14} color={volume > 1 ? theme.buttonPrimaryText : theme.textPrimary} />
+                  <FontAwesome6 name="volume-high" size={14} color={volume >= 0.9 ? theme.buttonPrimaryText : theme.textPrimary} />
                 </TouchableOpacity>
               </View>
             </View>
           </View>
           <ThemedText variant="caption" color={theme.textMuted}>
-            {isPlaying ? '循环播放中' : '已暂停'} · 已播放 {playCount} 次
+            {isPlaying ? '循环播放当前句子中' : '已暂停'} · 已循环 {playCount} 次
           </ThemedText>
         </View>
 
