@@ -39,7 +39,7 @@ export const createStyles = (theme: Theme) => {
     },
     sentenceNav: {
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       marginBottom: Spacing.lg,
     },
     navBtn: {
@@ -60,6 +60,7 @@ export const createStyles = (theme: Theme) => {
     sentenceText: {
       lineHeight: 28,
       textAlign: 'center',
+      // 完整显示文字，不限制行数
     },
     timeRow: {
       flexDirection: 'row',
@@ -96,7 +97,8 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
-      gap: Spacing.lg,
+      gap: Spacing.md,
+      flexWrap: 'wrap',
     },
     playBtn: {
       width: 56,
@@ -111,14 +113,14 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
       backgroundColor: theme.accent,
       paddingVertical: Spacing.md,
-      paddingHorizontal: Spacing.lg,
+      paddingHorizontal: Spacing.md,
       borderRadius: BorderRadius.lg,
       gap: Spacing.sm,
     },
     timestampButtons: {
       flexDirection: 'row',
       gap: Spacing.md,
-      marginBottom: Spacing.lg,
+      marginBottom: Spacing.md,
     },
     timestampBtn: {
       flex: 1,
@@ -132,8 +134,22 @@ export const createStyles = (theme: Theme) => {
     startBtn: {
       backgroundColor: theme.primary,
     },
+    autoStartBtn: {
+      backgroundColor: theme.backgroundTertiary,
+      borderWidth: 1,
+      borderColor: theme.borderLight,
+    },
     endBtn: {
       backgroundColor: theme.success,
+    },
+    tipBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.accent + '15',
+      padding: Spacing.md,
+      borderRadius: BorderRadius.md,
+      gap: Spacing.sm,
+      marginBottom: Spacing.lg,
     },
     listSection: {
       flex: 1,
@@ -143,7 +159,6 @@ export const createStyles = (theme: Theme) => {
     },
     listItem: {
       flexDirection: 'row',
-      alignItems: 'center',
       backgroundColor: theme.backgroundDefault,
       padding: Spacing.md,
       borderRadius: BorderRadius.md,
@@ -163,10 +178,15 @@ export const createStyles = (theme: Theme) => {
       justifyContent: 'center',
       alignItems: 'center',
       marginRight: Spacing.sm,
+      marginTop: 2,
+    },
+    listItemContent: {
+      flex: 1,
     },
     listItemText: {
-      flex: 1,
-      marginHorizontal: Spacing.sm,
+      lineHeight: 20,
+      marginBottom: 4,
+      // 完整显示文字
     },
     backBtn: {
       marginTop: Spacing.lg,
