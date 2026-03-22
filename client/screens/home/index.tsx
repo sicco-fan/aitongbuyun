@@ -5,8 +5,6 @@ import {
   View,
   ActivityIndicator,
   RefreshControl,
-  Alert,
-  Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
@@ -17,6 +15,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { Spacing } from '@/constants/theme';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 interface Material {
   id: number;
@@ -39,6 +38,18 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({ total: 0, completed: 0, totalSentences: 0 });
+  
+  // 删除确认对话框状态
+  const [deleteDialog, setDeleteDialog] = useState<{
+    visible: boolean;
+    material: Material | null;
+  }>({ visible: false, material: null });
+  
+  // 成功/失败提示对话框
+  const [messageDialog, setMessageDialog] = useState<{ visible: boolean; message: string }>({
+    visible: false,
+    message: '',
+  });
 
   const fetchMaterials = useCallback(async () => {
     try {
@@ -84,22 +95,17 @@ export default function HomeScreen() {
     router.push('/practice', { materialId: material.id, title: material.title });
   };
 
-  const handleDeleteMaterial = async (material: Material) => {
-    // Web 端使用 confirm，移动端使用 Alert
-    const confirmed = Platform.OS === 'web'
-      ? window.confirm(`确定要删除「${material.title}」吗？\n此操作将删除该材料及其所有句子数据，且不可恢复。`)
-      : await new Promise<boolean>((resolve) => {
-          Alert.alert(
-            '删除材料',
-            `确定要删除「${material.title}」吗？\n此操作将删除该材料及其所有句子数据，且不可恢复。`,
-            [
-              { text: '取消', style: 'cancel', onPress: () => resolve(false) },
-              { text: '删除', style: 'destructive', onPress: () => resolve(true) },
-            ]
-          );
-        });
+  // 点击删除按钮，显示确认对话框
+  const handleDeleteClick = (material: Material) => {
+    setDeleteDialog({ visible: true, material });
+  };
 
-    if (!confirmed) return;
+  // 确认删除
+  const handleDeleteConfirm = async () => {
+    const material = deleteDialog.material;
+    if (!material) return;
+    
+    setDeleteDialog({ visible: false, material: null });
 
     try {
       const response = await fetch(
@@ -109,22 +115,19 @@ export default function HomeScreen() {
 
       if (response.ok) {
         setMaterials(prev => prev.filter(m => m.id !== material.id));
-        if (Platform.OS === 'web') {
-          alert('材料已删除');
-        } else {
-          Alert.alert('成功', '材料已删除');
-        }
+        setMessageDialog({ visible: true, message: '材料已删除' });
       } else {
         throw new Error('删除失败');
       }
     } catch (error) {
       console.error('删除材料失败:', error);
-      if (Platform.OS === 'web') {
-        alert('删除材料失败');
-      } else {
-        Alert.alert('错误', '删除材料失败');
-      }
+      setMessageDialog({ visible: true, message: '删除材料失败，请重试' });
     }
+  };
+
+  // 取消删除
+  const handleDeleteCancel = () => {
+    setDeleteDialog({ visible: false, material: null });
   };
 
   const handleAddMaterial = () => {
@@ -259,7 +262,7 @@ export default function HomeScreen() {
               {/* 删除按钮 */}
               <TouchableOpacity
                 style={styles.deleteButton}
-                onPress={() => handleDeleteMaterial(material)}
+                onPress={() => handleDeleteClick(material)}
                 activeOpacity={0.7}
               >
                 <FontAwesome6 name="trash" size={18} color={theme.error} />
@@ -273,6 +276,28 @@ export default function HomeScreen() {
       <TouchableOpacity style={styles.addButton} onPress={handleAddMaterial} activeOpacity={0.8}>
         <FontAwesome6 name="plus" size={24} color={theme.buttonPrimaryText} />
       </TouchableOpacity>
+      
+      {/* 删除确认对话框 */}
+      <ConfirmDialog
+        visible={deleteDialog.visible}
+        title="删除材料"
+        message={`确定要删除「${deleteDialog.material?.title}」吗？\n此操作将删除该材料及其所有句子数据，且不可恢复。`}
+        confirmText="删除"
+        cancelText="取消"
+        confirmStyle="destructive"
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+      />
+      
+      {/* 提示对话框 */}
+      <ConfirmDialog
+        visible={messageDialog.visible}
+        title="提示"
+        message={messageDialog.message}
+        confirmText="确定"
+        onConfirm={() => setMessageDialog({ visible: false, message: '' })}
+        onCancel={() => setMessageDialog({ visible: false, message: '' })}
+      />
     </Screen>
   );
 }
