@@ -416,12 +416,94 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       return res.status(400).json({ error: '请提供材料标题' });
     }
 
-    const { buffer, originalname, mimetype } = req.file;
-    const fileName = `audio/${Date.now()}_${originalname}`;
+    let { buffer, originalname, mimetype } = req.file;
+    const isVideo = mimetype?.startsWith('video/') || 
+                    originalname?.toLowerCase().endsWith('.mov') ||
+                    originalname?.toLowerCase().endsWith('.mp4') ||
+                    originalname?.toLowerCase().endsWith('.mkv') ||
+                    originalname?.toLowerCase().endsWith('.avi') ||
+                    originalname?.toLowerCase().endsWith('.webm');
+    
+    console.log(`\n===== 上传文件处理 =====`);
+    console.log('文件名:', originalname);
+    console.log('MIME类型:', mimetype);
+    console.log('是否视频:', isVideo);
+    console.log('文件大小:', buffer.length, 'bytes');
+    
+    // 如果是视频文件，先转换为音频
+    let audioBuffer = buffer;
+    let audioFileName = originalname;
+    let duration = 0;
+    
+    if (isVideo) {
+      console.log('检测到视频文件，开始转换为音频...');
+      
+      // 保存视频到临时文件
+      const tempDir = '/tmp/video_uploads';
+      await fs.mkdir(tempDir, { recursive: true });
+      const tempVideoPath = path.join(tempDir, `${Date.now()}_${originalname}`);
+      const tempAudioPath = tempVideoPath.replace(/\.[^.]+$/, '.mp3');
+      
+      console.log('临时视频路径:', tempVideoPath);
+      console.log('临时音频路径:', tempAudioPath);
+      
+      // 写入视频文件
+      await fs.writeFile(tempVideoPath, buffer);
+      
+      // 使用 ffmpeg 转换为音频
+      try {
+        const ffmpegCmd = `ffmpeg -y -i "${tempVideoPath}" -vn -acodec libmp3lame -ab 192k "${tempAudioPath}"`;
+        console.log('执行命令:', ffmpegCmd);
+        
+        const { stdout, stderr } = await execAsync(ffmpegCmd, {
+          maxBuffer: 100 * 1024 * 1024,
+          timeout: 5 * 60 * 1000, // 5分钟超时
+        });
+        
+        console.log('ffmpeg 转换完成');
+        
+        // 获取视频时长
+        try {
+          const ffprobeCmd = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tempVideoPath}"`;
+          const durationResult = await execAsync(ffprobeCmd);
+          duration = Math.round(parseFloat(durationResult.stdout.trim()) * 1000);
+          console.log('视频时长:', duration, 'ms');
+        } catch (e) {
+          console.log('获取时长失败:', e);
+        }
+        
+        // 读取转换后的音频文件
+        audioBuffer = await fs.readFile(tempAudioPath);
+        audioFileName = originalname.replace(/\.[^.]+$/, '.mp3');
+        mimetype = 'audio/mpeg';
+        
+        console.log('音频文件大小:', audioBuffer.length, 'bytes');
+        
+        // 清理临时文件
+        try {
+          await fs.unlink(tempVideoPath);
+          await fs.unlink(tempAudioPath);
+        } catch (e) {
+          // 忽略清理错误
+        }
+        
+      } catch (ffmpegError) {
+        console.error('ffmpeg 转换失败:', ffmpegError);
+        
+        // 清理临时文件
+        try {
+          await fs.unlink(tempVideoPath);
+        } catch (e) {}
+        
+        throw new Error('视频转换失败，请确保上传的是有效的视频文件');
+      }
+    }
+    
+    const fileName = `audio/${Date.now()}_${audioFileName}`;
 
     // 上传到对象存储
     const fileKey = await storage.uploadFile({
-      fileContent: buffer,
+      fileContent: audioBuffer,
       fileName,
       contentType: mimetype || 'audio/mpeg',
     });
@@ -471,10 +553,10 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     // 处理句子和时间戳（传入音频 URL 进行静音检测）
     const sentences = await processASRResultWithSilence(asrResult, audioUrl);
     
-    // 计算总时长：优先使用 ASR 返回的时长，否则使用最后一句的结束时间，最后才用估算
+    // 计算总时长：优先使用从视频获取的时长，然后是 ASR 返回的时长，最后使用估算
     const asrDuration = asrResult.duration || asrResult.rawData?.duration;
     const lastSentenceEndTime = sentences.length > 0 ? sentences[sentences.length - 1].end_time : 0;
-    const totalDuration = asrDuration || lastSentenceEndTime || sentences.length * 2000;
+    const totalDuration = duration || asrDuration || lastSentenceEndTime || sentences.length * 2000;
     
     console.log(`\n时长计算: ASR=${asrDuration}, 最后句结束=${lastSentenceEndTime}, 最终=${totalDuration}`);
     console.log(`生成 ${sentences.length} 个句子，示例:`, sentences.slice(0, 3));

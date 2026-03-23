@@ -183,20 +183,48 @@ export default function AddMaterialScreen() {
           // 从 URI 中提取文件名
           const uriParts = asset.uri.split('/');
           fileName = uriParts[uriParts.length - 1] || `video_${Date.now()}.mp4`;
-          // 确保 fileName 有扩展名
-          if (!fileName.includes('.')) {
-            fileName += '.mp4';
+        }
+        
+        // 确保 fileName 有扩展名
+        if (!fileName.includes('.')) {
+          fileName += '.mp4';
+        }
+        
+        // 根据 fileName 或 mimeType 确定正确的 MIME 类型
+        let mimeType = asset.mimeType;
+        if (!mimeType) {
+          const extension = fileName.toLowerCase().split('.').pop();
+          switch (extension) {
+            case 'mov':
+              mimeType = 'video/quicktime';
+              break;
+            case 'mp4':
+              mimeType = 'video/mp4';
+              break;
+            case 'm4v':
+              mimeType = 'video/x-m4v';
+              break;
+            case 'avi':
+              mimeType = 'video/x-msvideo';
+              break;
+            case 'mkv':
+              mimeType = 'video/x-matroska';
+              break;
+            case 'webm':
+              mimeType = 'video/webm';
+              break;
+            default:
+              mimeType = 'video/mp4';
           }
         }
+        
+        console.log('文件名:', fileName, 'MIME类型:', mimeType);
         
         // 对于 ph:// 格式的 URI（iOS 相册），需要特殊处理
         let fileUri = asset.uri;
         let fileSize = asset.fileSize;
         
         if (Platform.OS === 'ios' && asset.uri.startsWith('ph://')) {
-          // iOS 相册视频：使用 asset.uri 的特殊格式
-          // expo-image-picker 在 iOS 上返回的 ph:// URI 可以直接用于上传
-          // 但需要转换为 asset-library 格式或使用 FileSystem 的 getInfoAsync
           console.log('iOS 相册视频，URI:', asset.uri);
           
           // 尝试获取文件信息
@@ -209,9 +237,6 @@ export default function AddMaterialScreen() {
           } catch (e) {
             console.log('获取文件信息失败，使用 asset 信息:', e);
           }
-          
-          // iOS 上，expo-image-picker 返回的 URI 可以直接用于 FileSystem.uploadAsync
-          fileUri = asset.uri;
         } else if (asset.uri.startsWith('content://')) {
           // Android 相册视频
           console.log('Android 相册视频，URI:', asset.uri);
@@ -243,7 +268,7 @@ export default function AddMaterialScreen() {
           uri: fileUri,
           name: fileName,
           size: fileSize,
-          mimeType: asset.mimeType || 'video/mp4',
+          mimeType: mimeType,
         });
         
         // 自动填充标题（如果没有填写）

@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 dayjs.extend(utc);
@@ -30,30 +31,82 @@ export async function createFormDataFile(
   if (Platform.OS === 'ios' && fileUri.startsWith('ph://')) {
     console.log('处理 iOS 相册 ph:// URI:', fileUri);
     
-    // 尝试使用 expo-asset 来获取实际文件路径
+    // 方案1：使用 expo-media-library 获取实际文件路径
     try {
-      // 从 ph:// URI 中提取 asset ID
-      // ph:// 格式通常是 ph://assetID.ext
-      const assetIdMatch = fileUri.match(/ph:\/\/([^/]+)/);
-      if (assetIdMatch) {
-        const assetId = assetIdMatch[1];
-        console.log('尝试加载 asset:', assetId);
-        
-        // 使用 expo-asset 加载资源
-        const asset = Asset.fromURI(fileUri);
-        await asset.downloadAsync();
-        
-        if (asset.localUri) {
-          console.log('Asset 本地 URI:', asset.localUri);
-          return { uri: asset.localUri, type: mimeType, name: fileName };
+      // 请求媒体库权限
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status === 'granted') {
+        // 从 ph:// URI 中提取 asset ID
+        // ph:// 格式通常是 ph://assetID.ext 或 ph://assetID
+        const assetIdMatch = fileUri.match(/ph:\/\/([^/.]+)/);
+        if (assetIdMatch) {
+          const assetId = assetIdMatch[1];
+          console.log('尝试用 MediaLibrary 获取 asset:', assetId);
+          
+          // 获取资产信息
+          const assets = await MediaLibrary.getAssetsAsync({
+            first: 1,
+            mediaType: ['video'],
+            sortBy: [MediaLibrary.SortBy.creationTime],
+          });
+          
+          // 查找匹配的资产
+          const matchedAsset = assets.assets.find(a => 
+            a.uri.includes(assetId) || fileUri.includes(a.id)
+          );
+          
+          if (matchedAsset) {
+            console.log('找到匹配的资产:', matchedAsset);
+            
+            // 获取本地 URI
+            const localUri = (matchedAsset as any).localUri || matchedAsset.uri;
+            if (localUri && !localUri.startsWith('ph://')) {
+              console.log('获取到本地 URI:', localUri);
+              return { uri: localUri, type: mimeType, name: fileName };
+            }
+          }
         }
+      }
+    } catch (e) {
+      console.log('MediaLibrary 处理失败:', e);
+    }
+    
+    // 方案2：使用 expo-asset 尝试加载
+    try {
+      const asset = Asset.fromURI(fileUri);
+      await asset.downloadAsync();
+      
+      if ((asset as any).localUri) {
+        console.log('Asset 本地 URI:', (asset as any).localUri);
+        return { uri: (asset as any).localUri, type: mimeType, name: fileName };
       }
     } catch (e) {
       console.log('expo-asset 处理失败:', e);
     }
     
-    // 如果 expo-asset 失败，尝试直接使用原 URI
-    console.log('直接使用 ph:// URI');
+    // 方案3：复制到缓存目录
+    try {
+      const cacheDir = (FileSystem as any).cacheDirectory;
+      const localUri = `${cacheDir}${fileName}`;
+      
+      console.log('尝试复制 ph:// 文件到缓存目录...');
+      await (FileSystem as any).copyAsync({
+        from: fileUri,
+        to: localUri,
+      });
+      
+      // 验证文件是否存在
+      const fileInfo = await (FileSystem as any).getInfoAsync(localUri);
+      if (fileInfo.exists) {
+        console.log('复制成功:', localUri);
+        return { uri: localUri, type: mimeType, name: fileName };
+      }
+    } catch (e) {
+      console.log('复制到缓存目录失败:', e);
+    }
+    
+    // 最后的备选方案：直接使用 ph:// URI
+    console.log('使用原始 ph:// URI');
     return { uri: fileUri, type: mimeType, name: fileName };
   }
 
