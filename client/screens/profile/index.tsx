@@ -161,6 +161,24 @@ export default function ProfileScreen() {
 
         <TouchableOpacity 
           style={styles.adminCard}
+          onPress={() => router.push('/letter-training')}
+        >
+          <View style={styles.adminIcon}>
+            <FontAwesome6 name="microphone" size={24} color={theme.success} />
+          </View>
+          <View style={styles.adminContent}>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+              字母发音采集
+            </ThemedText>
+            <ThemedText variant="small" color={theme.textMuted}>
+              录制字母发音，优化语音识别准确率
+            </ThemedText>
+          </View>
+          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.adminCard}
           onPress={() => router.push('/admin')}
         >
           <View style={styles.adminIcon}>

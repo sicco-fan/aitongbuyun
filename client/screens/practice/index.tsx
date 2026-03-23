@@ -11,6 +11,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -86,6 +87,8 @@ export default function PracticeScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [hasRecordingPermission, setHasRecordingPermission] = useState(false);
   const [recordingCount, setRecordingCount] = useState(0); // 录音次数计数
+  const [isLetterMode, setIsLetterMode] = useState(false); // 逐字母识别模式
+  const [deviceId, setDeviceId] = useState<string>(''); // 设备ID
   
   const recordingRef = useRef<Audio.Recording | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -111,6 +114,23 @@ export default function PracticeScreen() {
       const { status } = await Audio.requestPermissionsAsync();
       setHasRecordingPermission(status === 'granted');
     })();
+  }, []);
+
+  // 初始化设备ID
+  useEffect(() => {
+    const initDeviceId = async () => {
+      try {
+        let id = await AsyncStorage.getItem('deviceId');
+        if (!id) {
+          id = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          await AsyncStorage.setItem('deviceId', id);
+        }
+        setDeviceId(id);
+      } catch (error) {
+        console.error('初始化设备ID失败:', error);
+      }
+    };
+    initDeviceId();
   }, []);
 
   // 加载材料数据
@@ -598,12 +618,12 @@ export default function PracticeScreen() {
       await recording.startAsync();
       recordingRef.current = recording;
       
-      // 500ms后自动识别并继续录音（快速响应）
+      // 300ms后自动识别并继续录音（快速响应）
       setTimeout(async () => {
         if (isRecordingRef.current) {
           await recognizeAndContinue();
         }
-      }, 500);
+      }, 300);
       
     } catch (error) {
       console.error('录音片段失败:', error);
@@ -635,17 +655,31 @@ export default function PracticeScreen() {
         const audioFile = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
         formData.append('file', audioFile as any);
 
-        const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech-recognize`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        const data = await response.json();
-        if (data.text) {
-          // 对于语音识别的结果，逐词匹配
-          const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
-          for (const word of words) {
-            checkInputRealtime(word);
+        if (isLetterMode) {
+          // 逐字母模式：使用字母识别API
+          formData.append('deviceId', deviceId);
+          const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/letter-pronunciation/recognize`, {
+            method: 'POST',
+            body: formData,
+          });
+          const data = await response.json();
+          if (data.success && data.letter) {
+            // 识别到字母，直接输入
+            checkInputRealtime(data.letter);
+          }
+        } else {
+          // 单词模式：使用标准语音识别API
+          const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech-recognize`, {
+            method: 'POST',
+            body: formData,
+          });
+          const data = await response.json();
+          if (data.text) {
+            // 对于语音识别的结果，逐词匹配
+            const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
+            for (const word of words) {
+              checkInputRealtime(word);
+            }
           }
         }
       }
@@ -1051,9 +1085,54 @@ export default function PracticeScreen() {
           </View>
           {isRecording && (
             <ThemedText variant="caption" color={theme.primary} style={{ marginTop: 8, textAlign: 'center' }}>
-              正在识别... 说对的单词会自动填入 · 已识别 {recordingCount} 次
+              {isLetterMode 
+                ? `逐字母模式 · 说出单个字母 · 已识别 ${recordingCount} 次`
+                : `正在识别... 说对的单词会自动填入 · 已识别 ${recordingCount} 次`
+              }
             </ThemedText>
           )}
+          
+          {/* 模式切换按钮 */}
+          <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 12, gap: 8 }}>
+            <TouchableOpacity
+              style={{
+                paddingVertical: 8,
+                paddingHorizontal: 16,
+                borderRadius: 16,
+                backgroundColor: !isLetterMode ? theme.primary : theme.backgroundTertiary,
+                borderWidth: 1,
+                borderColor: !isLetterMode ? theme.primary : theme.border,
+              }}
+              onPress={() => setIsLetterMode(false)}
+            >
+              <Text style={{ 
+                color: !isLetterMode ? theme.buttonPrimaryText : theme.textSecondary,
+                fontSize: 12,
+                fontWeight: '600',
+              }}>
+                单词模式
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{
+                paddingVertical: 8,
+                paddingHorizontal: 16,
+                borderRadius: 16,
+                backgroundColor: isLetterMode ? theme.success : theme.backgroundTertiary,
+                borderWidth: 1,
+                borderColor: isLetterMode ? theme.success : theme.border,
+              }}
+              onPress={() => setIsLetterMode(true)}
+            >
+              <Text style={{ 
+                color: isLetterMode ? theme.buttonPrimaryText : theme.textSecondary,
+                fontSize: 12,
+                fontWeight: '600',
+              }}>
+                字母模式
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Feedback - 只显示正确提示 */}
