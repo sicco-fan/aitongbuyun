@@ -741,12 +741,15 @@ export default function PracticeScreen() {
   const renderWordDisplay = (ws: WordStatus, idx: number) => {
     if (ws.isPunctuation) {
       return (
-        <Text 
-          key={idx}
-          style={{ color: theme.textSecondary, marginHorizontal: 2, fontSize: 16 }}
-        >
-          {ws.displayText}
-        </Text>
+        <View key={idx} style={styles.wordWithTranslation}>
+          <Text 
+            style={{ color: theme.textSecondary, marginHorizontal: 2, fontSize: 16 }}
+          >
+            {ws.displayText}
+          </Text>
+          {/* 预留翻译空间，保持布局稳定 */}
+          <View style={styles.translationPlaceholder} />
+        </View>
       );
     }
     
@@ -765,27 +768,33 @@ export default function PracticeScreen() {
               {ws.displayText}
             </Text>
           </TouchableOpacity>
-          {translation && (
-            <Text style={styles.wordTranslationText}>
-              {translation}
-            </Text>
-          )}
+          {/* 始终渲染翻译区域，保持布局稳定 */}
+          <View style={styles.translationPlaceholder}>
+            {translation && (
+              <Text style={styles.wordTranslationText} numberOfLines={1}>
+                {translation}
+              </Text>
+            )}
+          </View>
         </View>
       );
     }
     
     if (hintWordIndex === idx) {
       return (
-        <TouchableOpacity 
-          key={idx} 
-          style={[styles.wordSlot, styles.wordHint]}
-          onPress={() => showHintForWord(idx)}
-          activeOpacity={0.7}
-        >
-          <Text style={{ color: '#F59E0B', fontWeight: '600', fontSize: 16 }}>
-            {ws.displayText}
-          </Text>
-        </TouchableOpacity>
+        <View key={idx} style={styles.wordWithTranslation}>
+          <TouchableOpacity 
+            style={[styles.wordSlot, styles.wordHint]}
+            onPress={() => showHintForWord(idx)}
+            activeOpacity={0.7}
+          >
+            <Text style={{ color: '#F59E0B', fontWeight: '600', fontSize: 16 }}>
+              {ws.displayText}
+            </Text>
+          </TouchableOpacity>
+          {/* 预留翻译空间 */}
+          <View style={styles.translationPlaceholder} />
+        </View>
       );
     }
     
@@ -793,50 +802,53 @@ export default function PracticeScreen() {
     const chars = ws.word.split('');
     
     return (
-      <TouchableOpacity 
-        key={idx} 
-        style={[styles.wordSlot, styles.wordHidden, ws.errorCharIndex >= 0 && styles.wordError]}
-        onPress={() => showHintForWord(idx)}
-        activeOpacity={0.7}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {chars.map((char, charIdx) => {
-            // 错误字母显示红色
-            if (charIdx === ws.errorCharIndex) {
+      <View key={idx} style={styles.wordWithTranslation}>
+        <TouchableOpacity 
+          style={[styles.wordSlot, styles.wordHidden, ws.errorCharIndex >= 0 && styles.wordError]}
+          onPress={() => showHintForWord(idx)}
+          activeOpacity={0.7}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {chars.map((char, charIdx) => {
+              // 错误字母显示红色
+              if (charIdx === ws.errorCharIndex) {
+                return (
+                  <Text 
+                    key={charIdx}
+                    style={{
+                      color: theme.error,
+                      fontWeight: '700',
+                      fontSize: 16,
+                      minWidth: 10,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {char}
+                  </Text>
+                );
+              }
+              
+              // 正确字母显示绿色，未输入显示下划线
               return (
                 <Text 
                   key={charIdx}
                   style={{
-                    color: theme.error,
-                    fontWeight: '700',
+                    color: ws.revealedChars[charIdx] ? theme.success : theme.textMuted,
+                    fontWeight: ws.revealedChars[charIdx] ? '600' : '400',
                     fontSize: 16,
                     minWidth: 10,
                     textAlign: 'center',
                   }}
                 >
-                  {char}
+                  {ws.revealedChars[charIdx] ? char : '_'}
                 </Text>
               );
-            }
-            
-            // 正确字母显示绿色，未输入显示下划线
-            return (
-              <Text 
-                key={charIdx}
-                style={{
-                  color: ws.revealedChars[charIdx] ? theme.success : theme.textMuted,
-                  fontWeight: ws.revealedChars[charIdx] ? '600' : '400',
-                  fontSize: 16,
-                  minWidth: 10,
-                  textAlign: 'center',
-                }}
-              >
-                {ws.revealedChars[charIdx] ? char : '_'}
-              </Text>
-            );
-          })}
-        </View>
-      </TouchableOpacity>
+            })}
+          </View>
+        </TouchableOpacity>
+        {/* 预留翻译空间 */}
+        <View style={styles.translationPlaceholder} />
+      </View>
     );
   };
 

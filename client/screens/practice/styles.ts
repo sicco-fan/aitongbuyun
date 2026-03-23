@@ -144,10 +144,15 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
       marginBottom: Spacing.xs,
     },
+    translationPlaceholder: {
+      // 预留翻译空间，保持布局稳定
+      minHeight: 14, // 预留一行翻译文字的高度
+      justifyContent: 'center',
+    },
     wordTranslationText: {
-      fontSize: 11,
+      fontSize: 10,
       color: theme.textMuted,
-      marginTop: 2,
+      textAlign: 'center',
     },
     sentenceTranslationBox: {
       marginTop: Spacing.lg,
