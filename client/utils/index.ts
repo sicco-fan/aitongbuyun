@@ -1,4 +1,6 @@
 import { Platform } from 'react-native';
+import { Asset } from 'expo-asset';
+import * as FileSystem from 'expo-file-system/legacy';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 dayjs.extend(utc);
@@ -23,6 +25,60 @@ export async function createFormDataFile(
     const blob = await response.blob();
     return new File([blob], fileName, { type: mimeType });
   }
+
+  // iOS 相册视频的 ph:// URI 需要特殊处理
+  if (Platform.OS === 'ios' && fileUri.startsWith('ph://')) {
+    console.log('处理 iOS 相册 ph:// URI:', fileUri);
+    
+    // 尝试使用 expo-asset 来获取实际文件路径
+    try {
+      // 从 ph:// URI 中提取 asset ID
+      // ph:// 格式通常是 ph://assetID.ext
+      const assetIdMatch = fileUri.match(/ph:\/\/([^/]+)/);
+      if (assetIdMatch) {
+        const assetId = assetIdMatch[1];
+        console.log('尝试加载 asset:', assetId);
+        
+        // 使用 expo-asset 加载资源
+        const asset = Asset.fromURI(fileUri);
+        await asset.downloadAsync();
+        
+        if (asset.localUri) {
+          console.log('Asset 本地 URI:', asset.localUri);
+          return { uri: asset.localUri, type: mimeType, name: fileName };
+        }
+      }
+    } catch (e) {
+      console.log('expo-asset 处理失败:', e);
+    }
+    
+    // 如果 expo-asset 失败，尝试直接使用原 URI
+    console.log('直接使用 ph:// URI');
+    return { uri: fileUri, type: mimeType, name: fileName };
+  }
+
+  // Android content:// URI
+  if (Platform.OS === 'android' && fileUri.startsWith('content://')) {
+    console.log('处理 Android content:// URI:', fileUri);
+    
+    try {
+      // 复制到缓存目录
+      const cacheDir = (FileSystem as any).cacheDirectory;
+      const localUri = `${cacheDir}${fileName}`;
+      
+      await (FileSystem as any).copyAsync({
+        from: fileUri,
+        to: localUri,
+      });
+      
+      console.log('复制到缓存目录:', localUri);
+      return { uri: localUri, type: mimeType, name: fileName };
+    } catch (e) {
+      console.log('复制失败，直接使用原 URI:', e);
+      return { uri: fileUri, type: mimeType, name: fileName };
+    }
+  }
+
   return { uri: fileUri, type: mimeType, name: fileName };
 }
 

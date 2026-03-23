@@ -68,7 +68,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           "cameraPermission": `允许啃句大师使用您的相机，以便您直接拍摄照片上传。`,
           "microphonePermission": `允许啃句大师访问您的麦克风，以便您拍摄带有声音的视频。`
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

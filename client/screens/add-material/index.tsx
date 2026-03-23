@@ -175,7 +175,7 @@ export default function AddMaterialScreen() {
 
       if (!result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
-        console.log('选择的视频:', asset);
+        console.log('选择的视频:', JSON.stringify(asset, null, 2));
         
         // 获取文件名
         let fileName = asset.fileName;
@@ -189,35 +189,53 @@ export default function AddMaterialScreen() {
           }
         }
         
-        // 对于 ph:// 或 content:// 格式的 URI，需要复制到缓存目录
+        // 对于 ph:// 格式的 URI（iOS 相册），需要特殊处理
         let fileUri = asset.uri;
         let fileSize = asset.fileSize;
         
-        // 如果是 ph:// 格式（iOS 相册），需要复制到缓存目录
-        if (asset.uri.startsWith('ph://') || asset.uri.startsWith('content://')) {
-          console.log('复制相册文件到缓存目录...');
-          const cacheDir = (FileSystem as any).cacheDirectory;
-          const localUri = `${cacheDir}${fileName}`;
+        if (Platform.OS === 'ios' && asset.uri.startsWith('ph://')) {
+          // iOS 相册视频：使用 asset.uri 的特殊格式
+          // expo-image-picker 在 iOS 上返回的 ph:// URI 可以直接用于上传
+          // 但需要转换为 asset-library 格式或使用 FileSystem 的 getInfoAsync
+          console.log('iOS 相册视频，URI:', asset.uri);
           
-          // 复制文件
-          await (FileSystem as any).copyAsync({
-            from: asset.uri,
-            to: localUri,
-          });
-          
-          fileUri = localUri;
-          console.log('复制完成:', localUri);
-          
-          // 获取文件大小
-          const fileInfo = await (FileSystem as any).getInfoAsync(fileUri, { size: true });
-          if (fileInfo.exists) {
-            fileSize = (fileInfo as any).size;
+          // 尝试获取文件信息
+          try {
+            const fileInfo = await (FileSystem as any).getInfoAsync(asset.uri, { size: true });
+            console.log('文件信息:', fileInfo);
+            if (fileInfo.exists) {
+              fileSize = (fileInfo as any).size;
+            }
+          } catch (e) {
+            console.log('获取文件信息失败，使用 asset 信息:', e);
           }
-        } else if (!fileSize) {
-          // 对于其他格式，尝试获取文件大小
-          const fileInfo = await (FileSystem as any).getInfoAsync(fileUri, { size: true });
-          if (fileInfo.exists) {
-            fileSize = (fileInfo as any).size;
+          
+          // iOS 上，expo-image-picker 返回的 URI 可以直接用于 FileSystem.uploadAsync
+          fileUri = asset.uri;
+        } else if (asset.uri.startsWith('content://')) {
+          // Android 相册视频
+          console.log('Android 相册视频，URI:', asset.uri);
+          
+          // 尝试复制到缓存目录
+          try {
+            const cacheDir = (FileSystem as any).cacheDirectory;
+            const localUri = `${cacheDir}${fileName}`;
+            
+            await (FileSystem as any).copyAsync({
+              from: asset.uri,
+              to: localUri,
+            });
+            
+            fileUri = localUri;
+            console.log('复制完成:', localUri);
+            
+            const fileInfo = await (FileSystem as any).getInfoAsync(fileUri, { size: true });
+            if (fileInfo.exists) {
+              fileSize = (fileInfo as any).size;
+            }
+          } catch (e) {
+            console.log('复制失败，直接使用原 URI:', e);
+            fileUri = asset.uri;
           }
         }
         
@@ -335,41 +353,55 @@ export default function AddMaterialScreen() {
       
       console.log('文件信息:', { name: file.name, uri: file.uri, size: file.size, mimeType: file.mimeType });
 
-      // 使用 expo-file-system 上传文件（支持进度回调）
-      setUploadStatus('上传中...');
-      
-      const uploadResult = await (FileSystem as any).uploadAsync(
-        `${baseUrl}/api/v1/materials`,
+      // 使用 createFormDataFile 创建跨平台兼容的文件对象
+      const formDataFile = await createFormDataFile(
         file.uri,
-        {
-          httpMethod: 'POST',
-          uploadType: (FileSystem as any).FileSystemUploadType.MULTIPART,
-          fieldName: 'file',
-          parameters: {
-            title: title,
-            description: description || '',
-          },
-          headers: {
-            'Accept': 'application/json',
-          },
-        }
+        file.name,
+        file.mimeType || 'video/mp4'
       );
+      
+      // 构建 FormData
+      const formData = new FormData();
+      formData.append('file', formDataFile as any);
+      formData.append('title', title);
+      if (description) {
+        formData.append('description', description);
+      }
 
-      console.log('上传结果:', uploadResult);
+      setUploadStatus('上传中...');
+
+      /**
+       * 服务端文件：server/src/routes/materials.ts
+       * 接口：POST /api/v1/materials
+       * FormData 参数：file: File, title: string, description?: string
+       */
+      const response = await fetch(`${baseUrl}/api/v1/materials`, {
+        method: 'POST',
+        body: formData,
+        // 不设置 Content-Type，让浏览器/RN 自动处理
+      });
+
+      const responseText = await response.text();
+      console.log('上传响应:', responseText.substring(0, 500));
       
-      const responseData = JSON.parse(uploadResult.body);
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error(`服务器返回格式错误: ${responseText.substring(0, 200)}`);
+      }
       
-      if (uploadResult.status === 200 && responseData.success && responseData.material) {
+      if (response.ok && data.success && data.material) {
         setUploadProgress(100);
         setUploadStatus('上传成功！');
         setUploadSuccess(true);
         setSuccessDialog({
           visible: true,
-          materialId: responseData.material.id,
-          title: responseData.material.title || title,
+          materialId: data.material.id,
+          title: data.material.title || title,
         });
       } else {
-        throw new Error(responseData.error || '上传失败');
+        throw new Error(data.error || '上传失败');
       }
     } catch (error) {
       console.error('上传失败:', error);
