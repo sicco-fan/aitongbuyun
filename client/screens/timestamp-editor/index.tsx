@@ -75,7 +75,7 @@ export default function TimestampEditorScreen() {
     // 找第一个单词的时间戳
     let startTime = 0;
     for (let i = 0; i < words.length; i++) {
-      const wordLower = words[i].word.toLowerCase().replace(/[^\w]/g, '');
+      const wordLower = words[i].word.toLowerCase().replace(/\W/g, '');
       if (wordLower === firstWord || wordLower.startsWith(firstWord) || firstWord.startsWith(wordLower)) {
         startTime = words[i].start_time;
         break;
@@ -85,7 +85,7 @@ export default function TimestampEditorScreen() {
     // 找最后一个单词的时间戳
     let endTime = duration || 0;
     for (let i = words.length - 1; i >= 0; i--) {
-      const wordLower = words[i].word.toLowerCase().replace(/[^\w]/g, '');
+      const wordLower = words[i].word.toLowerCase().replace(/\W/g, '');
       if (wordLower === lastWord || wordLower.endsWith(lastWord) || lastWord.endsWith(wordLower)) {
         endTime = words[i].end_time;
         break;
@@ -199,16 +199,39 @@ export default function TimestampEditorScreen() {
   };
 
   const stopPlaying = async () => {
-    if (soundRef.current) {
-      await soundRef.current.pauseAsync();
+    try {
+      if (soundRef.current) {
+        const status = await soundRef.current.getStatusAsync();
+        if (status.isLoaded) {
+          await soundRef.current.pauseAsync();
+        }
+      }
+      setIsPlaying(false);
+    } catch (e) {
+      console.log('停止播放失败:', e);
       setIsPlaying(false);
     }
   };
 
   // 播放当前句子
   const playCurrentSentence = async () => {
-    if (!soundRef.current) await loadAudio();
+    // 加载音频
+    if (!soundRef.current) {
+      const loadedDuration = await loadAudio();
+      if (!loadedDuration) {
+        console.log('音频加载失败');
+        return;
+      }
+    }
+    
     if (!soundRef.current || !currentSentence) return;
+    
+    // 检查音频是否已加载
+    const status = await soundRef.current.getStatusAsync();
+    if (!status.isLoaded) {
+      console.log('音频未加载');
+      return;
+    }
     
     await stopPlaying();
     
@@ -243,8 +266,23 @@ export default function TimestampEditorScreen() {
 
   // 播放单个单词
   const playWord = async (word: WordTimestamp) => {
-    if (!soundRef.current) await loadAudio();
+    // 加载音频
+    if (!soundRef.current) {
+      const loadedDuration = await loadAudio();
+      if (!loadedDuration) {
+        console.log('音频加载失败');
+        return;
+      }
+    }
+    
     if (!soundRef.current) return;
+    
+    // 检查音频是否已加载
+    const status = await soundRef.current.getStatusAsync();
+    if (!status.isLoaded) {
+      console.log('音频未加载');
+      return;
+    }
     
     await stopPlaying();
     
