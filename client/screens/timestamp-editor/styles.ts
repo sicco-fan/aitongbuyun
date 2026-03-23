@@ -12,14 +12,9 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: Spacing.sm,
     },
-    headerTitle: {
-      flex: 1,
-      textAlign: 'center',
-    },
-    subtitle: {
-      textAlign: 'center',
+    headerCenter: {
+      alignItems: 'center',
     },
     scrollView: {
       flex: 1,
@@ -28,118 +23,107 @@ export const createStyles = (theme: Theme) => {
       paddingHorizontal: Spacing.lg,
       paddingBottom: Spacing['3xl'],
     },
-    progressRow: {
+    backBtn: {
+      marginTop: Spacing.lg,
+      paddingVertical: Spacing.md,
+      paddingHorizontal: Spacing.xl,
+      backgroundColor: theme.primary,
+      borderRadius: BorderRadius.lg,
+    },
+    
+    // 句子区域
+    sentenceSection: {
+      marginBottom: Spacing.xl,
+    },
+    sentenceHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: Spacing.md,
-      marginBottom: Spacing.lg,
+      marginBottom: Spacing.md,
+      gap: Spacing.lg,
     },
-    navBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+    sentenceNavBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       backgroundColor: theme.primary + '15',
       justifyContent: 'center',
       alignItems: 'center',
     },
-    navBtnDisabled: {
+    sentenceNavBtnDisabled: {
       opacity: 0.3,
+    },
+    sentenceNumber: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: theme.primary + '20',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     sentenceCard: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
-      padding: Spacing.lg,
-      marginBottom: Spacing.lg,
-      borderWidth: 1,
-      borderColor: theme.borderLight,
+      padding: Spacing.xl,
+      borderWidth: 2,
+      borderColor: theme.primary,
     },
     sentenceText: {
-      lineHeight: 28,
       textAlign: 'center',
-      marginBottom: Spacing.md,
+      lineHeight: 32,
     },
-    // 匹配信息
-    matchInfo: {
-      borderTopWidth: 1,
-      borderTopColor: theme.borderLight,
-      paddingTop: Spacing.md,
+    
+    // 波形区域
+    waveformSection: {
+      marginBottom: Spacing.xl,
     },
-    matchLabels: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-      marginBottom: Spacing.sm,
-    },
-    matchLabelItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: Spacing.xs,
-    },
-    matchDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-    },
-    matchStatus: {
-      alignItems: 'center',
-    },
-    matchSuccess: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: Spacing.xs,
-    },
-    // 时间轴可视化
-    timelineSection: {
-      marginBottom: Spacing.lg,
-    },
-    timelineHeader: {
+    timeDisplay: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: Spacing.sm,
+      marginBottom: Spacing.md,
     },
-    rematchBtn: {
+    timeBox: {
+      alignItems: 'center',
+    },
+    durationBox: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: Spacing.xs,
+      gap: Spacing.sm,
     },
-    timelineContainer: {
-      height: 56,
+    waveformContainer: {
+      height: 120,
       backgroundColor: theme.backgroundTertiary,
-      borderRadius: BorderRadius.md,
-      overflow: 'hidden',
+      borderRadius: BorderRadius.lg,
       position: 'relative',
+      overflow: 'hidden',
     },
-    timelineTrack: {
+    waveformTrack: {
       position: 'absolute',
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 2,
     },
-    selectionBlock: {
-      position: 'absolute',
-      top: 8,
-      bottom: 8,
-      backgroundColor: theme.primary + '25',
-      borderRadius: 6,
-      borderWidth: 2,
-      borderColor: theme.primary,
-    },
-    wordMarker: {
-      position: 'absolute',
-      top: -4,
-      width: 4,
-      height: 4,
+    waveformBar: {
+      flex: 1,
+      marginHorizontal: 1,
       borderRadius: 2,
     },
-    startMarker: {
-      left: 0,
-      backgroundColor: theme.primary,
+    selectionOverlay: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      backgroundColor: theme.primary + '30',
     },
-    endMarker: {
-      right: 0,
-      backgroundColor: theme.success,
+    maskOverlay: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      backgroundColor: theme.backgroundRoot + 'aa',
     },
     playhead: {
       position: 'absolute',
@@ -148,7 +132,26 @@ export const createStyles = (theme: Theme) => {
       width: 2,
       backgroundColor: theme.error,
     },
-    timelineTouchLayer: {
+    handle: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      width: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    handleStart: {
+      backgroundColor: theme.primary + '20',
+    },
+    handleEnd: {
+      backgroundColor: theme.success + '20',
+    },
+    handleBar: {
+      width: 4,
+      height: '60%',
+      borderRadius: 2,
+    },
+    waveformTouchLayer: {
       position: 'absolute',
       top: 0,
       left: 0,
@@ -158,69 +161,26 @@ export const createStyles = (theme: Theme) => {
     timeLabels: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginTop: Spacing.xs,
-      paddingHorizontal: Spacing.xs,
+      marginTop: Spacing.sm,
     },
     timeLabel: {
       fontSize: 11,
     },
-    // 滑块范围选择
-    rangeSection: {
-      backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.lg,
-      padding: Spacing.lg,
-      marginBottom: Spacing.lg,
-      borderWidth: 1,
-      borderColor: theme.borderLight,
-    },
-    sliderRow: {
-      marginBottom: Spacing.lg,
-    },
-    sliderLabel: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: Spacing.sm,
-      gap: Spacing.sm,
-    },
-    sliderDot: {
-      width: 10,
-      height: 10,
-      borderRadius: 5,
-    },
-    sliderWrapper: {
-      height: 40,
-      justifyContent: 'center',
-    },
-    slider: {
-      width: '100%',
-      height: 40,
-    },
-    durationInfo: {
-      alignItems: 'center',
-      paddingTop: Spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: theme.borderLight,
-    },
-    // 播放控制
-    playControls: {
-      flexDirection: 'row',
-      justifyContent: 'center',
+    
+    // 操作按钮
+    actionSection: {
       gap: Spacing.md,
       marginBottom: Spacing.lg,
     },
-    controlBtn: {
+    playBtn: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: theme.backgroundTertiary,
-      paddingVertical: Spacing.md,
-      paddingHorizontal: Spacing.lg,
+      justifyContent: 'center',
+      backgroundColor: theme.textSecondary,
+      paddingVertical: Spacing.lg,
       borderRadius: BorderRadius.lg,
       gap: Spacing.sm,
     },
-    playSelectionBtn: {
-      backgroundColor: theme.primary,
-    },
-    // 确认按钮
     confirmBtn: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -229,8 +189,8 @@ export const createStyles = (theme: Theme) => {
       paddingVertical: Spacing.lg,
       borderRadius: BorderRadius.lg,
       gap: Spacing.sm,
-      marginBottom: Spacing.md,
     },
+    
     // 提示
     tipBox: {
       flexDirection: 'row',
@@ -241,6 +201,7 @@ export const createStyles = (theme: Theme) => {
       gap: Spacing.sm,
       marginBottom: Spacing.xl,
     },
+    
     // 句子列表
     listSection: {
       gap: Spacing.sm,
@@ -257,6 +218,7 @@ export const createStyles = (theme: Theme) => {
     listItemActive: {
       backgroundColor: theme.primary + '10',
       borderColor: theme.primary,
+      borderWidth: 2,
     },
     listItemNumber: {
       width: 24,
@@ -269,13 +231,6 @@ export const createStyles = (theme: Theme) => {
     },
     listItemContent: {
       flex: 1,
-    },
-    backBtn: {
-      marginTop: Spacing.lg,
-      paddingVertical: Spacing.md,
-      paddingHorizontal: Spacing.xl,
-      backgroundColor: theme.primary,
-      borderRadius: BorderRadius.lg,
     },
   });
 };
