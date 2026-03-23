@@ -20,7 +20,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
-import { Spacing } from '@/constants/theme';
+import { Spacing, BorderRadius } from '@/constants/theme';
 import { createFormDataFile } from '@/utils';
 
 interface Sentence {
@@ -88,6 +88,14 @@ export default function PracticeScreen() {
   const [hasRecordingPermission, setHasRecordingPermission] = useState(false);
   const [recordingCount, setRecordingCount] = useState(0); // 录音次数计数
   const [deviceId, setDeviceId] = useState<string>(''); // 设备ID
+  
+  // 识别历史记录（用于显示给用户）
+  const [recognitionHistory, setRecognitionHistory] = useState<Array<{
+    text: string;
+    type: 'letter' | 'word' | 'raw';
+    matched: boolean;
+    timestamp: number;
+  }>>([]);
   
   const recordingRef = useRef<Audio.Recording | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -708,21 +716,50 @@ export default function PracticeScreen() {
         if (data.letters && data.letters.length > 0) {
           // 字母模式：逐个填入字母
           console.log('[语音识别] 字母模式，字母:', data.letters);
+          
+          // 添加到识别历史
+          const lettersText = (data.letters as string[]).join(' ');
+          setRecognitionHistory(prev => [...prev, {
+            text: lettersText,
+            type: 'letter' as const,
+            matched: true,
+            timestamp: Date.now(),
+          }].slice(-10)); // 只保留最近10条
+          
           for (const letter of data.letters) {
             console.log('[语音识别] 处理字母:', letter);
-            checkInputRealtime(letter);
+            checkInputRealtime(letter as string);
           }
         } else if (data.matchedWords && data.matchedWords.length > 0) {
           // 单词模式：填入匹配的单词
           console.log('[语音识别] 单词模式，匹配单词:', data.matchedWords);
+          
+          // 添加到识别历史
+          const wordsText = (data.matchedWords as string[]).join(' ');
+          setRecognitionHistory(prev => [...prev, {
+            text: wordsText,
+            type: 'word' as const,
+            matched: true,
+            timestamp: Date.now(),
+          }].slice(-10)); // 只保留最近10条
+          
           for (const word of data.matchedWords) {
             console.log('[语音识别] 处理单词:', word);
-            checkInputRealtime(word);
+            checkInputRealtime(word as string);
           }
         } else if (data.text) {
           // 原始识别结果
           console.log('[语音识别] 原始文本:', data.text);
-          const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
+          
+          // 添加到识别历史（未匹配）
+          setRecognitionHistory(prev => [...prev, {
+            text: data.text as string,
+            type: 'raw' as const,
+            matched: false,
+            timestamp: Date.now(),
+          }].slice(-10)); // 只保留最近10条
+          
+          const words = (data.text as string).split(/\s+/).filter((w: string) => w.length > 0);
           for (const word of words) {
             console.log('[语音识别] 处理原始单词:', word);
             checkInputRealtime(word);
@@ -730,9 +767,27 @@ export default function PracticeScreen() {
         }
       } else {
         console.log('[语音识别] 识别失败:', data.message);
+        
+        // 添加失败记录
+        if (data.text) {
+          setRecognitionHistory(prev => [...prev, {
+            text: data.text as string,
+            type: 'raw' as const,
+            matched: false,
+            timestamp: Date.now(),
+          }].slice(-10));
+        }
       }
     } catch (error) {
       console.error('识别失败:', error);
+      
+      // 添加错误记录
+      setRecognitionHistory(prev => [...prev, {
+        text: '识别出错',
+        type: 'raw' as const,
+        matched: false,
+        timestamp: Date.now(),
+      }].slice(-10));
     }
   };
 
@@ -1116,6 +1171,51 @@ export default function PracticeScreen() {
             <ThemedText variant="caption" color={theme.primary} style={{ marginTop: 8, textAlign: 'center' }}>
               {`正在识别... 说对的单词或字母会自动填入 · 已识别 ${recordingCount} 次`}
             </ThemedText>
+          )}
+          
+          {/* 实时识别历史显示区域 */}
+          {recognitionHistory.length > 0 && (
+            <View style={{
+              marginTop: 12,
+              paddingHorizontal: Spacing.md,
+              paddingVertical: Spacing.sm,
+              backgroundColor: theme.backgroundTertiary,
+              borderRadius: BorderRadius.lg,
+              minHeight: 60,
+            }}>
+              <ThemedText variant="caption" color={theme.textMuted} style={{ marginBottom: 4 }}>
+                实时识别结果
+              </ThemedText>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  {recognitionHistory.map((item, index) => (
+                    <View
+                      key={index}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: BorderRadius.md,
+                        backgroundColor: item.matched 
+                          ? (item.type === 'letter' ? theme.success : theme.primary)
+                          : theme.backgroundDefault,
+                        borderWidth: 1,
+                        borderColor: item.matched 
+                          ? (item.type === 'letter' ? theme.success : theme.primary)
+                          : theme.border,
+                      }}
+                    >
+                      <Text style={{
+                        color: item.matched ? theme.buttonPrimaryText : theme.textSecondary,
+                        fontSize: 14,
+                        fontWeight: '600',
+                      }}>
+                        {item.text}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
           )}
         </View>
 
