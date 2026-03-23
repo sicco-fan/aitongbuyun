@@ -349,6 +349,48 @@ export default function PracticeScreen() {
     }
   }, [isPlaying, pausePlayback, resumePlayback, startSentenceLoopPlayback]);
 
+  // 直接匹配完整单词（用于语音识别结果）
+  const matchCompleteWord = useCallback((word: string) => {
+    if (!word) return false;
+    
+    const wordLower = word.toLowerCase().replace(/[^a-z]/g, '');
+    if (wordLower.length === 0) return false;
+    
+    console.log('[matchCompleteWord] 尝试匹配单词:', wordLower);
+    
+    let matched = false;
+    
+    setWordStatuses(prev => {
+      const newStatuses = [...prev];
+      
+      // 找到第一个匹配且未完成的单词
+      for (let i = 0; i < newStatuses.length; i++) {
+        const ws = newStatuses[i];
+        if (ws.isPunctuation || ws.revealed) continue;
+        
+        const targetWordLower = ws.word.toLowerCase().replace(/[^a-z]/g, '');
+        
+        // 完全匹配
+        if (targetWordLower === wordLower) {
+          console.log('[matchCompleteWord] 完全匹配! 单词:', ws.word);
+          // 标记整个单词为完成
+          newStatuses[i] = {
+            ...ws,
+            revealed: true,
+            revealedChars: new Array(ws.word.length).fill(true),
+            errorCharIndex: -1,
+          };
+          matched = true;
+          break;
+        }
+      }
+      
+      return newStatuses;
+    });
+    
+    return matched;
+  }, []);
+
   // 实时检查输入并更新字母显示
   const checkInputRealtime = useCallback((input: string) => {
     if (!input) {
@@ -727,14 +769,16 @@ export default function PracticeScreen() {
         
         // 如果匹配成功，自动填入
         if (data.letters && data.letters.length > 0) {
-          // 字母模式：逐个填入字母
+          // 字母模式：逐个填入字母（使用逐字母匹配）
           for (const letter of data.letters) {
             checkInputRealtime(letter as string);
           }
         } else if (data.matchedWords && data.matchedWords.length > 0) {
-          // 单词模式：填入匹配的单词
+          // 单词模式：直接匹配完整单词
+          console.log('[语音识别] 匹配到的单词:', data.matchedWords);
           for (const word of data.matchedWords) {
-            checkInputRealtime(word as string);
+            const success = matchCompleteWord(word as string);
+            console.log(`[语音识别] 匹配单词 "${word}": ${success ? '成功' : '失败'}`);
           }
         }
       }
