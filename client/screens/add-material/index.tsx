@@ -9,6 +9,8 @@ import {
   Alert,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
 import { Screen } from '@/components/Screen';
@@ -150,6 +152,49 @@ export default function AddMaterialScreen() {
     } catch (error) {
       console.error('选择文件失败:', error);
       setErrorDialog({ visible: true, message: '选择文件失败，请重试' });
+    }
+  };
+
+  // 从相册选择视频
+  const pickVideoFromGallery = async () => {
+    try {
+      // 请求相册权限
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        setErrorDialog({ visible: true, message: '需要相册权限才能选择视频，请在设置中开启权限' });
+        return;
+      }
+
+      // 选择视频
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'],
+        allowsEditing: false,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        
+        // 获取文件信息
+        const fileInfo = await (FileSystem as any).getInfoAsync(asset.uri, { size: true });
+        const fileName = asset.fileName || `video_${Date.now()}.mp4`;
+        
+        setFile({
+          uri: asset.uri,
+          name: fileName,
+          size: fileInfo.exists ? (fileInfo as any).size : undefined,
+          mimeType: asset.mimeType || 'video/mp4',
+        });
+        
+        // 自动填充标题（如果没有填写）
+        if (!title) {
+          const nameWithoutExt = fileName.replace(/\.[^/.]+$/, '');
+          setTitle(nameWithoutExt);
+        }
+      }
+    } catch (error) {
+      console.error('选择视频失败:', error);
+      setErrorDialog({ visible: true, message: '选择视频失败，请重试' });
     }
   };
 
@@ -536,17 +581,37 @@ export default function AddMaterialScreen() {
                   </TouchableOpacity>
                 </View>
               ) : (
-                <TouchableOpacity style={styles.filePicker} onPress={pickAudioFile}>
-                  <View style={styles.filePickerIconContainer}>
-                    <FontAwesome6 name="cloud-arrow-up" size={40} color={theme.primary} />
-                  </View>
-                  <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.filePickerText}>
-                    点击选择音频或视频文件
-                  </ThemedText>
-                  <ThemedText variant="caption" color={theme.textMuted} style={styles.filePickerHint}>
-                    支持 MP3、WAV、MP4、MKV 等多种格式
-                  </ThemedText>
-                </TouchableOpacity>
+                <View style={{ gap: 12 }}>
+                  {/* 从相册选择（移动端推荐） */}
+                  <TouchableOpacity style={[styles.filePicker, { flexDirection: 'row', alignItems: 'center', paddingVertical: 16 }]} onPress={pickVideoFromGallery}>
+                    <View style={[styles.filePickerIconContainer, { marginBottom: 0, marginRight: 16 }]}>
+                      <FontAwesome6 name="images" size={32} color={theme.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                        从相册选择视频
+                      </ThemedText>
+                      <ThemedText variant="caption" color={theme.textMuted}>
+                        选择手机相册中的视频
+                      </ThemedText>
+                    </View>
+                  </TouchableOpacity>
+                  
+                  {/* 从文件选择 */}
+                  <TouchableOpacity style={[styles.filePicker, { flexDirection: 'row', alignItems: 'center', paddingVertical: 16 }]} onPress={pickAudioFile}>
+                    <View style={[styles.filePickerIconContainer, { marginBottom: 0, marginRight: 16 }]}>
+                      <FontAwesome6 name="folder-open" size={32} color={theme.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                        从文件选择
+                      </ThemedText>
+                      <ThemedText variant="caption" color={theme.textMuted}>
+                        支持音视频文件：MP3、MP4、WAV等
+                      </ThemedText>
+                    </View>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
 
