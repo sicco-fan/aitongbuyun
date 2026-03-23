@@ -356,20 +356,125 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
     }
 
     // 合并所有块
-    const totalBuffer = Buffer.concat(session.chunks);
-    console.log(`合并文件: ${session.fileName}, 大小: ${totalBuffer.length} bytes`);
+    let buffer = Buffer.concat(session.chunks);
+    let fileName = session.fileName;
+    let mimeType = session.contentType;
+    
+    console.log(`\n===== 分块上传完成 =====`);
+    console.log('文件名:', fileName);
+    console.log('MIME类型:', mimeType);
+    console.log('文件大小:', buffer.length, 'bytes');
+
+    // 检测是否为视频文件
+    const isVideo = mimeType?.startsWith('video/') || 
+                    fileName?.toLowerCase().endsWith('.mov') ||
+                    fileName?.toLowerCase().endsWith('.mp4') ||
+                    fileName?.toLowerCase().endsWith('.mkv') ||
+                    fileName?.toLowerCase().endsWith('.avi') ||
+                    fileName?.toLowerCase().endsWith('.webm');
+
+    let audioBuffer = buffer;
+    let audioFileName = fileName;
+    let videoDuration = duration || 0;
+
+    // 如果是视频文件，转换为音频
+    if (isVideo) {
+      console.log('检测到视频文件，开始转换为音频...');
+      
+      const tempDir = '/tmp/video_uploads';
+      await fs.mkdir(tempDir, { recursive: true });
+      const tempVideoPath = path.join(tempDir, `${Date.now()}_${fileName}`);
+      const tempAudioPath = tempVideoPath.replace(/\.[^.]+$/, '.mp3');
+      
+      console.log('临时视频路径:', tempVideoPath);
+      console.log('临时音频路径:', tempAudioPath);
+      
+      // 写入视频文件
+      await fs.writeFile(tempVideoPath, buffer);
+      
+      try {
+        // 使用 ffmpeg 转换为音频
+        const ffmpegCmd = `ffmpeg -y -i "${tempVideoPath}" -vn -acodec libmp3lame -ab 192k "${tempAudioPath}"`;
+        console.log('执行命令:', ffmpegCmd);
+        
+        await execAsync(ffmpegCmd, {
+          maxBuffer: 100 * 1024 * 1024,
+          timeout: 5 * 60 * 1000,
+        });
+        
+        console.log('ffmpeg 转换完成');
+        
+        // 获取视频时长
+        try {
+          const ffprobeCmd = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tempVideoPath}"`;
+          const durationResult = await execAsync(ffprobeCmd);
+          videoDuration = Math.round(parseFloat(durationResult.stdout.trim()) * 1000);
+          console.log('视频时长:', videoDuration, 'ms');
+        } catch (e) {
+          console.log('获取时长失败:', e);
+        }
+        
+        // 读取转换后的音频
+        audioBuffer = await fs.readFile(tempAudioPath);
+        audioFileName = fileName.replace(/\.[^.]+$/, '.mp3');
+        mimeType = 'audio/mpeg';
+        
+        console.log('音频文件大小:', audioBuffer.length, 'bytes');
+        
+        // 清理临时文件
+        try {
+          await fs.unlink(tempVideoPath);
+          await fs.unlink(tempAudioPath);
+        } catch (e) {}
+        
+      } catch (ffmpegError) {
+        console.error('ffmpeg 转换失败:', ffmpegError);
+        try { await fs.unlink(tempVideoPath); } catch (e) {}
+        throw new Error('视频转换失败，请确保上传的是有效的视频文件');
+      }
+    }
 
     // 上传到对象存储
     const fileKey = await storage.uploadFile({
-      fileContent: totalBuffer,
-      fileName: `audio/${Date.now()}_${session.fileName}`,
-      contentType: session.contentType,
+      fileContent: audioBuffer,
+      fileName: `audio/${Date.now()}_${audioFileName}`,
+      contentType: mimeType || 'audio/mpeg',
     });
+
+    // 生成签名 URL 用于 ASR
+    const audioUrl = await storage.generatePresignedUrl({
+      key: fileKey,
+      expireTime: 86400 * 7,
+    });
+
+    console.log('\n===== 开始 ASR 识别 =====');
+    
+    // 执行 ASR 识别
+    const customHeaders = HeaderUtils.extractForwardHeaders({} as Record<string, string>);
+    const asrClient = new ASRClient(new Config(), customHeaders);
+    
+    const asrResult = await asrClient.recognize({
+      uid: 'user',
+      url: audioUrl,
+      lang: 'en',
+    } as any);
+
+    console.log('ASR 识别完成');
+
+    // 处理句子和时间戳
+    const sentences = await processASRResultWithSilence(asrResult, audioUrl);
+    
+    // 计算时长
+    const asrDuration = asrResult.duration || asrResult.rawData?.duration;
+    const lastSentenceEndTime = sentences.length > 0 ? sentences[sentences.length - 1].end_time : 0;
+    const totalDuration = videoDuration || asrDuration || lastSentenceEndTime || sentences.length * 2000;
+    
+    console.log(`生成 ${sentences.length} 个句子`);
 
     // 清理会话
     uploadChunks.delete(uploadId);
 
-    // 存储到数据库（只存储文件信息，不做ASR处理）
+    // 存储到数据库
     const supabase = getSupabaseClient();
     
     const { data: material, error: materialError } = await supabase
@@ -378,8 +483,7 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
         title,
         description: description || '',
         audio_url: fileKey,
-        duration: duration || 0,
-        full_text: '', // 初始为空，用户后续获取
+        duration: totalDuration,
       })
       .select()
       .single();
@@ -388,11 +492,34 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
       throw new Error(materialError?.message || '创建材料失败');
     }
 
-    console.log(`材料创建成功: ID=${material.id}, 标题=${title}`);
+    // 插入句子
+    if (sentences.length > 0) {
+      const sentencesData = sentences.map((item, index) => ({
+        material_id: material.id,
+        sentence_index: index,
+        text: item.text,
+        start_time: item.start_time,
+        end_time: item.end_time,
+      }));
+
+      const { error: sentencesError } = await supabase
+        .from('sentences')
+        .insert(sentencesData);
+
+      if (sentencesError) {
+        console.error('插入句子失败:', sentencesError);
+      }
+    }
+
+    console.log(`材料创建成功: ID=${material.id}, 标题=${title}, 句子数=${sentences.length}`);
 
     res.json({
       success: true,
-      material: material,
+      material: {
+        ...material,
+        audio_url: audioUrl,
+        sentences_count: sentences.length,
+      },
     });
   } catch (error) {
     console.error('完成上传失败:', error);
