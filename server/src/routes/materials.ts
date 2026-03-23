@@ -2363,10 +2363,12 @@ function splitIntoSentences(text: string): string[] {
  * PUT /api/v1/materials/:id/sentences/:sentenceId
  * 更新句子内容（文本、开始时间、结束时间）
  */
-router.put('/:id/sentences/:sentenceId', async (req: Request, res: Response) => {
+router.put('/:id/sentences/:sentenceId', express.json(), async (req: Request, res: Response) => {
   try {
     const { id, sentenceId } = req.params;
     const { text, start_time, end_time, sentence_index } = req.body;
+
+    console.log(`[更新句子] sentenceId=${sentenceId}, start_time=${start_time}, end_time=${end_time}`);
 
     const supabase = getSupabaseClient();
     
@@ -2383,9 +2385,11 @@ router.put('/:id/sentences/:sentenceId', async (req: Request, res: Response) => 
       .eq('material_id', id);
 
     if (error) {
+      console.error('[更新句子] 数据库错误:', error);
       return res.status(500).json({ error: '更新句子失败' });
     }
 
+    console.log(`[更新句子] 成功: sentenceId=${sentenceId}`);
     res.json({ success: true });
   } catch (error) {
     console.error('更新句子失败:', error);
