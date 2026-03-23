@@ -118,6 +118,10 @@ export const createStyles = (theme: Theme) => {
       borderColor: theme.borderLight,
       backgroundColor: theme.backgroundTertiary,
     },
+    wordError: {
+      backgroundColor: '#EF444420',
+      borderColor: theme.error,
+    },
     wordHint: {
       backgroundColor: '#F59E0B20',
       borderColor: '#F59E0B',

@@ -45,6 +45,7 @@ interface WordStatus {
   displayText: string; // 显示文本（包含标点，如 "hello," 或 "world!"）
   revealed: boolean; // 整个单词是否已完全显示
   revealedChars: boolean[]; // 每个字母是否已显示
+  errorCharIndex: number; // 错误字母的索引（-1表示无错误）
   index: number;
   isPunctuation: boolean; // 是否是标点符号
 }
@@ -144,6 +145,7 @@ export default function PracticeScreen() {
         displayText: token.displayText,
         revealed: token.isPunctuation, // 标点符号默认显示
         revealedChars: token.isPunctuation ? [] : new Array(token.word.length).fill(false),
+        errorCharIndex: -1, // 初始无错误
         index,
         isPunctuation: token.isPunctuation,
       })));
@@ -311,10 +313,11 @@ export default function PracticeScreen() {
 
   // 实时检查输入并更新字母显示
   const checkInputRealtime = useCallback((input: string) => {
-    if (!input) return;
+    if (!input) return { matched: false, errorIndex: -1 };
     
     const inputLower = input.toLowerCase();
     let matchedAny = false;
+    let errorIndex = -1;
     
     setWordStatuses(prev => {
       const newStatuses = [...prev];
@@ -330,25 +333,57 @@ export default function PracticeScreen() {
         if (wordLower.startsWith(inputLower)) {
           matchedAny = true;
           
-          // 更新已显示的字母
+          // 清除错误标记
           const newRevealedChars = [...ws.revealedChars];
           for (let i = 0; i < inputLower.length && i < wordLower.length; i++) {
             newRevealedChars[i] = true;
           }
-          newStatuses[wordIdx] = { ...ws, revealedChars: newRevealedChars };
+          newStatuses[wordIdx] = { ...ws, revealedChars: newRevealedChars, errorCharIndex: -1 };
           
           // 如果整个单词都输入了，标记为完成
           if (inputLower.length >= wordLower.length) {
             newStatuses[wordIdx] = { ...newStatuses[wordIdx], revealed: true };
           }
           break; // 只匹配第一个符合条件的单词
+        } else {
+          // 检查是否部分匹配（前面正确，最后一个字母错误）
+          let partialMatch = true;
+          let firstErrorIdx = -1;
+          
+          for (let i = 0; i < inputLower.length; i++) {
+            if (i >= wordLower.length || inputLower[i] !== wordLower[i]) {
+              firstErrorIdx = i;
+              partialMatch = false;
+              break;
+            }
+          }
+          
+          // 如果前面部分匹配（至少第一个字母匹配）
+          if (inputLower.length > 0 && inputLower[0] === wordLower[0]) {
+            // 更新正确部分的字母
+            const newRevealedChars = [...ws.revealedChars];
+            for (let i = 0; i < inputLower.length - 1 && i < wordLower.length; i++) {
+              newRevealedChars[i] = true;
+            }
+            
+            // 标记错误字母
+            newStatuses[wordIdx] = { 
+              ...ws, 
+              revealedChars: newRevealedChars, 
+              errorCharIndex: firstErrorIdx >= 0 ? firstErrorIdx : inputLower.length - 1 
+            };
+            
+            matchedAny = false;
+            errorIndex = firstErrorIdx >= 0 ? firstErrorIdx : inputLower.length - 1;
+            break;
+          }
         }
       }
       
       return newStatuses;
     });
     
-    return matchedAny;
+    return { matched: matchedAny, errorIndex };
   }, []);
 
   // 监听单词状态变化，自动跳转到下一句
@@ -395,17 +430,33 @@ export default function PracticeScreen() {
 
   // 处理输入变化 - 实时匹配
   const handleInputChange = (text: string) => {
-    setCurrentInput(text);
-    
     // 检测到空格时自动清空并继续
     if (text.includes(' ')) {
       setCurrentInput('');
       return;
     }
     
+    setCurrentInput(text);
+    
     // 实时检查输入
     if (text.length > 0) {
-      checkInputRealtime(text);
+      const result = checkInputRealtime(text);
+      
+      // 如果有错误，短暂显示红色后自动清除错误部分
+      if (result.errorIndex >= 0) {
+        setTimeout(() => {
+          // 清除输入框到错误位置之前
+          const correctPart = text.substring(0, result.errorIndex);
+          setCurrentInput(correctPart);
+          
+          // 清除错误标记
+          setWordStatuses(prev => 
+            prev.map(ws => 
+              ws.errorCharIndex >= 0 ? { ...ws, errorCharIndex: -1 } : ws
+            )
+          );
+        }, 300); // 300ms后清除
+      }
     }
   };
 
@@ -687,25 +738,46 @@ export default function PracticeScreen() {
     return (
       <TouchableOpacity 
         key={idx} 
-        style={[styles.wordSlot, styles.wordHidden]}
+        style={[styles.wordSlot, styles.wordHidden, ws.errorCharIndex >= 0 && styles.wordError]}
         onPress={() => showHintForWord(idx)}
         activeOpacity={0.7}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {chars.map((char, charIdx) => (
-            <Text 
-              key={charIdx}
-              style={{
-                color: ws.revealedChars[charIdx] ? theme.success : theme.textMuted,
-                fontWeight: ws.revealedChars[charIdx] ? '600' : '400',
-                fontSize: 16,
-                minWidth: 10,
-                textAlign: 'center',
-              }}
-            >
-              {ws.revealedChars[charIdx] ? char : '_'}
-            </Text>
-          ))}
+          {chars.map((char, charIdx) => {
+            // 错误字母显示红色
+            if (charIdx === ws.errorCharIndex) {
+              return (
+                <Text 
+                  key={charIdx}
+                  style={{
+                    color: theme.error,
+                    fontWeight: '700',
+                    fontSize: 16,
+                    minWidth: 10,
+                    textAlign: 'center',
+                  }}
+                >
+                  {char}
+                </Text>
+              );
+            }
+            
+            // 正确字母显示绿色，未输入显示下划线
+            return (
+              <Text 
+                key={charIdx}
+                style={{
+                  color: ws.revealedChars[charIdx] ? theme.success : theme.textMuted,
+                  fontWeight: ws.revealedChars[charIdx] ? '600' : '400',
+                  fontSize: 16,
+                  minWidth: 10,
+                  textAlign: 'center',
+                }}
+              >
+                {ws.revealedChars[charIdx] ? char : '_'}
+              </Text>
+            );
+          })}
         </View>
       </TouchableOpacity>
     );
