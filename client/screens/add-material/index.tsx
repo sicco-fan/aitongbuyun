@@ -30,30 +30,121 @@ interface FileInfo {
 }
 
 // 后端服务地址配置
-// 优先级：环境变量 > 硬编码外部地址 > 本地地址
 const getBackendUrl = (): string => {
-  // 1. 环境变量（Expo 会注入 EXPO_PUBLIC_ 开头的变量）
   const envUrl = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
   if (envUrl && envUrl.length > 0 && !envUrl.includes('127.0.0.1')) {
     console.log('[Backend] 使用环境变量地址:', envUrl);
     return envUrl;
   }
-  
-  // 2. 外部访问地址（支持真机访问）
-  // 这是 Coze 平台提供的外部访问域名
   const externalUrl = 'https://bf3da197-a0fa-4944-bbe1-c9d1ffd68f66.dev.coze.site';
   console.log('[Backend] 使用外部地址:', externalUrl);
   return externalUrl;
-  
-  // 注意：http://127.0.0.1:9091 只能在本地 Web 端使用
-  // 真机（iPhone/Android）无法访问电脑的 127.0.0.1
 };
 
 const BACKEND_URL = getBackendUrl();
 
+// 分块上传配置
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB 每块（避免代理限制）
+
 /**
- * 使用 FileSystem.uploadAsync 上传文件
- * 这是 React Native 中唯一可靠的大文件上传方式
+ * 分块上传文件
+ * 将大文件分割成多个小块上传，绕过代理的请求大小限制
+ */
+const uploadFileInChunks = async (
+  fileUri: string,
+  fileName: string,
+  mimeType: string,
+  params: Record<string, string>,
+  onProgress: (progress: number, status: string) => void
+): Promise<{ status: number; body: string }> => {
+  // 读取文件内容
+  onProgress(0, '读取文件...');
+  
+  const base64Content = await (FileSystem as any).readAsStringAsync(fileUri, {
+    encoding: 'base64',
+  });
+  
+  const fileSize = base64Content.length;
+  const totalChunks = Math.ceil(fileSize / (CHUNK_SIZE * 4 / 3)); // base64 编码后大小约增加 1/3
+  
+  console.log(`[分块上传] 文件大小: ${(fileSize * 3 / 4 / 1024 / 1024).toFixed(1)} MB`);
+  console.log(`[分块上传] 分块数量: ${totalChunks}`);
+  
+  // 生成唯一上传 ID
+  const uploadId = `${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+  
+  // 逐块上传
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * (CHUNK_SIZE * 4 / 3);
+    const end = Math.min(start + CHUNK_SIZE * 4 / 3, fileSize);
+    const chunkBase64 = base64Content.substring(start, end);
+    
+    onProgress(
+      Math.round((i / totalChunks) * 100),
+      `上传中... ${i + 1}/${totalChunks} 块`
+    );
+    
+    // 使用 FileSystem.uploadAsync 上传单个块
+    // 将 base64 块写入临时文件再上传
+    const tempChunkPath = `${(FileSystem as any).cacheDirectory}chunk_${i}.tmp`;
+    await (FileSystem as any).writeAsStringAsync(tempChunkPath, chunkBase64, {
+      encoding: 'base64',
+    });
+    
+    const chunkResult = await (FileSystem as any).uploadAsync(
+      `${BACKEND_URL}/api/v1/materials/chunk`,
+      tempChunkPath,
+      {
+        httpMethod: 'POST',
+        uploadType: (FileSystem as any).FileSystemUploadType.MULTIPART,
+        fieldName: 'chunk',
+        parameters: {
+          chunkIndex: String(i),
+          totalChunks: String(totalChunks),
+          uploadId: uploadId,
+          fileName: fileName,
+          contentType: mimeType,
+        },
+        headers: {
+          'Accept': 'application/json',
+        },
+      }
+    );
+    
+    // 清理临时文件
+    await (FileSystem as any).deleteAsync(tempChunkPath, { idempotent: true });
+    
+    if (chunkResult.status !== 200) {
+      const errorBody = JSON.parse(chunkResult.body || '{}');
+      throw new Error(errorBody.error || `上传第 ${i + 1} 块失败`);
+    }
+    
+    console.log(`[分块上传] 块 ${i + 1}/${totalChunks} 完成`);
+  }
+  
+  // 完成上传
+  onProgress(100, '合并文件...');
+  
+  const completeResponse = await fetch(`${BACKEND_URL}/api/v1/materials/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      uploadId,
+      title: params.title,
+      description: params.description,
+    }),
+  });
+  
+  const completeData = await completeResponse.json();
+  
+  return {
+    status: completeResponse.status,
+    body: JSON.stringify(completeData),
+  };
+};
+
+/**
+ * 使用 FileSystem.uploadAsync 上传小文件
  */
 const uploadFile = async (
   fileUri: string,
@@ -82,6 +173,9 @@ const uploadFile = async (
     body: uploadResult.body,
   };
 };
+
+// 大文件阈值：20MB（超过此大小使用分块上传）
+const LARGE_FILE_THRESHOLD = 20 * 1024 * 1024;
 
 // 生成本地 ID
 const generateUploadId = () => {
@@ -471,7 +565,9 @@ export default function AddMaterialScreen() {
     try {
       console.log('开始上传文件:', { name: file.name, uri: file.uri, size: file.size, mimeType: file.mimeType });
 
-      const fileSizeMB = (file.size || 0) / 1024 / 1024;
+      const fileSize = file.size || 0;
+      const fileSizeMB = fileSize / 1024 / 1024;
+      const isLargeFile = fileSize > LARGE_FILE_THRESHOLD;
 
       // 构建上传参数
       const params: Record<string, string> = {
@@ -481,15 +577,35 @@ export default function AddMaterialScreen() {
         params.description = description;
       }
 
-      // 使用 FileSystem.uploadAsync 上传（唯一可靠的方式）
-      setUploadStatus(`上传中... (${fileSizeMB.toFixed(1)} MB)`);
-      
-      const uploadResult = await uploadFile(
-        file.uri,
-        file.name,
-        params,
-        (status) => setUploadStatus(status)
-      );
+      let uploadResult: { status: number; body: string };
+
+      if (isLargeFile) {
+        // 大文件使用分块上传
+        console.log('[上传] 使用分块上传模式');
+        setUploadStatus(`分块上传中... (${fileSizeMB.toFixed(1)} MB)`);
+        
+        uploadResult = await uploadFileInChunks(
+          file.uri,
+          file.name,
+          file.mimeType || 'video/mp4',
+          params,
+          (progress, status) => {
+            setUploadProgress(progress);
+            setUploadStatus(status);
+          }
+        );
+      } else {
+        // 小文件直接上传
+        console.log('[上传] 使用直接上传模式');
+        setUploadStatus(`上传中... (${fileSizeMB.toFixed(1)} MB)`);
+        
+        uploadResult = await uploadFile(
+          file.uri,
+          file.name,
+          params,
+          (status) => setUploadStatus(status)
+        );
+      }
 
       console.log('上传结果状态:', uploadResult.status);
       console.log('上传响应:', uploadResult.body?.substring(0, 500));

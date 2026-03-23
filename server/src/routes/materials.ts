@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import type { Request, Response } from 'express';
 import multer from 'multer';
 import { exec } from 'child_process';
@@ -342,7 +342,7 @@ router.post('/chunk', upload.single('chunk'), async (req: Request, res: Response
  * 分块上传 - 完成上传并处理
  * Body: { uploadId: string, title: string, description?: string, duration?: number }
  */
-router.post('/complete', async (req: Request, res: Response) => {
+router.post('/complete', express.json(), async (req: Request, res: Response) => {
   try {
     const { uploadId, title, description, duration } = req.body;
 
