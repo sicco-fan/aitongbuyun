@@ -694,13 +694,13 @@ export default function TimestampEditorScreen() {
                 const newSentences = [...sentences];
                 newSentences[currentIndex] = {
                   ...newSentences[currentIndex],
-                  start_time: Math.max(0, currentSentence.start_time - 100),
+                  start_time: Math.max(0, currentSentence.start_time - 10),
                 };
                 setSentences(newSentences);
               }}
             >
               <FontAwesome6 name="backward" size={12} color="#00ff88" />
-              <Text style={styles.quickAdjustText}>-0.1s</Text>
+              <Text style={styles.quickAdjustText}>-0.01s</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -709,13 +709,13 @@ export default function TimestampEditorScreen() {
                 const newSentences = [...sentences];
                 newSentences[currentIndex] = {
                   ...newSentences[currentIndex],
-                  start_time: currentSentence.start_time + 100,
+                  start_time: currentSentence.start_time + 10,
                 };
                 setSentences(newSentences);
               }}
             >
               <FontAwesome6 name="forward" size={12} color="#00ff88" />
-              <Text style={styles.quickAdjustText}>开始+0.1s</Text>
+              <Text style={styles.quickAdjustText}>开始+0.01s</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -724,13 +724,13 @@ export default function TimestampEditorScreen() {
                 const newSentences = [...sentences];
                 newSentences[currentIndex] = {
                   ...newSentences[currentIndex],
-                  end_time: Math.max(currentSentence.start_time + 100, currentSentence.end_time - 100),
+                  end_time: Math.max(currentSentence.start_time + 10, currentSentence.end_time - 10),
                 };
                 setSentences(newSentences);
               }}
             >
               <FontAwesome6 name="backward" size={12} color="#ff8800" />
-              <Text style={styles.quickAdjustText}>结束-0.1s</Text>
+              <Text style={styles.quickAdjustText}>结束-0.01s</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -739,13 +739,13 @@ export default function TimestampEditorScreen() {
                 const newSentences = [...sentences];
                 newSentences[currentIndex] = {
                   ...newSentences[currentIndex],
-                  end_time: currentSentence.end_time + 100,
+                  end_time: currentSentence.end_time + 10,
                 };
                 setSentences(newSentences);
               }}
             >
               <FontAwesome6 name="forward" size={12} color="#ff8800" />
-              <Text style={styles.quickAdjustText}>+0.1s</Text>
+              <Text style={styles.quickAdjustText}>+0.01s</Text>
             </TouchableOpacity>
           </View>
         </View>
