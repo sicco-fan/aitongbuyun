@@ -19,6 +19,16 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { Spacing, BorderRadius } from '@/constants/theme';
 import { createFormDataFile } from '@/utils';
+import {
+  markSentenceCompleted,
+  getCompletedSentences,
+  recordErrorWord,
+  recordSentenceError,
+  recordSentenceAttempt,
+  getSuggestedPlaybackRate,
+  getCachedAudio,
+  cacheAudio,
+} from '@/utils/learningStorage';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
@@ -112,10 +122,20 @@ export default function PracticeScreen() {
       const data = await response.json();
       
       if (data.material && data.sentences) {
-        setMaterial(data.material);
-        setSentences(data.sentences);
+        // 读取本地进度
+        const localCompleted = await getCompletedSentences(materialId);
         
-        const firstIncomplete = data.sentences.findIndex((s: Sentence) => !s.is_completed);
+        // 合并服务端和本地的完成状态
+        const mergedSentences = data.sentences.map((s: Sentence) => ({
+          ...s,
+          is_completed: s.is_completed || localCompleted.includes(s.id),
+        }));
+        
+        setMaterial(data.material);
+        setSentences(mergedSentences);
+        
+        // 找到第一个未完成的句子
+        const firstIncomplete = mergedSentences.findIndex((s: Sentence) => !s.is_completed);
         setCurrentIndex(firstIncomplete >= 0 ? firstIncomplete : 0);
       }
     } catch (error) {
@@ -170,7 +190,7 @@ export default function PracticeScreen() {
     }
   }, [materialId]);
 
-  // 播放音频
+  // 播放音频（支持离线模式）
   const playAudio = useCallback(async () => {
     if (!currentSentence?.audio_url) {
       return;
@@ -196,7 +216,15 @@ export default function PracticeScreen() {
         playThroughEarpieceAndroid: false,
       });
       
-      const audioUrl = await generateAudioUrl(currentSentence.audio_url);
+      // 优先使用本地缓存
+      let audioUrl = await getCachedAudio(currentSentence.id);
+      
+      if (!audioUrl) {
+        // 没有缓存，从服务器获取并缓存
+        audioUrl = await generateAudioUrl(currentSentence.audio_url);
+        // 后台缓存音频，不阻塞播放
+        cacheAudio(currentSentence.id, audioUrl).catch((_e) => { /* 忽略缓存错误 */ });
+      }
       
       const { sound } = await Audio.Sound.createAsync(
         { uri: audioUrl },
@@ -205,14 +233,13 @@ export default function PracticeScreen() {
           isLooping: false,
           volume: volume,
           rate: playbackRate,
-          shouldCorrectPitch: true, // 语速改变时保持音调
+          shouldCorrectPitch: true,
         },
         (status) => {
           if (status.isLoaded) {
             if (status.didJustFinish) {
               setIsPlaying(false);
               
-              // 使用 ref 获取最新的循环状态
               if (isLoopingRef.current && isMountedRef.current) {
                 setTimeout(() => {
                   if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
@@ -235,7 +262,7 @@ export default function PracticeScreen() {
     } catch (error) {
       console.error('[播放] 失败:', error);
     }
-  }, [currentSentence, generateAudioUrl, isPlaying, isLooping, volume, playbackRate]);
+  }, [currentSentence, generateAudioUrl, isPlaying, volume, playbackRate]);
 
   // 更新音量
   const updateVolume = useCallback(async (newVolume: number) => {
@@ -288,7 +315,7 @@ export default function PracticeScreen() {
     }
   }, [isPlaying, playAudio, pauseAudio]);
 
-  // 初始化当前句子
+  // 初始化当前句子（根据历史错误率调整播放速度）
   useEffect(() => {
     if (!currentSentence) return;
     
@@ -307,6 +334,18 @@ export default function PracticeScreen() {
     setCurrentInput('');
     isLoopingRef.current = true;
     setIsLooping(true);
+    
+    // 根据历史错误率调整播放速度
+    (async () => {
+      if (materialId && currentSentence.id) {
+        const suggestedRate = await getSuggestedPlaybackRate(materialId, currentSentence.id);
+        playbackRateRef.current = suggestedRate;
+        setPlaybackRate(suggestedRate);
+        
+        // 记录本次尝试
+        await recordSentenceAttempt(materialId, currentSentence.id);
+      }
+    })();
     
     const timer = setTimeout(() => {
       if (currentSentence.audio_url) {
@@ -445,6 +484,16 @@ export default function PracticeScreen() {
     // 如果没有找到任何匹配（所有单词都不匹配开头），显示错误
     if (!bestMatch) {
       showErrorFlash();
+      
+      // 记录错误（取最可能的目标单词）
+      const likelyTargetWord = incompleteWords[0]?.word;
+      if (likelyTargetWord && currentSentence && materialId) {
+        // 记录错题
+        recordErrorWord(likelyTargetWord, currentSentence.text);
+        // 记录句子错误（用于难度分级）
+        recordSentenceError(materialId, currentSentence.id);
+      }
+      
       // 尝试找到一个可能匹配的单词，保留最长匹配前缀
       for (const word of incompleteWords) {
         const targetWord = word.word.toLowerCase();
@@ -481,11 +530,16 @@ export default function PracticeScreen() {
     }
   }, [wordStatuses]);
 
-  // 句子完成处理
+  // 句子完成处理（保存进度到本地）
   const handleSentenceComplete = useCallback(async () => {
     isLoopingRef.current = false;
     setIsLooping(false);
     pauseAudio();
+    
+    // 保存进度到本地
+    if (materialId && currentSentence?.id) {
+      await markSentenceCompleted(materialId, currentSentence.id);
+    }
     
     try {
       await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/sentences/${currentSentence?.id}/complete`, {
@@ -494,6 +548,11 @@ export default function PracticeScreen() {
     } catch (e) {
       console.error('标记完成失败:', e);
     }
+    
+    // 更新本地状态
+    setSentences(prev => prev.map(s => 
+      s.id === currentSentence?.id ? { ...s, is_completed: true } : s
+    ));
     
     // 获取翻译并显示
     try {

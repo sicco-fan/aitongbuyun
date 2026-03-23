@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
+import { getErrorWords } from '@/utils/learningStorage';
 
 // 后端服务地址 - 直接连接后端服务器，不经过 Metro 代理
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
@@ -18,6 +19,7 @@ interface Stats {
   totalSentences: number;
   completedSentences: number;
   totalAttempts: number;
+  errorWordsCount: number;
 }
 
 export default function ProfileScreen() {
@@ -30,6 +32,7 @@ export default function ProfileScreen() {
     totalSentences: 0,
     completedSentences: 0,
     totalAttempts: 0,
+    errorWordsCount: 0,
   });
 
   const fetchStats = useCallback(async () => {
@@ -55,12 +58,16 @@ export default function ProfileScreen() {
           (sum: number, m: { completed_count: number }) => sum + m.completed_count, 0
         );
 
+        // 获取错题数量
+        const errorWords = await getErrorWords();
+
         setStats({
           totalMaterials,
           completedMaterials,
           totalSentences,
           completedSentences,
-          totalAttempts: 0, // 需要单独统计
+          totalAttempts: 0,
+          errorWordsCount: errorWords.length,
         });
       }
     } catch (error) {
@@ -159,6 +166,40 @@ export default function ProfileScreen() {
         <ThemedText variant="h4" color={theme.textPrimary} style={styles.sectionHeader}>
           管理功能
         </ThemedText>
+
+        <TouchableOpacity 
+          style={styles.adminCard}
+          onPress={() => router.push('/error-words')}
+        >
+          <View style={[styles.adminIcon, { backgroundColor: theme.error + '15' }]}>
+            <FontAwesome6 name="book" size={24} color={theme.error} />
+          </View>
+          <View style={styles.adminContent}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                错题本
+              </ThemedText>
+              {stats.errorWordsCount > 0 && (
+                <View style={{ 
+                  backgroundColor: theme.error, 
+                  paddingHorizontal: 8, 
+                  paddingVertical: 2, 
+                  borderRadius: 10,
+                  minWidth: 20,
+                  alignItems: 'center',
+                }}>
+                  <ThemedText variant="tiny" color={theme.buttonPrimaryText}>
+                    {stats.errorWordsCount}
+                  </ThemedText>
+                </View>
+              )}
+            </View>
+            <ThemedText variant="small" color={theme.textMuted}>
+              查看易错单词，针对性复习
+            </ThemedText>
+          </View>
+          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+        </TouchableOpacity>
 
         <TouchableOpacity 
           style={styles.adminCard}
