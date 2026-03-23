@@ -198,11 +198,12 @@ export default function TimestampEditorScreen() {
     }
   };
 
-  const stopPlaying = async () => {
+  // 停止播放
+  const handleStopPlaying = useCallback(async () => {
     try {
       if (soundRef.current) {
         const status = await soundRef.current.getStatusAsync();
-        if (status.isLoaded) {
+        if (status.isLoaded && status.isPlaying) {
           await soundRef.current.pauseAsync();
         }
       }
@@ -211,10 +212,10 @@ export default function TimestampEditorScreen() {
       console.log('停止播放失败:', e);
       setIsPlaying(false);
     }
-  };
+  }, []);
 
-  // 播放当前句子
-  const playCurrentSentence = async () => {
+  // 播放从开始时间起的一小段（按住开始时间按钮时触发）
+  const playFromStartTime = async () => {
     // 加载音频
     if (!soundRef.current) {
       const loadedDuration = await loadAudio();
@@ -226,53 +227,60 @@ export default function TimestampEditorScreen() {
     
     if (!soundRef.current || !currentSentence) return;
     
-    // 检查音频是否已加载，并获取实际时长
     const status = await soundRef.current.getStatusAsync();
-    if (!status.isLoaded) {
-      console.log('音频未加载');
-      return;
-    }
+    if (!status.isLoaded) return;
     
-    // 获取音频实际时长
-    const actualDuration = status.durationMillis || 0;
-    console.log('音频实际时长:', actualDuration, 'ms');
+    const start = currentSentence.start_time;
+    const end = currentSentence.end_time;
     
-    await stopPlaying();
+    // 播放从开始时间起的片段
+    const playEnd = Math.min(start + 2000, end); // 播放最多2秒或到结束时间
     
-    // 获取时间戳，确保在有效范围内
-    let start = currentSentence.start_time;
-    let end = currentSentence.end_time;
+    console.log('播放开始时间片段:', start, '-', playEnd);
     
-    // 如果时间戳超出音频范围，按比例调整
-    if (start > actualDuration || end > actualDuration) {
-      console.log('时间戳超出范围，需要调整');
-      // 如果数据库中的 duration 与实际时长差异过大，按比例缩放
-      const dbDuration = duration || actualDuration;
-      if (dbDuration > 0 && actualDuration > 0) {
-        const ratio = actualDuration / dbDuration;
-        start = Math.round(start * ratio);
-        end = Math.round(end * ratio);
-        console.log('调整后时间:', start, '-', end);
-      } else {
-        // 无法调整，使用整个音频
-        start = 0;
-        end = actualDuration;
+    await soundRef.current.setPositionAsync(start);
+    await soundRef.current.playAsync();
+    setIsPlaying(true);
+    
+    const checkInterval = setInterval(async () => {
+      if (!soundRef.current) {
+        clearInterval(checkInterval);
+        return;
+      }
+      const s = await soundRef.current.getStatusAsync();
+      if (s.isLoaded && (s.positionMillis >= playEnd || s.positionMillis >= end)) {
+        await soundRef.current.pauseAsync();
+        setIsPlaying(false);
+        clearInterval(checkInterval);
+      }
+    }, 50);
+  };
+
+  // 播放从结束时间前一小段到结束时间（按住结束时间按钮时触发）
+  const playFromEndTime = async () => {
+    // 加载音频
+    if (!soundRef.current) {
+      const loadedDuration = await loadAudio();
+      if (!loadedDuration) {
+        console.log('音频加载失败');
+        return;
       }
     }
     
-    // 确保时间戳在有效范围内
-    start = Math.max(0, Math.min(start, actualDuration - 100));
-    end = Math.max(start + 100, Math.min(end, actualDuration));
+    if (!soundRef.current || !currentSentence) return;
     
-    if (end <= start) {
-      Alert.alert('提示', '该句子尚未匹配到时间戳，请先进行自动匹配');
-      return;
-    }
+    const status = await soundRef.current.getStatusAsync();
+    if (!status.isLoaded) return;
     
-    console.log('播放句子:', currentSentence.text);
-    console.log('时间:', start, '-', end, '时长:', end - start, 'ms');
+    const start = currentSentence.start_time;
+    const end = currentSentence.end_time;
     
-    await soundRef.current.setPositionAsync(start);
+    // 播放到结束时间的一小段
+    const playStart = Math.max(start, end - 1500); // 从结束前1.5秒或开始时间
+    
+    console.log('播放结束时间片段:', playStart, '-', end);
+    
+    await soundRef.current.setPositionAsync(playStart);
     await soundRef.current.playAsync();
     setIsPlaying(true);
     
@@ -310,7 +318,7 @@ export default function TimestampEditorScreen() {
       return;
     }
     
-    await stopPlaying();
+    await handleStopPlaying();
     
     await soundRef.current.setPositionAsync(word.start_time);
     await soundRef.current.playAsync();
@@ -544,7 +552,8 @@ export default function TimestampEditorScreen() {
             };
             setSentences(newSentences);
           }}
-          onPlay={playCurrentSentence}
+          onPlayStart={playFromStartTime}
+          onPlayStop={handleStopPlaying}
           label="开始"
           color="#00ff88"
         />
@@ -573,7 +582,8 @@ export default function TimestampEditorScreen() {
             };
             setSentences(newSentences);
           }}
-          onPlay={playCurrentSentence}
+          onPlayStart={playFromEndTime}
+          onPlayStop={handleStopPlaying}
           label="结束"
           color="#ff8800"
         />
@@ -718,7 +728,7 @@ export default function TimestampEditorScreen() {
 
       {/* 底部控制栏 */}
       <View style={styles.controls}>
-        <TouchableOpacity style={styles.stopBtn} onPress={stopPlaying}>
+        <TouchableOpacity style={styles.stopBtn} onPress={handleStopPlaying}>
           <FontAwesome6 name="stop" size={16} color="#888" />
           <Text style={styles.stopBtnText}>停止</Text>
         </TouchableOpacity>

@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -11,7 +11,8 @@ import { FontAwesome6 } from '@expo/vector-icons';
 interface TimeControlProps {
   value: number; // 当前时间值（毫秒）
   onChange: (delta: number) => void; // 变化量回调
-  onPlay?: () => void; // 播放回调
+  onPlayStart?: () => void; // 按下开始播放
+  onPlayStop?: () => void; // 松开停止播放
   label: string; // 标签（如"开始"）
   color?: string;
 }
@@ -19,12 +20,14 @@ interface TimeControlProps {
 export function TimeControl({
   value,
   onChange,
-  onPlay,
+  onPlayStart,
+  onPlayStop,
   label,
   color = '#00ff88',
 }: TimeControlProps) {
   const lastAngle = useSharedValue(0);
   const accumulatedDelta = useSharedValue(0);
+  const isPlayingRef = useRef(false);
 
   // 格式化时间显示
   const formatTime = (ms: number) => {
@@ -38,6 +41,16 @@ export function TimeControl({
   const handleChange = useCallback((delta: number) => {
     onChange(delta);
   }, [onChange]);
+
+  const handlePressIn = useCallback(() => {
+    isPlayingRef.current = true;
+    onPlayStart?.();
+  }, [onPlayStart]);
+
+  const handlePressOut = useCallback(() => {
+    isPlayingRef.current = false;
+    onPlayStop?.();
+  }, [onPlayStop]);
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
@@ -73,14 +86,15 @@ export function TimeControl({
         </Animated.View>
       </GestureDetector>
       
-      {/* 播放按钮行 */}
+      {/* 播放按钮 - 按住播放，松开停止 */}
       <TouchableOpacity 
         style={[styles.playBtn, { backgroundColor: color }]}
-        onPress={onPlay}
-        activeOpacity={0.8}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={0.9}
       >
-        <FontAwesome6 name="play" size={18} color="#000" />
-        <Text style={styles.playBtnText}>播放试听</Text>
+        <FontAwesome6 name="play" size={20} color="#000" />
+        <Text style={styles.playBtnText}>按住播放</Text>
       </TouchableOpacity>
       
       {/* 调整按钮行 */}
@@ -154,14 +168,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
     borderRadius: 24,
     marginTop: 12,
   },
   playBtnText: {
     color: '#000',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
   },
   buttonRow: {
