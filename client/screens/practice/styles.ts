@@ -186,10 +186,10 @@ export const createStyles = (theme: Theme) => {
     },
     input: {
       flex: 1,
-      backgroundColor: theme.primary + '08',
+      backgroundColor: '#E8F4FD',
       borderRadius: BorderRadius.xl,
       borderWidth: 2,
-      borderColor: theme.primary + '40',
+      borderColor: '#90CAF9',
       paddingHorizontal: Spacing.xl,
       paddingVertical: Spacing.lg,
       fontSize: 20,

@@ -654,7 +654,11 @@ export default function PracticeScreen() {
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
       {/* Header */}
-      <View style={styles.header}>
+      <TouchableOpacity 
+        activeOpacity={1} 
+        style={styles.header}
+        onPress={() => showAudioSettings && setShowAudioSettings(false)}
+      >
         <TouchableOpacity onPress={() => { stopPlayback(); router.back(); }} style={styles.backBtn}>
           <FontAwesome6 name="arrow-left" size={18} color={theme.textPrimary} />
         </TouchableOpacity>
@@ -679,7 +683,7 @@ export default function PracticeScreen() {
             <FontAwesome6 name={isPlaying ? "pause" : "play"} size={14} color={isPlaying ? theme.primary : theme.textMuted} />
           </TouchableOpacity>
         </View>
-      </View>
+      </TouchableOpacity>
       
       {/* Audio Settings Panel */}
       {showAudioSettings && (
@@ -736,11 +740,15 @@ export default function PracticeScreen() {
       )}
       
       {/* Progress Bar */}
-      <View style={styles.progressContainer}>
+      <TouchableOpacity 
+        activeOpacity={1}
+        style={styles.progressContainer}
+        onPress={() => showAudioSettings && setShowAudioSettings(false)}
+      >
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${progress}%` }]} />
         </View>
-      </View>
+      </TouchableOpacity>
       
       <ScrollView 
         contentContainerStyle={styles.scrollContent} 
