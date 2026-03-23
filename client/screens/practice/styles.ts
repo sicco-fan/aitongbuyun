@@ -186,10 +186,10 @@ export const createStyles = (theme: Theme) => {
     },
     input: {
       flex: 1,
-      backgroundColor: theme.backgroundTertiary,
+      backgroundColor: theme.primary + '08',
       borderRadius: BorderRadius.xl,
       borderWidth: 2,
-      borderColor: theme.borderLight,
+      borderColor: theme.primary + '40',
       paddingHorizontal: Spacing.xl,
       paddingVertical: Spacing.lg,
       fontSize: 20,
@@ -229,18 +229,15 @@ export const createStyles = (theme: Theme) => {
       paddingHorizontal: Spacing.lg,
     },
     navBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: Spacing.md,
-      paddingHorizontal: Spacing.xl,
-      borderRadius: BorderRadius.lg,
+      width: 48,
+      height: 48,
+      borderRadius: BorderRadius.full,
       backgroundColor: theme.primary + '10',
-      borderWidth: 1,
-      borderColor: theme.primary + '30',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     navBtnDisabled: {
       backgroundColor: theme.backgroundTertiary,
-      borderColor: theme.borderLight,
     },
   });
 };

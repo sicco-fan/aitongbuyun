@@ -746,6 +746,7 @@ export default function PracticeScreen() {
         contentContainerStyle={styles.scrollContent} 
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        onTouchStart={() => showAudioSettings && setShowAudioSettings(false)}
       >
         {/* Sentence Display */}
         <Animated.View style={[styles.sentenceCard, { opacity: Animated.subtract(1, errorAnimRef.current) }]}>
@@ -793,8 +794,6 @@ export default function PracticeScreen() {
             style={styles.input}
             value={currentInput}
             onChangeText={handleInputChange}
-            placeholder="输入听到的内容..."
-            placeholderTextColor={theme.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
             autoFocus
@@ -830,10 +829,7 @@ export default function PracticeScreen() {
             onPress={goToPrevSentence}
             disabled={currentIndex === 0}
           >
-            <FontAwesome6 name="arrow-left" size={14} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
-            <ThemedText variant="small" color={currentIndex === 0 ? theme.textMuted : theme.primary} style={{ marginLeft: 6 }}>
-              上一句
-            </ThemedText>
+            <FontAwesome6 name="chevron-left" size={18} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
           </TouchableOpacity>
           
           <TouchableOpacity 
@@ -841,10 +837,7 @@ export default function PracticeScreen() {
             onPress={goToNextSentence}
             disabled={currentIndex === sentences.length - 1}
           >
-            <ThemedText variant="small" color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} style={{ marginRight: 6 }}>
-              下一句
-            </ThemedText>
-            <FontAwesome6 name="arrow-right" size={14} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
+            <FontAwesome6 name="chevron-right" size={18} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
           </TouchableOpacity>
         </View>
       </ScrollView>
