@@ -530,44 +530,67 @@ export default function TimestampEditorScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 时间调整区域 - 核心 */}
+      {/* 时间调整区域 - 核心上下布局 */}
       <View style={styles.dialSection}>
-        <TimeDial
-          value={currentSentence?.start_time || 0}
-          onChange={(delta) => {
-            if (!currentSentence) return;
-            const newSentences = [...sentences];
-            newSentences[currentIndex] = {
-              ...newSentences[currentIndex],
-              start_time: Math.max(0, currentSentence.start_time + delta),
-            };
-            setSentences(newSentences);
-          }}
-          label="开始时间"
-          color="#00ff88"
-        />
-        
-        <View style={styles.durationColumn}>
-          <Text style={styles.durationLabel}>时长</Text>
-          <Text style={styles.durationValue}>
-            {hasValidTime ? formatTime(sentenceDuration) : '--:--'}
-          </Text>
+        {/* 开始时间 */}
+        <View style={styles.dialRow}>
+          <TimeDial
+            value={currentSentence?.start_time || 0}
+            onChange={(delta) => {
+              if (!currentSentence) return;
+              const newSentences = [...sentences];
+              newSentences[currentIndex] = {
+                ...newSentences[currentIndex],
+                start_time: Math.max(0, currentSentence.start_time + delta),
+              };
+              setSentences(newSentences);
+            }}
+            label="开始时间"
+            color="#00ff88"
+          />
+          <View style={styles.timeDisplay}>
+            <Text style={[styles.timeLabel, { color: '#00ff88' }]}>开始</Text>
+            <Text style={[styles.timeValue, { color: '#00ff88' }]}>
+              {hasValidTime ? formatTime(currentSentence?.start_time || 0) : '--:--'}
+            </Text>
+          </View>
         </View>
         
-        <TimeDial
-          value={currentSentence?.end_time || 0}
-          onChange={(delta) => {
-            if (!currentSentence) return;
-            const newSentences = [...sentences];
-            newSentences[currentIndex] = {
-              ...newSentences[currentIndex],
-              end_time: Math.max((currentSentence.start_time || 0) + 10, currentSentence.end_time + delta),
-            };
-            setSentences(newSentences);
-          }}
-          label="结束时间"
-          color="#ff8800"
-        />
+        {/* 时长 */}
+        <View style={styles.durationRow}>
+          <View style={styles.durationDivider} />
+          <View style={styles.durationBox}>
+            <Text style={styles.durationLabel}>时长</Text>
+            <Text style={styles.durationValue}>
+              {hasValidTime ? formatTime(sentenceDuration) : '--:--'}
+            </Text>
+          </View>
+          <View style={styles.durationDivider} />
+        </View>
+        
+        {/* 结束时间 */}
+        <View style={styles.dialRow}>
+          <TimeDial
+            value={currentSentence?.end_time || 0}
+            onChange={(delta) => {
+              if (!currentSentence) return;
+              const newSentences = [...sentences];
+              newSentences[currentIndex] = {
+                ...newSentences[currentIndex],
+                end_time: Math.max((currentSentence.start_time || 0) + 10, currentSentence.end_time + delta),
+              };
+              setSentences(newSentences);
+            }}
+            label="结束时间"
+            color="#ff8800"
+          />
+          <View style={styles.timeDisplay}>
+            <Text style={[styles.timeLabel, { color: '#ff8800' }]}>结束</Text>
+            <Text style={[styles.timeValue, { color: '#ff8800' }]}>
+              {hasValidTime ? formatTime(currentSentence?.end_time || 0) : '--:--'}
+            </Text>
+          </View>
+        </View>
       </View>
 
       {/* 单词列表 - 仅在有单词时间戳数据时显示 */}
@@ -804,32 +827,62 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   
-  // 时间调整区域 - 核心交互区
+  // 时间调整区域 - 上下布局
   dialSection: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 14,
     backgroundColor: '#111',
     borderBottomWidth: 1,
     borderBottomColor: '#333',
-    gap: 8,
+    paddingVertical: 12,
   },
-  durationColumn: {
+  dialRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 4,
-    minWidth: 60,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  timeDisplay: {
+    alignItems: 'flex-end',
+    minWidth: 80,
+    marginLeft: 'auto',
+    paddingRight: 12,
+  },
+  timeLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  timeValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  durationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  durationDivider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#333',
+  },
+  durationBox: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  durationLabel: {
+    color: '#666',
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   durationValue: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
-  },
-  durationLabel: {
-    color: '#555',
-    fontSize: 9,
-    marginTop: 2,
   },
   
   wordsSection: {

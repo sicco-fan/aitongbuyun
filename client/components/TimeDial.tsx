@@ -9,29 +9,19 @@ import Animated, {
 import { FontAwesome6 } from '@expo/vector-icons';
 
 interface TimeDialProps {
-  value: number; // 当前时间值（毫秒）
+  value: number; // 当前时间值（毫秒）- 仅用于滑动调整
   onChange: (delta: number) => void; // 变化量回调
   label: string; // 标签（如"开始"）
   color?: string;
 }
 
 export function TimeDial({
-  value,
   onChange,
   label,
   color = '#00ff88',
 }: TimeDialProps) {
   const lastAngle = useSharedValue(0);
   const accumulatedDelta = useSharedValue(0);
-
-  // 格式化时间显示
-  const formatTime = (ms: number) => {
-    const totalSeconds = ms / 1000;
-    const seconds = Math.floor(totalSeconds);
-    const minutes = Math.floor(seconds / 60);
-    const millis = Math.floor(ms % 1000);
-    return `${minutes}:${(seconds % 60).toString().padStart(2, '0')}.${millis.toString().padStart(3, '0').substring(0, 2)}`;
-  };
 
   const handleChange = useCallback((delta: number) => {
     onChange(delta);
@@ -54,7 +44,7 @@ export function TimeDial({
     });
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: accumulatedDelta.value * 0.3 }],
+    transform: [{ translateX: accumulatedDelta.value * 0.2 }],
   }));
 
   return (
@@ -62,51 +52,44 @@ export function TimeDial({
       {/* 标签 */}
       <Text style={[styles.label, { color }]}>{label}</Text>
       
-      {/* 时间显示区域 - 可滑动 */}
+      {/* 微调按钮 - 可滑动 */}
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.dialArea, { borderColor: color }, animatedStyle]}>
-          <Text style={[styles.timeValue, { color }]}>
-            {formatTime(value)}
-          </Text>
-          <Text style={styles.hint}>← 滑动调整 →</Text>
+        <Animated.View style={[styles.buttonRow, animatedStyle]}>
+          <TouchableOpacity 
+            style={[styles.adjustBtn, { borderColor: color }]}
+            onPress={() => onChange(-100)}
+          >
+            <FontAwesome6 name="angles-left" size={12} color={color} />
+            <Text style={[styles.btnText, { color }]}>-100</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.adjustBtn, { borderColor: color }]}
+            onPress={() => onChange(-10)}
+          >
+            <FontAwesome6 name="angle-left" size={12} color={color} />
+            <Text style={[styles.btnText, { color }]}>-10</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.adjustBtn, { borderColor: color }]}
+            onPress={() => onChange(10)}
+          >
+            <FontAwesome6 name="angle-right" size={12} color={color} />
+            <Text style={[styles.btnText, { color }]}>+10</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.adjustBtn, { borderColor: color }]}
+            onPress={() => onChange(100)}
+          >
+            <FontAwesome6 name="angles-right" size={12} color={color} />
+            <Text style={[styles.btnText, { color }]}>+100</Text>
+          </TouchableOpacity>
         </Animated.View>
       </GestureDetector>
       
-      {/* 微调按钮 - 紧凑布局 */}
-      <View style={styles.buttonRow}>
-        <TouchableOpacity 
-          style={[styles.adjustBtn, { borderColor: color }]}
-          onPress={() => onChange(-100)}
-        >
-          <FontAwesome6 name="angles-left" size={12} color={color} />
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.adjustBtn, { borderColor: color }]}
-          onPress={() => onChange(-10)}
-        >
-          <FontAwesome6 name="angle-left" size={12} color={color} />
-        </TouchableOpacity>
-        
-        <View style={styles.divider} />
-        
-        <TouchableOpacity 
-          style={[styles.adjustBtn, { borderColor: color }]}
-          onPress={() => onChange(10)}
-        >
-          <FontAwesome6 name="angle-right" size={12} color={color} />
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.adjustBtn, { borderColor: color }]}
-          onPress={() => onChange(100)}
-        >
-          <FontAwesome6 name="angles-right" size={12} color={color} />
-        </TouchableOpacity>
-      </View>
-      
-      {/* 步长说明 */}
-      <Text style={styles.stepHint}>±10ms / ±100ms</Text>
+      <Text style={styles.hint}>← 滑动调整 →</Text>
     </View>
   );
 }
@@ -117,53 +100,34 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   label: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  dialArea: {
+  buttonRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    borderWidth: 2,
-    minWidth: 120,
+    gap: 6,
   },
-  timeValue: {
-    fontSize: 24,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
+  adjustBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+  },
+  btnText: {
+    fontSize: 10,
+    fontWeight: '500',
   },
   hint: {
     color: '#444',
     fontSize: 9,
-    marginTop: 4,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 10,
-    gap: 4,
-  },
-  adjustBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#222',
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  divider: {
-    width: 8,
-  },
-  stepHint: {
-    color: '#444',
-    fontSize: 9,
-    marginTop: 4,
+    marginTop: 6,
   },
 });
