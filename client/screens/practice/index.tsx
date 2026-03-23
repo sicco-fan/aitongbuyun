@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Animated,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from 'expo-router';
@@ -64,13 +65,17 @@ export default function PracticeScreen() {
   // 单词状态
   const [wordStatuses, setWordStatuses] = useState<WordStatus[]>([]);
   const [currentInput, setCurrentInput] = useState('');
+  const [completedWordCount, setCompletedWordCount] = useState(0); // 已完成的单词数
   
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isLooping, setIsLooping] = useState(true); // 是否循环播放
-  const [playCount, setPlayCount] = useState(0);
+  const [isLooping, setIsLooping] = useState(true);
   const soundRef = useRef<Audio.Sound | null>(null);
   const isMountedRef = useRef(true);
+  
+  // 错误闪烁动画
+  const errorAnimRef = useRef<Animated.Value>(new Animated.Value(0));
+  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // 语音输入
   const [isRecording, setIsRecording] = useState(false);
@@ -160,25 +165,20 @@ export default function PracticeScreen() {
   // 播放音频
   const playAudio = useCallback(async () => {
     if (!currentSentence?.audio_url) {
-      console.log('[播放] 句子没有音频');
-      Alert.alert('提示', '该句子暂无音频');
       return;
     }
     
     try {
-      // 如果已经在播放，继续播放
       if (soundRef.current && isPlaying) {
         return;
       }
       
-      // 如果有暂停的音频，继续播放
       if (soundRef.current && !isPlaying) {
         await soundRef.current.playAsync();
         setIsPlaying(true);
         return;
       }
       
-      // 创建新的音频播放
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
@@ -197,9 +197,7 @@ export default function PracticeScreen() {
           if (status.isLoaded) {
             if (status.didJustFinish) {
               setIsPlaying(false);
-              setPlayCount(prev => prev + 1);
               
-              // 如果开启循环，重新播放
               if (isLooping && isMountedRef.current) {
                 setTimeout(() => {
                   if (isLooping && isMountedRef.current && soundRef.current) {
@@ -221,7 +219,6 @@ export default function PracticeScreen() {
       
     } catch (error) {
       console.error('[播放] 失败:', error);
-      Alert.alert('播放失败', '无法播放音频，请重试');
     }
   }, [currentSentence, generateAudioUrl, isPlaying, isLooping]);
 
@@ -243,13 +240,10 @@ export default function PracticeScreen() {
       try {
         await soundRef.current.stopAsync();
         await soundRef.current.unloadAsync();
-      } catch (e) {
-        // 忽略
-      }
+      } catch (e) {}
       soundRef.current = null;
     }
     setIsPlaying(false);
-    setPlayCount(0);
   }, []);
 
   // 切换播放/暂停
@@ -270,10 +264,8 @@ export default function PracticeScreen() {
   useEffect(() => {
     if (!currentSentence) return;
     
-    // 停止之前的播放
     stopPlayback();
     
-    // 初始化单词状态
     const tokens = extractWords(currentSentence.text);
     setWordStatuses(tokens.map((token, index) => ({
       word: token.word,
@@ -285,10 +277,9 @@ export default function PracticeScreen() {
       isPunctuation: token.isPunctuation,
     })));
     setCurrentInput('');
+    setCompletedWordCount(0);
     setIsLooping(true);
-    setPlayCount(0);
     
-    // 延迟自动播放，让用户先看到句子
     const timer = setTimeout(() => {
       if (currentSentence.audio_url) {
         playAudio();
@@ -301,51 +292,84 @@ export default function PracticeScreen() {
     };
   }, [currentSentence?.id]);
 
-  // 处理输入变化
-  const handleInputChange = useCallback((text: string) => {
-    setCurrentInput(text);
-    
-    if (!text) {
-      setWordStatuses(prev => prev.map(w => ({ ...w, errorCharIndex: -1 })));
-      return;
+  // 显示错误闪烁效果
+  const showErrorFlash = useCallback(() => {
+    // 清除之前的定时器
+    if (errorTimeoutRef.current) {
+      clearTimeout(errorTimeoutRef.current);
     }
     
+    // 动画：快速闪红
+    Animated.sequence([
+      Animated.timing(errorAnimRef.current, {
+        toValue: 1,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(errorAnimRef.current, {
+        toValue: 0,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    // 0.15秒后清除错误状态
+    errorTimeoutRef.current = setTimeout(() => {
+      setWordStatuses(prev => prev.map(w => ({ ...w, errorCharIndex: -1 })));
+    }, 150);
+  }, []);
+
+  // 处理输入变化
+  const handleInputChange = useCallback((text: string) => {
     const inputLower = text.toLowerCase().trim();
-    let inputIndex = 0;
     
     setWordStatuses(prev => {
       const newStatuses = [...prev];
+      let inputIndex = 0;
+      let hasError = false;
+      let errorWordIndex = -1;
       
       for (let i = 0; i < newStatuses.length; i++) {
         const ws = newStatuses[i];
         if (ws.isPunctuation) continue;
         
         const wordLower = ws.word.toLowerCase();
+        
+        // 已经完成的单词
         if (ws.revealed) continue;
         
+        // 检查当前单词的匹配情况
         let allMatched = true;
         let firstErrorIndex = -1;
+        const matchedChars: boolean[] = [];
         
         for (let j = 0; j < wordLower.length; j++) {
           const inputCharIndex = inputIndex + j;
           if (inputCharIndex >= inputLower.length) {
             allMatched = false;
-            break;
+            matchedChars.push(false);
+            continue;
           }
           
-          if (inputLower[inputCharIndex] !== wordLower[j]) {
+          if (inputLower[inputCharIndex] === wordLower[j]) {
+            matchedChars.push(true);
+          } else {
+            matchedChars.push(false);
             allMatched = false;
-            firstErrorIndex = j;
-            break;
+            if (firstErrorIndex === -1) {
+              firstErrorIndex = j;
+            }
           }
         }
         
+        // 如果输入足够长且完全匹配
         if (allMatched && inputIndex + wordLower.length <= inputLower.length) {
           const nextInputIndex = inputIndex + wordLower.length;
           const nextChar = inputLower[nextInputIndex];
           
           const nextWord = newStatuses[i + 1];
           if (!nextWord || nextWord.isPunctuation || nextChar === ' ' || nextChar === undefined) {
+            // 单词匹配成功！
             newStatuses[i] = {
               ...ws,
               revealed: true,
@@ -354,34 +378,62 @@ export default function PracticeScreen() {
             };
             inputIndex = nextInputIndex + (nextChar === ' ' ? 1 : 0);
           } else {
+            // 后面还有内容但不匹配，继续处理
+            newStatuses[i] = {
+              ...ws,
+              revealedChars: matchedChars,
+              errorCharIndex: firstErrorIndex,
+            };
+            hasError = true;
+            errorWordIndex = i;
             break;
           }
         } else {
-          const matchedChars = [];
-          for (let j = 0; j < wordLower.length; j++) {
-            const inputCharIndex = inputIndex + j;
-            if (inputCharIndex < inputLower.length && inputLower[inputCharIndex] === wordLower[j]) {
-              matchedChars.push(true);
-            } else {
-              matchedChars.push(false);
-              if (firstErrorIndex === -1 && j < inputLower.length - inputIndex) {
-                firstErrorIndex = j;
-              }
-            }
-          }
-          
+          // 部分匹配或有错误
           newStatuses[i] = {
             ...ws,
             revealedChars: matchedChars,
             errorCharIndex: firstErrorIndex,
           };
+          
+          if (firstErrorIndex >= 0) {
+            hasError = true;
+            errorWordIndex = i;
+          }
           break;
         }
       }
       
+      // 更新输入框内容：只保留当前正在输入的部分
+      let newInput = '';
+      for (let i = 0; i < newStatuses.length; i++) {
+        const ws = newStatuses[i];
+        if (ws.isPunctuation) continue;
+        if (ws.revealed) continue;
+        
+        // 当前正在输入的单词，保留已输入的部分
+        const matchedLength = ws.revealedChars.filter(Boolean).length;
+        if (matchedLength > 0 && inputLower.length > 0) {
+          const currentWordInput = inputLower.slice(
+            inputLower.indexOf(ws.word.substring(0, 1)), 
+            inputLower.indexOf(ws.word.substring(0, 1)) + matchedLength + 1
+          );
+          newInput = currentWordInput || inputLower.slice(-matchedLength);
+        } else {
+          newInput = inputLower.slice(-text.length);
+        }
+        break;
+      }
+      
+      // 如果有错误，触发闪烁
+      if (hasError && errorWordIndex >= 0) {
+        showErrorFlash();
+      }
+      
+      setCurrentInput(newInput);
       return newStatuses;
     });
-  }, []);
+  }, [showErrorFlash]);
 
   // 检查是否完成
   useEffect(() => {
@@ -390,14 +442,12 @@ export default function PracticeScreen() {
     const allRevealed = wordStatuses.every(w => w.isPunctuation || w.revealed);
     
     if (allRevealed && wordStatuses.some(w => !w.isPunctuation)) {
-      // 完成当前句子
       handleSentenceComplete();
     }
   }, [wordStatuses]);
 
   // 句子完成处理
   const handleSentenceComplete = useCallback(async () => {
-    // 停止循环
     setIsLooping(false);
     pauseAudio();
     
@@ -409,10 +459,9 @@ export default function PracticeScreen() {
       console.error('标记完成失败:', e);
     }
     
-    // 显示成功提示并跳转
     setTimeout(() => {
       goToNextSentence();
-    }, 800);
+    }, 600);
   }, [currentSentence, materialId, pauseAudio]);
 
   // 跳转到下一句
@@ -435,7 +484,6 @@ export default function PracticeScreen() {
       return;
     }
     
-    // 暂停播放，避免干扰录音
     if (isPlaying) {
       await pauseAudio();
     }
@@ -454,7 +502,7 @@ export default function PracticeScreen() {
       setIsRecording(true);
     } catch (error) {
       console.error('开始录音失败:', error);
-      Alert.alert('录音失败', '无法启动录音，请重试');
+      Alert.alert('录音失败', '无法启动录音');
     }
   }, [hasRecordingPermission, isPlaying, pauseAudio]);
 
@@ -482,27 +530,20 @@ export default function PracticeScreen() {
         const data = await response.json();
         
         if (data.text) {
-          // 将识别结果追加到输入框
+          // 追加识别结果
           const newText = currentInput ? `${currentInput} ${data.text.toLowerCase()}` : data.text.toLowerCase();
           handleInputChange(newText);
         }
       }
     } catch (error) {
       console.error('语音识别失败:', error);
-      Alert.alert('识别失败', '语音识别失败，请重试');
     }
   }, [currentInput, handleInputChange]);
 
   // 跳过句子
   const skipSentence = useCallback(() => {
-    Alert.alert(
-      '跳过句子',
-      '确定要跳过这个句子吗？',
-      [
-        { text: '取消', style: 'cancel' },
-        { text: '确定', onPress: () => { stopPlayback(); goToNextSentence(); } },
-      ]
-    );
+    stopPlayback();
+    goToNextSentence();
   }, [stopPlayback, goToNextSentence]);
 
   // 清理
@@ -514,6 +555,9 @@ export default function PracticeScreen() {
       if (recordingRef.current) {
         recordingRef.current.stopAndUnloadAsync();
       }
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -522,9 +566,6 @@ export default function PracticeScreen() {
       <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
         <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={theme.primary} />
-          <ThemedText variant="body" color={theme.textMuted} style={{ marginTop: Spacing.md }}>
-            加载中...
-          </ThemedText>
         </ThemedView>
       </Screen>
     );
@@ -534,30 +575,12 @@ export default function PracticeScreen() {
     return (
       <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
         <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }}>
-          <View style={{
-            width: 80,
-            height: 80,
-            borderRadius: BorderRadius.full,
-            backgroundColor: theme.error + '15',
-            justifyContent: 'center',
-            alignItems: 'center',
-            marginBottom: Spacing.lg,
-          }}>
-            <FontAwesome6 name="file-circle-xmark" size={36} color={theme.error} />
-          </View>
-          <ThemedText variant="bodyMedium" color={theme.textPrimary} style={{ marginBottom: Spacing.sm }}>
+          <FontAwesome6 name="file-circle-xmark" size={48} color={theme.error} />
+          <ThemedText variant="body" color={theme.textPrimary} style={{ marginTop: Spacing.lg }}>
             素材未准备好
           </ThemedText>
-          <ThemedText variant="small" color={theme.textMuted} style={{ textAlign: 'center', marginBottom: Spacing.xl }}>
-            请先在后台管理中完成时间轴编辑并切分音频
-          </ThemedText>
           <TouchableOpacity 
-            style={{ 
-              paddingHorizontal: Spacing.xl, 
-              paddingVertical: Spacing.md, 
-              backgroundColor: theme.primary, 
-              borderRadius: BorderRadius.lg 
-            }}
+            style={{ marginTop: Spacing.xl, padding: Spacing.lg, backgroundColor: theme.primary, borderRadius: BorderRadius.lg }}
             onPress={() => router.back()}
           >
             <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>返回</ThemedText>
@@ -577,8 +600,23 @@ export default function PracticeScreen() {
         <View style={styles.headerInfo}>
           <ThemedText variant="caption" color={theme.textMuted} numberOfLines={1}>{material.title}</ThemedText>
           <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-            句子 {currentIndex + 1} / {sentences.length}
+            {currentIndex + 1} / {sentences.length}
           </ThemedText>
+        </View>
+        {/* 右侧小控制按钮 */}
+        <View style={styles.headerControls}>
+          <TouchableOpacity 
+            style={[styles.smallControlBtn, isLooping && styles.smallControlBtnActive]}
+            onPress={toggleLoop}
+          >
+            <FontAwesome6 name="repeat" size={14} color={isLooping ? theme.primary : theme.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.smallControlBtn, isPlaying && styles.smallControlBtnActive]}
+            onPress={togglePlayPause}
+          >
+            <FontAwesome6 name={isPlaying ? "pause" : "play"} size={14} color={isPlaying ? theme.primary : theme.textMuted} />
+          </TouchableOpacity>
         </View>
       </View>
       
@@ -595,16 +633,7 @@ export default function PracticeScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Sentence Display */}
-        <View style={styles.sentenceCard}>
-          <View style={styles.sentenceHeader}>
-            <View style={styles.sentenceIconContainer}>
-              <FontAwesome6 name="quote-left" size={14} color={theme.primary} />
-            </View>
-            <ThemedText variant="caption" color={theme.textMuted}>
-              听写句子
-            </ThemedText>
-          </View>
-          
+        <Animated.View style={[styles.sentenceCard, { opacity: Animated.subtract(1, errorAnimRef.current) }]}>
           <View style={styles.wordContainer}>
             {wordStatuses.map((ws, idx) => (
               <View key={idx} style={styles.wordWrapper}>
@@ -630,6 +659,7 @@ export default function PracticeScreen() {
                         style={[
                           styles.char,
                           !ws.revealed && !ws.revealedChars[charIdx] && styles.hiddenChar,
+                          ws.errorCharIndex === charIdx && styles.errorChar,
                         ]}
                       >
                         {ws.revealed || ws.revealedChars[charIdx] ? char : '_'}
@@ -640,45 +670,7 @@ export default function PracticeScreen() {
               </View>
             ))}
           </View>
-        </View>
-        
-        {/* Audio Controls */}
-        <View style={styles.audioControls}>
-          {/* Play/Pause Button */}
-          <TouchableOpacity 
-            style={[styles.playBtn, isPlaying && styles.playBtnActive]}
-            onPress={togglePlayPause}
-          >
-            <FontAwesome6 
-              name={isPlaying ? "pause" : "play"} 
-              size={24} 
-              color={isPlaying ? theme.buttonPrimaryText : theme.primary} 
-            />
-          </TouchableOpacity>
-          
-          {/* Loop Toggle */}
-          <TouchableOpacity 
-            style={[styles.loopBtn, isLooping && styles.loopBtnActive]}
-            onPress={toggleLoop}
-          >
-            <FontAwesome6 
-              name="repeat" 
-              size={18} 
-              color={isLooping ? theme.primary : theme.textMuted} 
-            />
-            <ThemedText variant="tiny" color={isLooping ? theme.primary : theme.textMuted}>
-              循环
-            </ThemedText>
-          </TouchableOpacity>
-          
-          {/* Play Count */}
-          <View style={styles.playCount}>
-            <FontAwesome6 name="rotate" size={12} color={theme.textMuted} />
-            <ThemedText variant="caption" color={theme.textMuted}>
-              {playCount}次
-            </ThemedText>
-          </View>
-        </View>
+        </Animated.View>
         
         {/* Input Section */}
         <View style={styles.inputSection}>
@@ -690,7 +682,7 @@ export default function PracticeScreen() {
             placeholderTextColor={theme.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
-            multiline={false}
+            autoFocus
           />
           
           {/* Voice Input Button */}
@@ -709,8 +701,8 @@ export default function PracticeScreen() {
         
         {/* Skip Button */}
         <TouchableOpacity style={styles.skipBtn} onPress={skipSentence}>
-          <FontAwesome6 name="forward-step" size={16} color={theme.textMuted} />
           <ThemedText variant="small" color={theme.textMuted}>跳过此句</ThemedText>
+          <FontAwesome6 name="forward-step" size={14} color={theme.textMuted} style={{ marginLeft: 4 }} />
         </TouchableOpacity>
       </ScrollView>
     </Screen>

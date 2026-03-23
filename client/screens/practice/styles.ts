@@ -9,7 +9,7 @@ export const createStyles = (theme: Theme) => {
     scrollContent: {
       flexGrow: 1,
       paddingHorizontal: Spacing.lg,
-      paddingTop: Spacing.lg,
+      paddingTop: Spacing.xl,
       paddingBottom: Spacing['3xl'],
     },
     
@@ -24,17 +24,32 @@ export const createStyles = (theme: Theme) => {
       borderBottomColor: theme.borderLight,
     },
     backBtn: {
-      width: 40,
-      height: 40,
+      width: 36,
+      height: 36,
       borderRadius: BorderRadius.full,
       backgroundColor: theme.backgroundTertiary,
       justifyContent: 'center',
       alignItems: 'center',
     },
     headerInfo: {
-      alignItems: 'center',
       flex: 1,
+      alignItems: 'center',
       paddingHorizontal: Spacing.md,
+    },
+    headerControls: {
+      flexDirection: 'row',
+      gap: Spacing.sm,
+    },
+    smallControlBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.backgroundTertiary,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    smallControlBtnActive: {
+      backgroundColor: theme.primary + '15',
     },
     
     // Progress
@@ -44,7 +59,7 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: theme.backgroundDefault,
     },
     progressBar: {
-      height: 4,
+      height: 3,
       backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.full,
       overflow: 'hidden',
@@ -60,28 +75,14 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.xl,
       padding: Spacing.xl,
-      marginBottom: Spacing.lg,
+      marginBottom: Spacing.xl,
       borderWidth: 1,
       borderColor: theme.borderLight,
       shadowColor: theme.primary,
       shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.04,
-      shadowRadius: 8,
-      elevation: 2,
-    },
-    sentenceHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: Spacing.lg,
-      gap: Spacing.sm,
-    },
-    sentenceIconContainer: {
-      width: 28,
-      height: 28,
-      borderRadius: BorderRadius.md,
-      backgroundColor: theme.primary + '12',
-      justifyContent: 'center',
-      alignItems: 'center',
+      shadowOpacity: 0.03,
+      shadowRadius: 6,
+      elevation: 1,
     },
     wordContainer: {
       flexDirection: 'row',
@@ -96,56 +97,15 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
     },
     char: {
-      fontSize: 24,
+      fontSize: 26,
       fontWeight: '600',
       letterSpacing: 1,
     },
     hiddenChar: {
-      opacity: 0.4,
+      opacity: 0.35,
     },
-    
-    // Audio Controls
-    audioControls: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: Spacing.lg,
-      marginBottom: Spacing.xl,
-      paddingVertical: Spacing.md,
-    },
-    playBtn: {
-      width: 64,
-      height: 64,
-      borderRadius: BorderRadius.full,
-      backgroundColor: theme.primary + '15',
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderWidth: 2,
-      borderColor: theme.primary,
-    },
-    playBtnActive: {
-      backgroundColor: theme.primary,
-    },
-    loopBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: Spacing.md,
-      paddingVertical: Spacing.sm,
-      borderRadius: BorderRadius.lg,
-      backgroundColor: theme.backgroundTertiary,
-    },
-    loopBtnActive: {
-      backgroundColor: theme.primary + '15',
-    },
-    playCount: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: Spacing.xs,
-      paddingHorizontal: Spacing.md,
-      paddingVertical: Spacing.sm,
-      borderRadius: BorderRadius.lg,
-      backgroundColor: theme.backgroundTertiary,
+    errorChar: {
+      // 错误字符由 color 控制，无需额外样式
     },
     
     // Input Section
@@ -153,7 +113,7 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
       alignItems: 'center',
       gap: Spacing.md,
-      marginBottom: Spacing.lg,
+      marginBottom: Spacing.xl,
     },
     input: {
       flex: 1,
@@ -163,8 +123,9 @@ export const createStyles = (theme: Theme) => {
       borderColor: theme.borderLight,
       paddingHorizontal: Spacing.xl,
       paddingVertical: Spacing.lg,
-      fontSize: 18,
+      fontSize: 20,
       color: theme.textPrimary,
+      fontWeight: '500',
     },
     voiceBtn: {
       width: 60,
@@ -186,7 +147,6 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: Spacing.sm,
       padding: Spacing.md,
       borderRadius: BorderRadius.lg,
       backgroundColor: theme.backgroundTertiary,
