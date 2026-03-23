@@ -79,6 +79,9 @@ export default function PracticeScreen() {
   const [playbackRate, setPlaybackRate] = useState(1.0); // 语速 0.5-2.0
   const soundRef = useRef<Audio.Sound | null>(null);
   const isMountedRef = useRef(true);
+  const isLoopingRef = useRef(true); // 用于在回调中获取最新的循环状态
+  const volumeRef = useRef(1.0); // 用于在回调中获取最新的音量
+  const playbackRateRef = useRef(1.0); // 用于在回调中获取最新的语速
   
   // 错误闪烁动画
   const errorAnimRef = useRef<Animated.Value>(new Animated.Value(0));
@@ -211,9 +214,10 @@ export default function PracticeScreen() {
             if (status.didJustFinish) {
               setIsPlaying(false);
               
-              if (isLooping && isMountedRef.current) {
+              // 使用 ref 获取最新的循环状态
+              if (isLoopingRef.current && isMountedRef.current) {
                 setTimeout(() => {
-                  if (isLooping && isMountedRef.current && soundRef.current) {
+                  if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
                     soundRef.current.replayAsync();
                     setIsPlaying(true);
                   }
@@ -237,6 +241,7 @@ export default function PracticeScreen() {
 
   // 更新音量
   const updateVolume = useCallback(async (newVolume: number) => {
+    volumeRef.current = newVolume;
     setVolume(newVolume);
     if (soundRef.current) {
       await soundRef.current.setVolumeAsync(newVolume);
@@ -245,6 +250,7 @@ export default function PracticeScreen() {
 
   // 更新语速
   const updatePlaybackRate = useCallback(async (newRate: number) => {
+    playbackRateRef.current = newRate;
     setPlaybackRate(newRate);
     if (soundRef.current) {
       await soundRef.current.setRateAsync(newRate, true);
@@ -286,7 +292,10 @@ export default function PracticeScreen() {
 
   // 切换循环模式
   const toggleLoop = useCallback(() => {
-    setIsLooping(prev => !prev);
+    setIsLooping(prev => {
+      isLoopingRef.current = !prev;
+      return !prev;
+    });
   }, []);
 
   // 初始化当前句子
@@ -306,6 +315,7 @@ export default function PracticeScreen() {
       isPunctuation: token.isPunctuation,
     })));
     setCurrentInput('');
+    isLoopingRef.current = true;
     setIsLooping(true);
     
     const timer = setTimeout(() => {
@@ -468,6 +478,7 @@ export default function PracticeScreen() {
 
   // 句子完成处理
   const handleSentenceComplete = useCallback(async () => {
+    isLoopingRef.current = false;
     setIsLooping(false);
     pauseAudio();
     
@@ -695,22 +706,25 @@ export default function PracticeScreen() {
         
         {/* Speed Control */}
         <View style={styles.controlItem}>
-          <ThemedText variant="tiny" color={theme.textMuted}>语速</ThemedText>
-          <View style={styles.speedOptions}>
-            {[0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0].map((rate) => (
-              <TouchableOpacity
-                key={rate}
-                style={[styles.speedBtn, playbackRate === rate && styles.speedBtnActive]}
-                onPress={() => updatePlaybackRate(rate)}
-              >
-                <ThemedText 
-                  variant="tiny" 
-                  color={playbackRate === rate ? theme.buttonPrimaryText : theme.textMuted}
-                >
-                  {rate}x
-                </ThemedText>
-              </TouchableOpacity>
-            ))}
+          <ThemedText variant="tiny" color={theme.textMuted}>0.5x</ThemedText>
+          <View style={styles.speedSliderContainer}>
+            <View style={styles.speedSliderTrack}>
+              <View style={[styles.speedSliderFill, { width: `${((playbackRate - 0.5) / 1.5) * 100}%` }]} />
+              <View style={[styles.speedSliderThumb, { left: `${((playbackRate - 0.5) / 1.5) * 100}%` }]} />
+            </View>
+            <View style={styles.speedSliderTouchArea}>
+              {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((rate, i) => (
+                <TouchableOpacity
+                  key={rate}
+                  style={styles.speedSliderPoint}
+                  onPress={() => updatePlaybackRate(rate)}
+                />
+              ))}
+            </View>
+          </View>
+          <ThemedText variant="tiny" color={theme.textMuted}>2.0x</ThemedText>
+          <View style={styles.currentSpeedBadge}>
+            <ThemedText variant="small" color={theme.buttonPrimaryText}>{playbackRate}x</ThemedText>
           </View>
         </View>
       </View>

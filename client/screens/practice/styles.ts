@@ -122,20 +122,52 @@ export const createStyles = (theme: Theme) => {
       flex: 1,
       height: '100%',
     },
-    speedOptions: {
+    speedSliderContainer: {
       flex: 1,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 4,
+      height: 24,
+      position: 'relative',
+      justifyContent: 'center',
     },
-    speedBtn: {
-      paddingHorizontal: 6,
-      paddingVertical: 3,
-      borderRadius: BorderRadius.sm,
+    speedSliderTrack: {
+      height: 4,
       backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.full,
+      overflow: 'visible',
     },
-    speedBtnActive: {
+    speedSliderFill: {
+      height: '100%',
       backgroundColor: theme.primary,
+      borderRadius: BorderRadius.full,
+    },
+    speedSliderThumb: {
+      position: 'absolute',
+      top: -4,
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: theme.primary,
+      marginLeft: -6,
+    },
+    speedSliderTouchArea: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      flexDirection: 'row',
+    },
+    speedSliderPoint: {
+      flex: 1,
+      height: '100%',
+    },
+    currentSpeedBadge: {
+      minWidth: 40,
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: 2,
+      borderRadius: BorderRadius.sm,
+      backgroundColor: theme.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     
     // Sentence Card
