@@ -211,6 +211,10 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: theme.primary,
       borderRadius: BorderRadius.full,
     },
+    progressBarIndeterminate: {
+      width: '30%',
+      // 注意：动画效果需要在组件中使用 Animated API 实现
+    },
     progressText: {
       marginTop: Spacing.sm,
       fontSize: 12,

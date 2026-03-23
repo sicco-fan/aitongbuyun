@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   ScrollView,
   TouchableOpacity,
@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
+  Animated,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,7 +21,6 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { BorderRadius } from '@/constants/theme';
-import { createFormDataFile } from '@/utils';
 
 interface FileInfo {
   uri: string;
@@ -30,7 +30,122 @@ interface FileInfo {
 }
 
 // 后端服务地址 - 直接连接后端服务器，不经过 Metro 代理
-const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
+const BACKEND_URL = 'http://127.0.0.1:9091';
+
+/**
+ * 带进度的文件上传（使用 XMLHttpRequest）
+ * 注意：仅适用于小文件（< 50MB），大文件请使用 uploadLargeFile
+ */
+const uploadFileWithProgress = (
+  fileUri: string,
+  fileName: string,
+  mimeType: string,
+  params: Record<string, string>,
+  onProgress: (progress: number, uploaded: number, total: number) => void
+): Promise<{ status: number; body: string }> => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // 读取文件内容为 base64
+      onProgress(0, 0, 1);
+      const base64Content = await (FileSystem as any).readAsStringAsync(fileUri, {
+        encoding: 'base64',
+      });
+      
+      onProgress(50, 0.5, 1); // 读取完成 50%
+      
+      // 将 base64 转换为 Blob
+      const byteCharacters = atob(base64Content);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: mimeType });
+      
+      // 构建 FormData
+      const formData = new FormData();
+      formData.append('file', blob, fileName);
+      
+      // 添加其他参数
+      for (const [key, value] of Object.entries(params)) {
+        formData.append(key, value);
+      }
+      
+      // 创建 XHR
+      const xhr = new XMLHttpRequest();
+      
+      // 进度监听
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          // 将上传进度映射到 50%-100% 区间（前 50% 是文件读取）
+          const uploadProgress = (event.loaded / event.total) * 50;
+          const totalProgress = 50 + uploadProgress;
+          onProgress(totalProgress, event.loaded, event.total);
+        }
+      });
+      
+      // 完成监听
+      xhr.addEventListener('load', () => {
+        resolve({
+          status: xhr.status,
+          body: xhr.responseText,
+        });
+      });
+      
+      // 错误监听
+      xhr.addEventListener('error', () => {
+        reject(new Error('网络错误，上传失败'));
+      });
+      
+      xhr.addEventListener('abort', () => {
+        reject(new Error('上传已取消'));
+      });
+      
+      // 超时设置（10分钟）
+      xhr.timeout = 10 * 60 * 1000;
+      xhr.addEventListener('timeout', () => {
+        reject(new Error('上传超时，请检查网络连接'));
+      });
+      
+      // 发送请求
+      xhr.open('POST', `${BACKEND_URL}/api/v1/materials`);
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.send(formData);
+      
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+
+/**
+ * 大文件上传（使用 FileSystem.uploadAsync）
+ * 不支持精确进度，但更稳定
+ */
+const uploadLargeFile = async (
+  fileUri: string,
+  fileName: string,
+  params: Record<string, string>
+): Promise<{ status: number; body: string }> => {
+  const uploadResult = await (FileSystem as any).uploadAsync(
+    `${BACKEND_URL}/api/v1/materials`,
+    fileUri,
+    {
+      httpMethod: 'POST',
+      uploadType: (FileSystem as any).FileSystemUploadType.MULTIPART,
+      fieldName: 'file',
+      parameters: params,
+      headers: {
+        'Accept': 'application/json',
+      },
+    }
+  );
+  
+  return {
+    status: uploadResult.status,
+    body: uploadResult.body,
+  };
+};
 
 // 生成本地 ID
 const generateUploadId = () => {
@@ -94,6 +209,33 @@ export default function AddMaterialScreen() {
     visible: false,
     message: '',
   });
+
+  // 不确定进度条动画
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  
+  useEffect(() => {
+    if (uploadProgress === -1) {
+      // 启动循环动画
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(progressAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: false,
+          }),
+          Animated.timing(progressAnim, {
+            toValue: 0,
+            duration: 1000,
+            useNativeDriver: false,
+          }),
+        ])
+      ).start();
+    } else {
+      // 停止动画并重置
+      progressAnim.stopAnimation();
+      progressAnim.setValue(0);
+    }
+  }, [uploadProgress]);
 
   // 检测链接平台
   const handleLinkChange = (url: string) => {
@@ -335,7 +477,7 @@ export default function AddMaterialScreen() {
        * 接口：POST /api/v1/materials/download
        * Body 参数：url: string, title?: string
        */
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/download`, {
+      const response = await fetch(`${BACKEND_URL}/api/v1/materials/download`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -391,32 +533,50 @@ export default function AddMaterialScreen() {
     setUploadProgress(0);
 
     try {
-      // 使用绝对路径直接连接后端，绕过 Metro 代理
-      const baseUrl = 'http://127.0.0.1:9091';
-      
       console.log('开始上传文件:', { name: file.name, uri: file.uri, size: file.size, mimeType: file.mimeType });
-      console.log('后端地址:', baseUrl);
 
-      setUploadStatus('上传中...');
+      // 构建上传参数
+      const params: Record<string, string> = {
+        title: title,
+      };
+      if (description) {
+        params.description = description;
+      }
 
-      // 使用 FileSystem.uploadAsync 直接上传，绕过 Metro 代理
-      // 这个方法直接发送 HTTP 请求，不会经过 Metro 代理
-      const uploadResult = await (FileSystem as any).uploadAsync(
-        `${baseUrl}/api/v1/materials`,
-        file.uri,
-        {
-          httpMethod: 'POST',
-          uploadType: (FileSystem as any).FileSystemUploadType.MULTIPART,
-          fieldName: 'file',
-          parameters: {
-            title: title,
-            ...(description ? { description } : {}),
-          },
-          headers: {
-            'Accept': 'application/json',
-          },
-        }
-      );
+      const fileSizeMB = (file.size || 0) / 1024 / 1024;
+      const isLargeFile = fileSizeMB > 50;
+      
+      let uploadResult: { status: number; body: string };
+
+      if (isLargeFile) {
+        // 大文件使用 FileSystem.uploadAsync（不支持进度，但更稳定）
+        console.log('使用大文件上传模式');
+        setUploadStatus(`上传中... (${fileSizeMB.toFixed(1)} MB)`);
+        setUploadProgress(-1); // 使用 -1 表示不确定进度
+        
+        uploadResult = await uploadLargeFile(file.uri, file.name, params);
+      } else {
+        // 小文件使用带进度的上传
+        console.log('使用小文件上传模式（带进度）');
+        setUploadStatus('读取文件...');
+        
+        uploadResult = await uploadFileWithProgress(
+          file.uri,
+          file.name,
+          file.mimeType || 'video/mp4',
+          params,
+          (progress, uploaded, total) => {
+            if (progress < 50) {
+              setUploadStatus('读取文件...');
+            } else {
+              const uploadedMB = (uploaded / 1024 / 1024).toFixed(1);
+              const totalMB = (total / 1024 / 1024).toFixed(1);
+              setUploadStatus(`上传中... ${Math.round(progress)}% (${uploadedMB}/${totalMB} MB)`);
+            }
+            setUploadProgress(progress);
+          }
+        );
+      }
 
       console.log('上传结果状态:', uploadResult.status);
       console.log('上传响应:', uploadResult.body?.substring(0, 500));
@@ -426,13 +586,17 @@ export default function AddMaterialScreen() {
         
         if (data.success && data.material) {
           setUploadProgress(100);
-          setUploadStatus('上传成功！');
-          setUploadSuccess(true);
-          setSuccessDialog({
-            visible: true,
-            materialId: data.material.id,
-            title: data.material.title || title,
-          });
+          setUploadStatus('上传成功！正在处理音频...');
+          
+          // 延迟一下让用户看到成功状态
+          setTimeout(() => {
+            setUploadSuccess(true);
+            setSuccessDialog({
+              visible: true,
+              materialId: data.material.id,
+              title: data.material.title || title,
+            });
+          }, 500);
         } else {
           throw new Error(data.error || '上传失败');
         }
@@ -450,6 +614,7 @@ export default function AddMaterialScreen() {
     } catch (error) {
       console.error('上传失败:', error);
       setUploadStatus('');
+      setUploadProgress(0);
       setErrorDialog({ visible: true, message: `上传失败：${(error as Error).message}` });
     } finally {
       setUploading(false);
@@ -480,8 +645,8 @@ export default function AddMaterialScreen() {
             {uploadStatus || '正在处理...'}
           </ThemedText>
           
-          {/* 进度条 */}
-          {uploadProgress > 0 && (
+          {/* 进度条 - 小文件显示精确进度 */}
+          {uploadProgress > 0 && uploadProgress <= 100 && (
             <View style={styles.progressBarContainer}>
               <View 
                 style={[
@@ -492,11 +657,42 @@ export default function AddMaterialScreen() {
             </View>
           )}
           
+          {/* 大文件显示动画进度条 */}
+          {uploadProgress === -1 && (
+            <View style={styles.progressBarContainer}>
+              <Animated.View 
+                style={[
+                  styles.progressBarFill,
+                  {
+                    width: '30%',
+                    transform: [{
+                      translateX: progressAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-100, 250],
+                      }),
+                    }],
+                    backgroundColor: theme.primary,
+                  },
+                ]} 
+              />
+            </View>
+          )}
+          
           <ThemedText variant="small" color={theme.textMuted} style={styles.uploadingHint}>
-            {activeTab === 'link' 
-              ? '正在从视频平台下载音频，请稍候...' 
-              : '正在识别音频内容并分句，请稍候'}
+            {uploadProgress === -1 
+              ? '大文件上传中，请耐心等待，不要关闭页面...' 
+              : activeTab === 'link' 
+                ? '正在从视频平台下载音频，请稍候...' 
+                : '上传完成后将自动识别音频内容并分句'}
           </ThemedText>
+          
+          {/* 文件大小提示 */}
+          {file && file.size && (
+            <ThemedText variant="caption" color={theme.textMuted}>
+              文件大小: {(file.size / 1024 / 1024).toFixed(1)} MB
+              {file.size > 50 * 1024 * 1024 && ' (大文件)'}
+            </ThemedText>
+          )}
         </View>
       </Screen>
     );
