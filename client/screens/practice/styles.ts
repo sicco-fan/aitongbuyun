@@ -238,6 +238,31 @@ export const createStyles = (theme: Theme) => {
       opacity: 0.5,
     },
     
+    // 导航按钮区（句子切换）
+    navButtonRow: {
+      flexDirection: 'row',
+      gap: Spacing.md,
+      marginTop: Spacing.xl,
+      marginBottom: Spacing.lg,
+    },
+    navButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: BorderRadius.xl,
+      paddingVertical: Spacing.lg,
+      paddingHorizontal: Spacing.xl,
+    },
+    navButtonPrev: {
+      backgroundColor: theme.backgroundTertiary,
+      borderWidth: 2,
+      borderColor: theme.border,
+    },
+    navButtonNext: {
+      backgroundColor: theme.primary,
+    },
+    
     // 完成界面
     completedContainer: {
       flex: 1,

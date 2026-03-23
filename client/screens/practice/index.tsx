@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Text,
+  Keyboard,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useSafeSearchParams } from '@/hooks/useSafeRouter';
@@ -41,7 +43,8 @@ interface Material {
 interface WordStatus {
   word: string; // 纯单词（无标点）
   displayText: string; // 显示文本（包含标点，如 "hello," 或 "world!"）
-  revealed: boolean;
+  revealed: boolean; // 整个单词是否已完全显示
+  revealedChars: boolean[]; // 每个字母是否已显示
   index: number;
   isPunctuation: boolean; // 是否是标点符号
 }
@@ -83,14 +86,17 @@ export default function PracticeScreen() {
   const isLoopingRef = useRef(true);
   const sentenceTimesRef = useRef({ start: 0, end: 0 });
   const isRecordingRef = useRef(false); // 使用 ref 跟踪录音状态，避免闭包问题
+  const inputRef = useRef<TextInput>(null); // 输入框引用
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
   
-  // 计算完成进度（单词数）
-  const totalWords = wordStatuses.filter(w => !w.isPunctuation).length;
-  const completedWords = wordStatuses.filter(w => !w.isPunctuation && w.revealed).length;
-  const sentenceProgress = totalWords > 0 ? Math.round((completedWords / totalWords) * 100) : 0;
+  // 计算完成进度（字母数）
+  const totalChars = wordStatuses.filter(w => !w.isPunctuation).reduce((sum, w) => sum + w.word.length, 0);
+  const completedChars = wordStatuses.filter(w => !w.isPunctuation).reduce((sum, w) => {
+    return sum + w.revealedChars.filter(Boolean).length;
+  }, 0);
+  const sentenceProgress = totalChars > 0 ? Math.round((completedChars / totalChars) * 100) : 0;
 
   // 初始化录音权限
   useEffect(() => {
@@ -137,6 +143,7 @@ export default function PracticeScreen() {
         word: token.word,
         displayText: token.displayText,
         revealed: token.isPunctuation, // 标点符号默认显示
+        revealedChars: token.isPunctuation ? [] : new Array(token.word.length).fill(false),
         index,
         isPunctuation: token.isPunctuation,
       })));
@@ -154,6 +161,11 @@ export default function PracticeScreen() {
       // 自动开始循环播放
       isLoopingRef.current = true;
       startSentenceLoopPlayback();
+      
+      // 自动聚焦输入框
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
     
     return () => {
@@ -191,9 +203,9 @@ export default function PracticeScreen() {
     return result;
   };
 
-  // 标准化单词（用于比较）
-  const normalizeWord = (word: string): string => {
-    return word.toLowerCase().replace(/\W/g, '').trim();
+  // 标准化字符（用于比较）
+  const normalizeChar = (char: string): string => {
+    return char.toLowerCase();
   };
 
   // 开始句子片段循环播放
@@ -297,38 +309,46 @@ export default function PracticeScreen() {
     }
   }, [isPlaying, pausePlayback, resumePlayback, startSentenceLoopPlayback]);
 
-  // 验证单词（不显示错误提示）
-  const checkWord = useCallback((inputWord: string) => {
-    const normalizedInput = normalizeWord(inputWord);
-    if (!normalizedInput) return false;
-
-    let matched = false;
+  // 实时检查输入并更新字母显示
+  const checkInputRealtime = useCallback((input: string) => {
+    if (!input) return;
+    
+    const inputLower = input.toLowerCase();
+    let matchedAny = false;
+    
     setWordStatuses(prev => {
       const newStatuses = [...prev];
-      for (let i = 0; i < newStatuses.length; i++) {
-        if (!newStatuses[i].isPunctuation && !newStatuses[i].revealed && 
-            normalizeWord(newStatuses[i].word) === normalizedInput) {
-          newStatuses[i] = { ...newStatuses[i], revealed: true };
-          matched = true;
-          break;
+      
+      // 遍历所有未完成的单词
+      for (let wordIdx = 0; wordIdx < newStatuses.length; wordIdx++) {
+        const ws = newStatuses[wordIdx];
+        if (ws.isPunctuation || ws.revealed) continue;
+        
+        const wordLower = ws.word.toLowerCase();
+        
+        // 检查输入是否能匹配到这个单词的开头
+        if (wordLower.startsWith(inputLower)) {
+          matchedAny = true;
+          
+          // 更新已显示的字母
+          const newRevealedChars = [...ws.revealedChars];
+          for (let i = 0; i < inputLower.length && i < wordLower.length; i++) {
+            newRevealedChars[i] = true;
+          }
+          newStatuses[wordIdx] = { ...ws, revealedChars: newRevealedChars };
+          
+          // 如果整个单词都输入了，标记为完成
+          if (inputLower.length >= wordLower.length) {
+            newStatuses[wordIdx] = { ...newStatuses[wordIdx], revealed: true };
+          }
+          break; // 只匹配第一个符合条件的单词
         }
       }
+      
       return newStatuses;
     });
-
-    setTotalAttempts(prev => prev + 1);
-
-    if (matched) {
-      setFeedbackWord(inputWord);
-      setFeedback('correct');
-      setTimeout(() => {
-        setFeedback(null);
-      }, 300);
-    }
-    // 不再显示错误提示
-    // 自动跳转由 useEffect 监听 wordStatuses 变化处理
     
-    return matched;
+    return matchedAny;
   }, []);
 
   // 监听单词状态变化，自动跳转到下一句
@@ -373,24 +393,42 @@ export default function PracticeScreen() {
     }
   }, [wordStatuses, currentSentence, currentIndex, sentences.length, totalAttempts, stopPlayback, completed]);
 
-  // 处理输入变化（检测空格自动提交）
+  // 处理输入变化 - 实时匹配
   const handleInputChange = (text: string) => {
-    // 检测到空格时自动提交
+    const prevInput = currentInput;
+    setCurrentInput(text);
+    
+    // 检测到空格时自动清空并继续
     if (text.includes(' ')) {
-      const word = text.replace(/\s/g, '').trim();
-      if (word) {
-        checkWord(word);
-      }
       setCurrentInput('');
-    } else {
-      setCurrentInput(text);
+      return;
+    }
+    
+    // 实时检查输入
+    if (text.length > 0) {
+      const matched = checkInputRealtime(text);
+      
+      // 如果输入了一个完整单词（匹配到了），且输入长度等于单词长度，清空输入
+      setWordStatuses(prev => {
+        const matchedWord = prev.find(w => !w.isPunctuation && !w.revealed && 
+          w.word.toLowerCase().startsWith(text.toLowerCase()) &&
+          w.word.length === text.length);
+        if (matchedWord) {
+          // 找到了完整匹配的单词，清空输入
+          setTimeout(() => setCurrentInput(''), 50);
+          setFeedbackWord(text);
+          setFeedback('correct');
+          setTimeout(() => setFeedback(null), 300);
+        }
+        return prev;
+      });
     }
   };
 
   // 处理键盘提交
   const handleSubmit = () => {
     if (currentInput.trim()) {
-      checkWord(currentInput.trim());
+      checkInputRealtime(currentInput.trim());
       setCurrentInput('');
     }
   };
@@ -499,9 +537,10 @@ export default function PracticeScreen() {
 
         const data = await response.json();
         if (data.text) {
+          // 对于语音识别的结果，逐词匹配
           const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
           for (const word of words) {
-            checkWord(word);
+            checkInputRealtime(word);
           }
         }
       }
@@ -546,7 +585,7 @@ export default function PracticeScreen() {
           if (data.text) {
             const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
             for (const word of words) {
-              checkWord(word);
+              checkInputRealtime(word);
             }
           }
         }
@@ -592,6 +631,79 @@ export default function PracticeScreen() {
     } else {
       setCompleted(true);
     }
+  };
+
+  // 渲染单词显示（带字母进度）
+  const renderWordDisplay = (ws: WordStatus, idx: number) => {
+    if (ws.isPunctuation) {
+      return (
+        <Text 
+          key={idx}
+          style={{ color: theme.textSecondary, marginHorizontal: 2, fontSize: 16 }}
+        >
+          {ws.displayText}
+        </Text>
+      );
+    }
+    
+    // 如果单词已完成或正在提示，显示完整单词
+    if (ws.revealed) {
+      return (
+        <TouchableOpacity 
+          key={idx} 
+          style={[styles.wordSlot, styles.wordCorrect]}
+          activeOpacity={0.7}
+        >
+          <Text style={{ color: theme.success, fontWeight: '600', fontSize: 16 }}>
+            {ws.displayText}
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+    
+    if (hintWordIndex === idx) {
+      return (
+        <TouchableOpacity 
+          key={idx} 
+          style={[styles.wordSlot, styles.wordHint]}
+          onPress={() => showHintForWord(idx)}
+          activeOpacity={0.7}
+        >
+          <Text style={{ color: '#F59E0B', fontWeight: '600', fontSize: 16 }}>
+            {ws.displayText}
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+    
+    // 显示字母进度
+    const chars = ws.word.split('');
+    
+    return (
+      <TouchableOpacity 
+        key={idx} 
+        style={[styles.wordSlot, styles.wordHidden]}
+        onPress={() => showHintForWord(idx)}
+        activeOpacity={0.7}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {chars.map((char, charIdx) => (
+            <Text 
+              key={charIdx}
+              style={{
+                color: ws.revealedChars[charIdx] ? theme.success : theme.textMuted,
+                fontWeight: ws.revealedChars[charIdx] ? '600' : '400',
+                fontSize: 16,
+                minWidth: 10,
+                textAlign: 'center',
+              }}
+            >
+              {ws.revealedChars[charIdx] ? char : '_'}
+            </Text>
+          ))}
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   if (loading) {
@@ -735,63 +847,10 @@ export default function PracticeScreen() {
         {/* Sentence Display */}
         <View style={styles.sentenceSection}>
           <ThemedText variant="caption" color={theme.textMuted} style={styles.sentenceLabel}>
-            句子进度：{completedWords}/{totalWords} 单词 ({sentenceProgress}%)
+            句子进度：{completedChars}/{totalChars} 字母 ({sentenceProgress}%)
           </ThemedText>
           <View style={styles.wordsContainer}>
-            {wordStatuses.map((ws, idx) => (
-              ws.isPunctuation ? (
-                // 标点符号直接显示
-                <ThemedText 
-                  key={idx}
-                  variant="smallMedium" 
-                  color={theme.textSecondary}
-                  style={{ marginHorizontal: 2 }}
-                >
-                  {ws.displayText}
-                </ThemedText>
-              ) : (
-                // 单词显示
-                <TouchableOpacity 
-                  key={idx} 
-                  style={[
-                    styles.wordSlot, 
-                    ws.revealed ? styles.wordCorrect : styles.wordHidden,
-                    hintWordIndex === idx && styles.wordHint, // 提示状态
-                  ]}
-                  onPress={() => !ws.revealed && showHintForWord(idx)}
-                  activeOpacity={0.7}
-                >
-                  {ws.revealed ? (
-                    // 已答对 - 显示绿色
-                    <ThemedText 
-                      variant="smallMedium" 
-                      color={theme.success}
-                      style={styles.wordTextCorrect}
-                    >
-                      {ws.displayText}
-                    </ThemedText>
-                  ) : hintWordIndex === idx ? (
-                    // 提示状态 - 显示单词（橙色）
-                    <ThemedText 
-                      variant="smallMedium" 
-                      color="#F59E0B"
-                      style={styles.wordTextHint}
-                    >
-                      {ws.displayText}
-                    </ThemedText>
-                  ) : (
-                    // 未答 - 显示下划线
-                    <ThemedText 
-                      variant="small" 
-                      color={theme.textMuted}
-                      style={styles.wordTextHidden}
-                    >
-                      {'_'.repeat(Math.min(ws.word.length, 6))}
-                    </ThemedText>
-                  )}
-                </TouchableOpacity>
-              )
-            ))}
+            {wordStatuses.map((ws, idx) => renderWordDisplay(ws, idx))}
           </View>
           <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 8, textAlign: 'center' }}>
             点击未答出的单词可以查看提示
@@ -801,10 +860,11 @@ export default function PracticeScreen() {
         {/* Input Section */}
         <View style={styles.inputSection}>
           <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.inputLabel}>
-            输入单词（空格或回车提交，自动继续）
+            直接输入字母，实时匹配
           </ThemedText>
           <View style={styles.inputRow}>
             <TextInput
+              ref={inputRef}
               style={styles.textInput}
               value={currentInput}
               onChangeText={handleInputChange}
@@ -813,6 +873,7 @@ export default function PracticeScreen() {
               placeholderTextColor={theme.textMuted}
               autoCapitalize="none"
               autoCorrect={false}
+              autoFocus={true}
               returnKeyType="done"
             />
             <TouchableOpacity
@@ -846,26 +907,26 @@ export default function PracticeScreen() {
         </View>
 
         {/* Navigation Buttons */}
-        <View style={styles.buttonRow}>
+        <View style={styles.navButtonRow}>
           <TouchableOpacity
-            style={[styles.button, styles.secondaryButton, currentIndex === 0 && styles.buttonDisabled]}
+            style={[styles.navButton, styles.navButtonPrev, currentIndex === 0 && styles.buttonDisabled]}
             onPress={goToPrevSentence}
             disabled={currentIndex === 0}
           >
-            <FontAwesome6 name="chevron-left" size={14} color={currentIndex === 0 ? theme.textMuted : theme.textPrimary} style={{ marginRight: 8 }} />
-            <ThemedText variant="smallMedium" color={currentIndex === 0 ? theme.textMuted : theme.textPrimary}>
+            <FontAwesome6 name="chevron-left" size={16} color={currentIndex === 0 ? theme.textMuted : theme.textPrimary} />
+            <ThemedText variant="smallMedium" color={currentIndex === 0 ? theme.textMuted : theme.textPrimary} style={{ marginLeft: 6 }}>
               上一句
             </ThemedText>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.button, styles.primaryButton]}
+            style={[styles.navButton, styles.navButtonNext]}
             onPress={goToNextSentence}
           >
             <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
               {currentIndex === sentences.length - 1 ? '完成' : '下一句'}
             </ThemedText>
             {currentIndex < sentences.length - 1 && (
-              <FontAwesome6 name="chevron-right" size={14} color={theme.buttonPrimaryText} style={{ marginLeft: 8 }} />
+              <FontAwesome6 name="chevron-right" size={16} color={theme.buttonPrimaryText} style={{ marginLeft: 6 }} />
             )}
           </TouchableOpacity>
         </View>
