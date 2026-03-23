@@ -179,13 +179,11 @@ export const createStyles = (theme: Theme) => {
     
     // Input Section
     inputSection: {
-      flexDirection: 'row',
       alignItems: 'center',
-      gap: Spacing.md,
       marginBottom: Spacing.xl,
     },
     input: {
-      flex: 1,
+      width: '80%',
       backgroundColor: '#E8F5E9',
       borderRadius: BorderRadius.xl,
       borderWidth: 2,
@@ -198,14 +196,15 @@ export const createStyles = (theme: Theme) => {
       textAlign: 'center',
     },
     voiceBtn: {
-      width: 60,
-      height: 60,
-      borderRadius: BorderRadius.xl,
+      width: 56,
+      height: 56,
+      borderRadius: BorderRadius.full,
       backgroundColor: theme.primary + '15',
       justifyContent: 'center',
       alignItems: 'center',
       borderWidth: 2,
       borderColor: theme.primary,
+      marginTop: Spacing.lg,
     },
     voiceBtnActive: {
       backgroundColor: theme.error,

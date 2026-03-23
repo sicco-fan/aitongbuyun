@@ -806,19 +806,6 @@ export default function PracticeScreen() {
             autoCorrect={false}
             autoFocus
           />
-          
-          {/* Voice Input Button */}
-          <TouchableOpacity
-            style={[styles.voiceBtn, isRecording && styles.voiceBtnActive]}
-            onPressIn={startRecording}
-            onPressOut={stopRecordingAndRecognize}
-          >
-            <FontAwesome6 
-              name={isRecording ? "stop" : "microphone"} 
-              size={24} 
-              color={isRecording ? theme.buttonPrimaryText : theme.primary} 
-            />
-          </TouchableOpacity>
         </View>
         
         {/* Translation Display */}
@@ -830,7 +817,7 @@ export default function PracticeScreen() {
           </View>
         )}
         
-        {/* Navigation Buttons */}
+        {/* Navigation Buttons with Voice Input in Center */}
         <View style={styles.navButtons}>
           <TouchableOpacity 
             style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
@@ -838,6 +825,19 @@ export default function PracticeScreen() {
             disabled={currentIndex === 0}
           >
             <FontAwesome6 name="chevron-left" size={18} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
+          </TouchableOpacity>
+          
+          {/* Voice Input Button (Center) */}
+          <TouchableOpacity
+            style={[styles.voiceBtn, isRecording && styles.voiceBtnActive]}
+            onPressIn={startRecording}
+            onPressOut={stopRecordingAndRecognize}
+          >
+            <FontAwesome6 
+              name={isRecording ? "stop" : "microphone"} 
+              size={24} 
+              color={isRecording ? theme.buttonPrimaryText : theme.primary} 
+            />
           </TouchableOpacity>
           
           <TouchableOpacity 
