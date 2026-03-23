@@ -57,16 +57,56 @@ export const createStyles = (theme: Theme) => {
     sentenceText: {
       lineHeight: 28,
       textAlign: 'center',
+      marginBottom: Spacing.md,
+    },
+    // 匹配信息
+    matchInfo: {
+      borderTopWidth: 1,
+      borderTopColor: theme.borderLight,
+      paddingTop: Spacing.md,
+    },
+    matchLabels: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      marginBottom: Spacing.sm,
+    },
+    matchLabelItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.xs,
+    },
+    matchDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    matchStatus: {
+      alignItems: 'center',
+    },
+    matchSuccess: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.xs,
     },
     // 时间轴可视化
     timelineSection: {
       marginBottom: Spacing.lg,
     },
+    timelineHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.sm,
+    },
+    rematchBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.xs,
+    },
     timelineContainer: {
-      height: 48,
+      height: 56,
       backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.md,
-      marginTop: Spacing.sm,
       overflow: 'hidden',
       position: 'relative',
     },
@@ -77,27 +117,36 @@ export const createStyles = (theme: Theme) => {
       right: 0,
       bottom: 0,
     },
-    timelineBlock: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      borderRadius: 4,
-    },
     selectionBlock: {
       position: 'absolute',
-      top: 4,
-      bottom: 4,
-      backgroundColor: theme.primary + '30',
-      borderRadius: 4,
+      top: 8,
+      bottom: 8,
+      backgroundColor: theme.primary + '25',
+      borderRadius: 6,
       borderWidth: 2,
       borderColor: theme.primary,
+    },
+    wordMarker: {
+      position: 'absolute',
+      top: -4,
+      width: 4,
+      height: 4,
+      borderRadius: 2,
+    },
+    startMarker: {
+      left: 0,
+      backgroundColor: theme.primary,
+    },
+    endMarker: {
+      right: 0,
+      backgroundColor: theme.success,
     },
     playhead: {
       position: 'absolute',
       top: 0,
       bottom: 0,
       width: 2,
-      backgroundColor: theme.primary,
+      backgroundColor: theme.error,
     },
     timelineTouchLayer: {
       position: 'absolute',
@@ -113,7 +162,7 @@ export const createStyles = (theme: Theme) => {
       paddingHorizontal: Spacing.xs,
     },
     timeLabel: {
-      fontSize: 10,
+      fontSize: 11,
     },
     // 滑块范围选择
     rangeSection: {

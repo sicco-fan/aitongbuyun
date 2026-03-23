@@ -541,6 +541,208 @@ router.post('/:id/save-sentences', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/v1/materials/:id/word-timestamps
+ * 获取音频的单词级时间戳（用于自动匹配句子位置）
+ */
+router.post('/:id/word-timestamps', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const supabase = getSupabaseClient();
+    
+    // 获取材料
+    const { data: material, error: materialError } = await supabase
+      .from('materials')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (materialError || !material) {
+      return res.status(404).json({ error: '材料不存在' });
+    }
+
+    // 生成签名 URL
+    const audioUrl = await storage.generatePresignedUrl({
+      key: material.audio_url,
+      expireTime: 86400,
+    });
+
+    console.log(`\n===== 获取单词级时间戳 =====`);
+    console.log('材料 ID:', id);
+
+    // 调用 ASR 获取详细时间戳
+    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+    const asrClient = new ASRClient(new Config(), customHeaders);
+    
+    const asrResult = await asrClient.recognize({
+      uid: 'user',
+      url: audioUrl,
+    });
+
+    // 提取单词级时间戳
+    const words = extractWordsWithTimestamps(asrResult);
+    
+    // 同时提取完整文本
+    const fullText = asrResult.text || asrResult.rawData?.text || '';
+    
+    // 提取总时长
+    const duration = asrResult.duration || asrResult.rawData?.audio_info?.duration || 0;
+    const durationMs = duration * 1000;
+
+    console.log(`提取到 ${words.length} 个单词，总时长 ${durationMs}ms`);
+    console.log('========== 提取结束 ==========\n');
+
+    res.json({ 
+      words,
+      fullText,
+      duration: durationMs,
+    });
+  } catch (error) {
+    console.error('获取单词时间戳失败:', error);
+    res.status(500).json({ error: '获取单词时间戳失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * POST /api/v1/materials/:id/match-sentence
+ * 根据句子文本自动匹配音频中的位置
+ * Body: { sentenceText: string, words: WordWithTime[] (可选，如果不传则自动获取) }
+ */
+router.post('/:id/match-sentence', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { sentenceText, words: providedWords } = req.body;
+
+    if (!sentenceText) {
+      return res.status(400).json({ error: '请提供句子文本' });
+    }
+
+    console.log(`\n===== 匹配句子位置 =====`);
+    console.log('句子:', sentenceText);
+
+    // 获取单词列表（优先使用传入的，否则重新获取）
+    let words = providedWords;
+    
+    if (!words || words.length === 0) {
+      const supabase = getSupabaseClient();
+      const { data: material } = await supabase
+        .from('materials')
+        .select('audio_url')
+        .eq('id', id)
+        .single();
+
+      if (!material) {
+        return res.status(404).json({ error: '材料不存在' });
+      }
+
+      const audioUrl = await storage.generatePresignedUrl({
+        key: material.audio_url,
+        expireTime: 86400,
+      });
+
+      const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+      const asrClient = new ASRClient(new Config(), customHeaders);
+      
+      const asrResult = await asrClient.recognize({
+        uid: 'user',
+        url: audioUrl,
+      });
+
+      words = extractWordsWithTimestamps(asrResult);
+    }
+
+    // 提取句子的前N个单词和后N个单词
+    const sentenceWords = sentenceText.toLowerCase().split(/\s+/).filter((w: string) => w.length > 0);
+    const firstWords = sentenceWords.slice(0, 3); // 前3个单词
+    const lastWords = sentenceWords.slice(-3);    // 后3个单词
+
+    console.log('前3个单词:', firstWords);
+    console.log('后3个单词:', lastWords);
+
+    // 在音频单词列表中查找匹配
+    const lowerWords = words.map((w: WordWithTime) => ({ 
+      ...w, 
+      wordLower: w.word.toLowerCase().replace(/[.,!?;:'"]/g, '') 
+    }));
+
+    // 查找前3个单词的起始位置
+    let startMatch = { index: -1, confidence: 0 };
+    for (let i = 0; i <= lowerWords.length - firstWords.length; i++) {
+      const slice = lowerWords.slice(i, i + firstWords.length);
+      const matchCount = slice.filter((w: { wordLower: string }, idx: number) => 
+        w.wordLower === firstWords[idx] || 
+        w.wordLower.includes(firstWords[idx]) ||
+        firstWords[idx].includes(w.wordLower)
+      ).length;
+      
+      const confidence = matchCount / firstWords.length;
+      if (confidence > startMatch.confidence && confidence >= 0.5) {
+        startMatch = { index: i, confidence };
+      }
+    }
+
+    // 查找后3个单词的结束位置
+    let endMatch = { index: -1, confidence: 0 };
+    for (let i = firstWords.length; i <= lowerWords.length; i++) {
+      const slice = lowerWords.slice(i - lastWords.length, i);
+      const matchCount = slice.filter((w: { wordLower: string }, idx: number) => 
+        w.wordLower === lastWords[idx] || 
+        w.wordLower.includes(lastWords[idx]) ||
+        lastWords[idx].includes(w.wordLower)
+      ).length;
+      
+      const confidence = matchCount / lastWords.length;
+      if (confidence > endMatch.confidence && confidence >= 0.5) {
+        endMatch = { index: i, confidence };
+      }
+    }
+
+    // 计算时间戳
+    let startTime = 0;
+    let endTime = 0;
+    let matched = false;
+
+    if (startMatch.index >= 0 && endMatch.index > startMatch.index) {
+      startTime = lowerWords[startMatch.index].start_time;
+      endTime = lowerWords[endMatch.index - 1].end_time;
+      matched = true;
+      console.log(`匹配成功: 索引 ${startMatch.index} 到 ${endMatch.index - 1}`);
+    } else if (startMatch.index >= 0) {
+      // 只找到开始位置，结束位置估算
+      startTime = lowerWords[startMatch.index].start_time;
+      // 估算时长：每个单词平均时长
+      const avgWordDuration = words.length > 1 ? 
+        (words[words.length - 1].end_time - words[0].start_time) / words.length : 
+        500;
+      endTime = startTime + sentenceWords.length * avgWordDuration;
+      matched = true;
+      console.log(`只匹配到开始位置，估算结束时间`);
+    } else {
+      console.log('未找到匹配');
+    }
+
+    console.log(`结果: 开始=${Math.round(startTime)}ms, 结束=${Math.round(endTime)}ms, 匹配=${matched}`);
+    console.log('========== 匹配结束 ==========\n');
+
+    res.json({
+      matched,
+      start_time: Math.round(startTime),
+      end_time: Math.round(endTime),
+      confidence: {
+        start: startMatch.confidence,
+        end: endMatch.confidence,
+      },
+      first_words: firstWords,
+      last_words: lastWords,
+      start_match_index: startMatch.index,
+      end_match_index: endMatch.index,
+    });
+  } catch (error) {
+    console.error('匹配句子位置失败:', error);
+    res.status(500).json({ error: '匹配句子位置失败', message: (error as Error).message });
+  }
+});
+
+/**
  * POST /api/v1/materials/:id/detect-speech-start
  * 检测语音真正的开始位置（去掉前面静音部分）
  * Body: { from_time?: number } 从哪个时间点开始检测（毫秒）
