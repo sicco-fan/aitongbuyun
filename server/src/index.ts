@@ -5,6 +5,7 @@ import learningRouter from "./routes/learning";
 import speechRouter from "./routes/speech";
 import translateRouter from "./routes/translate";
 import letterPronunciationRouter from "./routes/letter-pronunciation";
+import videoDownloadRouter from "./routes/video-download";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -26,6 +27,7 @@ app.use('/api/v1/learning-records', learningRouter);
 app.use('/api/v1/speech-recognize', speechRouter);
 app.use('/api/v1/translate', translateRouter);
 app.use('/api/v1/letter-pronunciation', letterPronunciationRouter);
+app.use('/api/v1/materials/download', videoDownloadRouter);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

@@ -89,6 +89,17 @@ export default function PracticeScreen() {
   const [recordingCount, setRecordingCount] = useState(0); // 录音次数计数
   const [deviceId, setDeviceId] = useState<string>(''); // 设备ID
   
+  // 识别模式：sentence > word > letter（优先级从高到低）
+  const [recognitionMode, setRecognitionMode] = useState<'sentence' | 'word' | 'letter'>('sentence');
+  const recognitionModeRef = useRef<'sentence' | 'word' | 'letter'>('sentence');
+  
+  // 识别间隔（毫秒）：句子3秒，单词2秒，字母0.5秒
+  const RECOGNITION_INTERVALS = {
+    sentence: 3000,
+    word: 2000,
+    letter: 500,
+  };
+  
   // 识别历史记录（用于显示给用户）
   const [recognitionHistory, setRecognitionHistory] = useState<Array<{
     text: string;
@@ -658,6 +669,8 @@ export default function PracticeScreen() {
       isRecordingRef.current = true;
       setRecordingCount(0);
       setRecognitionHistory([]); // 清空识别历史
+      setRecognitionMode('sentence'); // 重置为句子模式（最高优先级）
+      recognitionModeRef.current = 'sentence';
       
       // 开始连续录音循环
       await startRecordingLoop();
@@ -669,7 +682,7 @@ export default function PracticeScreen() {
     }
   };
 
-  // 录音循环 - 持续录音并实时识别
+  // 录音循环 - 持续录音并实时识别（动态间隔）
   const startRecordingLoop = async () => {
     if (!isRecordingRef.current) return;
 
@@ -679,7 +692,11 @@ export default function PracticeScreen() {
       await recording.startAsync();
       recordingRef.current = recording;
       
-      // 每600ms录音一次并立即识别
+      // 根据当前识别模式确定录音时长
+      const currentMode = recognitionModeRef.current;
+      const interval = RECOGNITION_INTERVALS[currentMode];
+      console.log(`[录音循环] 当前模式: ${currentMode}, 录音时长: ${interval}ms`);
+      
       setTimeout(async () => {
         if (!isRecordingRef.current) return;
         
@@ -749,6 +766,9 @@ export default function PracticeScreen() {
       }
       
       if (data.text) {
+        // 获取后端判断的识别类型
+        const detectedType: 'sentence' | 'word' | 'letter' = data.detectedType || 'letter';
+        
         // 有识别结果，显示在历史区域
         const itemType: 'letter' | 'word' | 'raw' = 
           data.letters && data.letters.length > 0 ? 'letter' :
@@ -757,7 +777,29 @@ export default function PracticeScreen() {
         const isMatched = !!(data.letters?.length || data.matchedWords?.length);
         const aiCorrected = data.aiCorrected || false; // AI纠正标识
         
-        console.log(`[语音识别] 显示结果: "${data.text}" 类型: ${itemType} 匹配: ${isMatched} AI纠正: ${aiCorrected}`);
+        console.log(`[语音识别] 显示结果: "${data.text}" 类型: ${itemType} 检测类型: ${detectedType} 匹配: ${isMatched} AI纠正: ${aiCorrected}`);
+        
+        // 根据识别结果动态调整识别模式（优先级：sentence > word > letter）
+        // 只有在成功匹配时才降级模式
+        if (isMatched) {
+          // 匹配成功，根据检测类型调整模式
+          if (detectedType === 'sentence') {
+            // 句子模式：保持句子模式（最高优先级）
+            console.log('[语音识别] 保持句子模式');
+          } else if (detectedType === 'word') {
+            // 单词模式：降级为单词模式
+            if (recognitionModeRef.current !== 'letter') {
+              console.log('[语音识别] 降级为单词模式');
+              setRecognitionMode('word');
+              recognitionModeRef.current = 'word';
+            }
+          } else {
+            // 字母模式：降级为字母模式
+            console.log('[语音识别] 降级为字母模式');
+            setRecognitionMode('letter');
+            recognitionModeRef.current = 'letter';
+          }
+        }
         
         setRecognitionHistory(prev => [...prev, {
           text: data.text as string,
@@ -1178,9 +1220,25 @@ export default function PracticeScreen() {
             minHeight: 70,
           }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <ThemedText variant="caption" color={theme.textMuted}>
-                实时识别结果 {isRecording && `· 识别中 ${recordingCount} 次`}
-              </ThemedText>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ThemedText variant="caption" color={theme.textMuted}>
+                  实时识别结果 {isRecording && `· 识别中 ${recordingCount} 次`}
+                </ThemedText>
+                {isRecording && (
+                  <View style={{
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 4,
+                    backgroundColor: recognitionMode === 'sentence' ? theme.primary :
+                                    recognitionMode === 'word' ? theme.accent : theme.success,
+                  }}>
+                    <Text style={{ fontSize: 10, color: theme.buttonPrimaryText, fontWeight: '600' }}>
+                      {recognitionMode === 'sentence' ? '句子' :
+                       recognitionMode === 'word' ? '单词' : '字母'}
+                    </Text>
+                  </View>
+                )}
+              </View>
               {recognitionHistory.length > 0 && (
                 <TouchableOpacity onPress={() => setRecognitionHistory([])}>
                   <ThemedText variant="caption" color={theme.textMuted}>清除</ThemedText>

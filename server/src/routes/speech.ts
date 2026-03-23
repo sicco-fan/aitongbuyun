@@ -312,8 +312,28 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       ? targetWords.toLowerCase().split(',').map((w: string) => w.trim()).filter((w: string) => w)
       : [];
     
-    // 判断是字母模式还是单词模式
+    // 分析识别结果的类型
+    const recognizedWords = recognizedText.split(/\s+/).filter((w: string) => w.length > 0);
+    const cleanWords = recognizedWords.filter(w => {
+      const clean = w.toLowerCase().replace(/[^a-z]/g, '');
+      return clean.length > 0;
+    });
+    
+    // 判断识别类型：句子（3+单词）、单词（1-2单词）、字母
+    let detectedType: 'sentence' | 'word' | 'letter' = 'letter';
+    
     if (isLetterMode(recognizedText)) {
+      detectedType = 'letter';
+    } else if (cleanWords.length >= 3) {
+      detectedType = 'sentence';
+    } else if (cleanWords.length >= 1) {
+      detectedType = 'word';
+    }
+    
+    console.log(`[ASR] 识别类型判断: ${detectedType} (单词数: ${cleanWords.length})`);
+    
+    // 判断是字母模式还是单词模式
+    if (detectedType === 'letter') {
       const letters = extractLetters(recognizedText);
       console.log('[ASR] 字母模式，提取字母:', letters);
       
@@ -344,16 +364,16 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
         text: recognizedText,
         letters: correctedLetters,
         mode: 'letter',
+        detectedType: 'letter',
         aiCorrected: letters.join('') !== correctedLetters.join(''),
       });
     }
     
-    // 单词模式
+    // 单词/句子模式 - 从目标列表中匹配
     if (targetList.length > 0) {
-      const recognizedWords = recognizedText.split(/\s+/).filter((w: string) => w.length > 0);
       const matchedWords: string[] = [];
       
-      console.log('[ASR] 单词模式，目标单词:', targetList.slice(0, 5), '...');
+      console.log('[ASR] 单词/句子模式，目标单词:', targetList.slice(0, 5), '...');
       console.log('[ASR] 识别到的词:', recognizedWords);
       
       for (const recWord of recognizedWords) {
@@ -435,7 +455,8 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
         text: recognizedText,
         matchedWords,
         originalWords: recognizedWords,
-        mode: 'word',
+        mode: detectedType === 'sentence' ? 'sentence' : 'word',
+        detectedType,
         aiCorrected: matchedWords.length > 0 && 
           !recognizedWords.some(w => matchedWords.includes(w.toLowerCase())),
       });

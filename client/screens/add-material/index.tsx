@@ -5,6 +5,8 @@ import {
   View,
   TextInput,
   ActivityIndicator,
+  Platform,
+  Alert,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
@@ -15,6 +17,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { BorderRadius } from '@/constants/theme';
 
 interface FileInfo {
   uri: string;
@@ -30,11 +33,37 @@ const generateUploadId = () => {
   return `${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
 };
 
+// 支持的视频平台
+const VIDEO_PLATFORMS = [
+  { name: '抖音', pattern: /douyin\.com|v\.douyin\.com/i },
+  { name: 'B站', pattern: /bilibili\.com|b23\.tv/i },
+  { name: '腾讯视频', pattern: /v\.qq\.com|weixin\.qq\.com/i },
+  { name: '爱奇艺', pattern: /iqiyi\.com/i },
+  { name: '优酷', pattern: /youku\.com/i },
+  { name: 'YouTube', pattern: /youtube\.com|youtu\.be/i },
+  { name: '小红书', pattern: /xiaohongshu\.com|xhslink\.com/i },
+  { name: '快手', pattern: /kuaishou\.com|gifshow\.com/i },
+];
+
+// 检测平台
+const detectPlatform = (url: string): string | null => {
+  for (const platform of VIDEO_PLATFORMS) {
+    if (platform.pattern.test(url)) {
+      return platform.name;
+    }
+  }
+  return null;
+};
+
 export default function AddMaterialScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
 
+  // Tab 切换：file / link
+  const [activeTab, setActiveTab] = useState<'file' | 'link'>('file');
+  
+  // 文件上传相关
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<FileInfo | null>(null);
@@ -42,6 +71,12 @@ export default function AddMaterialScreen() {
   const [uploadStatus, setUploadStatus] = useState<string>('');
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  
+  // 链接导入相关
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkTitle, setLinkTitle] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  const [detectedPlatform, setDetectedPlatform] = useState<string | null>(null);
   
   // 上传成功对话框状态
   const [successDialog, setSuccessDialog] = useState<{
@@ -55,6 +90,17 @@ export default function AddMaterialScreen() {
     visible: false,
     message: '',
   });
+
+  // 检测链接平台
+  const handleLinkChange = (url: string) => {
+    setLinkUrl(url);
+    if (url.length > 10) {
+      const platform = detectPlatform(url);
+      setDetectedPlatform(platform);
+    } else {
+      setDetectedPlatform(null);
+    }
+  };
 
   const pickAudioFile = async () => {
     try {
@@ -116,6 +162,68 @@ export default function AddMaterialScreen() {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // 从链接下载
+  const handleDownloadFromLink = async () => {
+    if (!linkUrl.trim()) {
+      setErrorDialog({ visible: true, message: '请输入视频链接' });
+      return;
+    }
+
+    // 简单验证 URL 格式
+    try {
+      new URL(linkUrl);
+    } catch {
+      setErrorDialog({ visible: true, message: '请输入有效的链接地址' });
+      return;
+    }
+
+    setDownloading(true);
+    setUploadStatus('正在下载...');
+
+    try {
+      /**
+       * 服务端文件：server/src/routes/video-download.ts
+       * 接口：POST /api/v1/materials/download
+       * Body 参数：url: string, title?: string
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/download`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: linkUrl,
+          title: linkTitle || undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setUploadStatus('下载成功！');
+        setUploadSuccess(true);
+        setSuccessDialog({
+          visible: true,
+          materialId: data.material.id,
+          title: data.material.title,
+        });
+        // 清空输入
+        setLinkUrl('');
+        setLinkTitle('');
+        setDetectedPlatform(null);
+      } else {
+        throw new Error(data.message || data.error || '下载失败');
+      }
+    } catch (error) {
+      console.error('下载失败:', error);
+      setErrorDialog({ 
+        visible: true, 
+        message: `下载失败：${(error as Error).message}\n\n请确保链接可以在浏览器中直接访问。` 
+      });
+    } finally {
+      setDownloading(false);
+      setUploadStatus('');
+    }
   };
 
   const handleSubmit = async () => {
@@ -235,7 +343,7 @@ export default function AddMaterialScreen() {
     router.back();
   };
 
-  if (uploading) {
+  if (uploading || downloading) {
     return (
       <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
         {/* Header with back button */}
@@ -244,7 +352,7 @@ export default function AddMaterialScreen() {
             <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
           </TouchableOpacity>
           <ThemedText variant="h3" color={theme.textPrimary}>
-            添加学习材料
+            {activeTab === 'link' ? '导入材料' : '添加学习材料'}
           </ThemedText>
           <View style={styles.placeholder} />
         </View>
@@ -252,7 +360,7 @@ export default function AddMaterialScreen() {
         <View style={styles.uploadingContainer}>
           <ActivityIndicator size="large" color={theme.primary} />
           <ThemedText variant="body" color={theme.textPrimary} style={styles.uploadingText}>
-            {uploadStatus || '正在处理音频...'}
+            {uploadStatus || '正在处理...'}
           </ThemedText>
           
           {/* 进度条 */}
@@ -268,8 +376,8 @@ export default function AddMaterialScreen() {
           )}
           
           <ThemedText variant="small" color={theme.textMuted} style={styles.uploadingHint}>
-            {uploadProgress > 0 && uploadProgress < 100 
-              ? '正在上传文件，请勿关闭页面...' 
+            {activeTab === 'link' 
+              ? '正在从视频平台下载音频，请稍候...' 
               : '正在识别音频内容并分句，请稍候'}
           </ThemedText>
         </View>
@@ -301,120 +409,290 @@ export default function AddMaterialScreen() {
           </View>
         )}
 
-        {/* Info Section */}
-        <View style={styles.infoSection}>
-          <FontAwesome6 name="lightbulb" size={20} color={theme.accent} style={styles.infoIcon} />
-          <ThemedText variant="small" color={theme.textSecondary}>
-            上传音频或视频文件，系统将自动识别语音内容并分割成句子，方便逐句练习。
-          </ThemedText>
-        </View>
-
-        {/* Title Input */}
-        <View style={styles.formGroup}>
-          <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.label}>
-            材料标题 <ThemedText variant="small" color={theme.error}>*</ThemedText>
-          </ThemedText>
-          <TextInput
-            style={styles.input}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="例如：BBC 新闻听力"
-            placeholderTextColor={theme.textMuted}
-          />
-        </View>
-
-        {/* Description Input */}
-        <View style={styles.formGroup}>
-          <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.label}>
-            描述（可选）
-          </ThemedText>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={description}
-            onChangeText={setDescription}
-            placeholder="添加一些关于这个材料的描述..."
-            placeholderTextColor={theme.textMuted}
-            multiline
-          />
-        </View>
-
-        {/* File Picker */}
-        <View style={styles.formGroup}>
-          <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.label}>
-            音频或视频文件 <ThemedText variant="small" color={theme.error}>*</ThemedText>
-          </ThemedText>
+        {/* Tab Switcher */}
+        <View style={{
+          flexDirection: 'row',
+          backgroundColor: theme.backgroundTertiary,
+          borderRadius: BorderRadius.lg,
+          padding: 4,
+          marginBottom: 20,
+        }}>
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              paddingVertical: 12,
+              alignItems: 'center',
+              borderRadius: BorderRadius.md,
+              backgroundColor: activeTab === 'file' ? theme.primary : 'transparent',
+            }}
+            onPress={() => setActiveTab('file')}
+          >
+            <FontAwesome6 
+              name="upload" 
+              size={16} 
+              color={activeTab === 'file' ? theme.buttonPrimaryText : theme.textSecondary} 
+            />
+            <ThemedText 
+              variant="smallMedium" 
+              color={activeTab === 'file' ? theme.buttonPrimaryText : theme.textSecondary}
+              style={{ marginTop: 4 }}
+            >
+              上传文件
+            </ThemedText>
+          </TouchableOpacity>
           
-          {file ? (
-            <View style={styles.fileInfo}>
-              <View style={styles.fileIconContainer}>
-                <FontAwesome6 
-                  name={file.mimeType?.startsWith('video') ? 'file-video' : 'file-audio'} 
-                  size={24} 
-                  color={theme.primary} 
-                />
-              </View>
-              <View style={styles.fileDetails}>
-                <ThemedText variant="smallMedium" color={theme.textPrimary} style={styles.fileName}>
-                  {file.name}
-                </ThemedText>
-                <ThemedText variant="caption" color={theme.textMuted} style={styles.fileSize}>
-                  {formatFileSize(file.size)}
-                </ThemedText>
-              </View>
-              <TouchableOpacity style={styles.removeFile} onPress={removeFile}>
-                <FontAwesome6 name="xmark" size={18} color={theme.textMuted} />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity style={styles.filePicker} onPress={pickAudioFile}>
-              <View style={styles.filePickerIconContainer}>
-                <FontAwesome6 name="cloud-arrow-up" size={40} color={theme.primary} />
-              </View>
-              <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.filePickerText}>
-                点击选择音频或视频文件
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              paddingVertical: 12,
+              alignItems: 'center',
+              borderRadius: BorderRadius.md,
+              backgroundColor: activeTab === 'link' ? theme.primary : 'transparent',
+            }}
+            onPress={() => setActiveTab('link')}
+          >
+            <FontAwesome6 
+              name="link" 
+              size={16} 
+              color={activeTab === 'link' ? theme.buttonPrimaryText : theme.textSecondary} 
+            />
+            <ThemedText 
+              variant="smallMedium" 
+              color={activeTab === 'link' ? theme.buttonPrimaryText : theme.textSecondary}
+              style={{ marginTop: 4 }}
+            >
+              链接导入
+            </ThemedText>
+          </TouchableOpacity>
+        </View>
+
+        {/* File Upload Tab */}
+        {activeTab === 'file' && (
+          <>
+            {/* Info Section */}
+            <View style={styles.infoSection}>
+              <FontAwesome6 name="lightbulb" size={20} color={theme.accent} style={styles.infoIcon} />
+              <ThemedText variant="small" color={theme.textSecondary}>
+                上传音频或视频文件，系统将自动识别语音内容并分割成句子，方便逐句练习。
               </ThemedText>
-              <ThemedText variant="caption" color={theme.textMuted} style={styles.filePickerHint}>
-                支持 MP3、WAV、MP4、MKV 等多种格式
+            </View>
+
+            {/* Title Input */}
+            <View style={styles.formGroup}>
+              <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.label}>
+                材料标题 <ThemedText variant="small" color={theme.error}>*</ThemedText>
+              </ThemedText>
+              <TextInput
+                style={styles.input}
+                value={title}
+                onChangeText={setTitle}
+                placeholder="例如：BBC 新闻听力"
+                placeholderTextColor={theme.textMuted}
+              />
+            </View>
+
+            {/* Description Input */}
+            <View style={styles.formGroup}>
+              <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.label}>
+                描述（可选）
+              </ThemedText>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={description}
+                onChangeText={setDescription}
+                placeholder="添加一些关于这个材料的描述..."
+                placeholderTextColor={theme.textMuted}
+                multiline
+              />
+            </View>
+
+            {/* File Picker */}
+            <View style={styles.formGroup}>
+              <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.label}>
+                音频或视频文件 <ThemedText variant="small" color={theme.error}>*</ThemedText>
+              </ThemedText>
+              
+              {file ? (
+                <View style={styles.fileInfo}>
+                  <View style={styles.fileIconContainer}>
+                    <FontAwesome6 
+                      name={file.mimeType?.startsWith('video') ? 'file-video' : 'file-audio'} 
+                      size={24} 
+                      color={theme.primary} 
+                    />
+                  </View>
+                  <View style={styles.fileDetails}>
+                    <ThemedText variant="smallMedium" color={theme.textPrimary} style={styles.fileName}>
+                      {file.name}
+                    </ThemedText>
+                    <ThemedText variant="caption" color={theme.textMuted} style={styles.fileSize}>
+                      {formatFileSize(file.size)}
+                    </ThemedText>
+                  </View>
+                  <TouchableOpacity style={styles.removeFile} onPress={removeFile}>
+                    <FontAwesome6 name="xmark" size={18} color={theme.textMuted} />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.filePicker} onPress={pickAudioFile}>
+                  <View style={styles.filePickerIconContainer}>
+                    <FontAwesome6 name="cloud-arrow-up" size={40} color={theme.primary} />
+                  </View>
+                  <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.filePickerText}>
+                    点击选择音频或视频文件
+                  </ThemedText>
+                  <ThemedText variant="caption" color={theme.textMuted} style={styles.filePickerHint}>
+                    支持 MP3、WAV、MP4、MKV 等多种格式
+                  </ThemedText>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Supported Formats */}
+            <View style={styles.supportedFormats}>
+              <ThemedText variant="captionMedium" color={theme.textSecondary} style={styles.formatTitle}>
+                支持的音视频格式
+              </ThemedText>
+              <ThemedText variant="caption" color={theme.textMuted}>
+                音频：MP3、WAV、M4A、AAC、OGG、FLAC、WMA、AIFF
+              </ThemedText>
+              <ThemedText variant="caption" color={theme.textMuted}>
+                视频：MP4、MOV、AVI、MKV、WebM、FLV、3GP、WMV
+              </ThemedText>
+              <ThemedText variant="caption" color={theme.textMuted}>
+                最大文件大小：500MB（视频将自动提取音频）
+              </ThemedText>
+            </View>
+
+            {/* Submit Button */}
+            <TouchableOpacity
+              style={[
+                styles.submitButton,
+                (!title.trim() || !file) && styles.submitButtonDisabled
+              ]}
+              onPress={handleSubmit}
+              disabled={!title.trim() || !file}
+            >
+              <FontAwesome6 name="upload" size={18} color={theme.buttonPrimaryText} style={styles.buttonIcon} />
+              <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
+                上传并处理
               </ThemedText>
             </TouchableOpacity>
-          )}
-        </View>
 
-        {/* Supported Formats */}
-        <View style={styles.supportedFormats}>
-          <ThemedText variant="captionMedium" color={theme.textSecondary} style={styles.formatTitle}>
-            支持的音视频格式
-          </ThemedText>
-          <ThemedText variant="caption" color={theme.textMuted}>
-            音频：MP3、WAV、M4A、AAC、OGG、FLAC、WMA、AIFF
-          </ThemedText>
-          <ThemedText variant="caption" color={theme.textMuted}>
-            视频：MP4、MOV、AVI、MKV、WebM、FLV、3GP、WMV
-          </ThemedText>
-          <ThemedText variant="caption" color={theme.textMuted}>
-            最大文件大小：500MB（视频将自动提取音频）
-          </ThemedText>
-        </View>
+            {/* Hint */}
+            <ThemedText variant="caption" color={theme.textMuted} style={styles.submitHint}>
+              上传后系统将自动识别语音内容并分割成句子
+            </ThemedText>
+          </>
+        )}
 
-        {/* Submit Button */}
-        <TouchableOpacity
-          style={[
-            styles.submitButton,
-            (!title.trim() || !file) && styles.submitButtonDisabled
-          ]}
-          onPress={handleSubmit}
-          disabled={!title.trim() || !file}
-        >
-          <FontAwesome6 name="upload" size={18} color={theme.buttonPrimaryText} style={styles.buttonIcon} />
-          <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-            上传并处理
-          </ThemedText>
-        </TouchableOpacity>
+        {/* Link Import Tab */}
+        {activeTab === 'link' && (
+          <>
+            {/* Info Section */}
+            <View style={styles.infoSection}>
+              <FontAwesome6 name="link" size={20} color={theme.accent} style={styles.infoIcon} />
+              <ThemedText variant="small" color={theme.textSecondary}>
+                粘贴视频链接，系统将自动下载音频内容并分割成句子。支持抖音、B站、腾讯视频、爱奇艺、优酷、YouTube、小红书、快手等平台。
+              </ThemedText>
+            </View>
 
-        {/* Hint */}
-        <ThemedText variant="caption" color={theme.textMuted} style={styles.submitHint}>
-          上传后系统将自动识别语音内容并分割成句子
-        </ThemedText>
+            {/* URL Input */}
+            <View style={styles.formGroup}>
+              <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.label}>
+                视频链接 <ThemedText variant="small" color={theme.error}>*</ThemedText>
+              </ThemedText>
+              <TextInput
+                style={styles.input}
+                value={linkUrl}
+                onChangeText={handleLinkChange}
+                placeholder="粘贴抖音、B站、YouTube等视频链接"
+                placeholderTextColor={theme.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+              />
+              {detectedPlatform && (
+                <View style={{ 
+                  flexDirection: 'row', 
+                  alignItems: 'center', 
+                  marginTop: 8,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  backgroundColor: theme.backgroundTertiary,
+                  borderRadius: BorderRadius.md,
+                  alignSelf: 'flex-start',
+                }}>
+                  <FontAwesome6 name="check-circle" size={14} color={theme.success} style={{ marginRight: 6 }} />
+                  <ThemedText variant="caption" color={theme.success}>
+                    检测到：{detectedPlatform}
+                  </ThemedText>
+                </View>
+              )}
+            </View>
+
+            {/* Title Input (Optional) */}
+            <View style={styles.formGroup}>
+              <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.label}>
+                材料标题（可选）
+              </ThemedText>
+              <TextInput
+                style={styles.input}
+                value={linkTitle}
+                onChangeText={setLinkTitle}
+                placeholder="不填写将使用视频原标题"
+                placeholderTextColor={theme.textMuted}
+              />
+            </View>
+
+            {/* Supported Platforms */}
+            <View style={styles.supportedFormats}>
+              <ThemedText variant="captionMedium" color={theme.textSecondary} style={styles.formatTitle}>
+                支持的视频平台
+              </ThemedText>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                {['抖音', 'B站', '腾讯视频', '爱奇艺', '优酷', 'YouTube', '小红书', '快手'].map(platform => (
+                  <View 
+                    key={platform}
+                    style={{ 
+                      paddingHorizontal: 12, 
+                      paddingVertical: 6, 
+                      backgroundColor: theme.backgroundDefault,
+                      borderRadius: BorderRadius.md,
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                    }}
+                  >
+                    <ThemedText variant="caption" color={theme.textSecondary}>{platform}</ThemedText>
+                  </View>
+                ))}
+              </View>
+              <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 12 }}>
+                提示：请确保链接可以在浏览器中直接访问
+              </ThemedText>
+            </View>
+
+            {/* Download Button */}
+            <TouchableOpacity
+              style={[
+                styles.submitButton,
+                !linkUrl.trim() && styles.submitButtonDisabled
+              ]}
+              onPress={handleDownloadFromLink}
+              disabled={!linkUrl.trim()}
+            >
+              <FontAwesome6 name="download" size={18} color={theme.buttonPrimaryText} style={styles.buttonIcon} />
+              <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
+                下载并处理
+              </ThemedText>
+            </TouchableOpacity>
+
+            {/* Hint */}
+            <ThemedText variant="caption" color={theme.textMuted} style={styles.submitHint}>
+              系统将自动提取视频中的音频内容
+            </ThemedText>
+          </>
+        )}
       </ScrollView>
 
       {/* 错误确认对话框 */}
