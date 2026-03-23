@@ -13,7 +13,6 @@ interface TimeControlProps {
   onChange: (delta: number) => void; // 变化量回调
   onPlay?: () => void; // 播放回调
   label: string; // 标签（如"开始"）
-  playIcon?: 'play' | 'play-from' | 'play-to'; // 播放图标类型
   color?: string;
 }
 
@@ -22,7 +21,6 @@ export function TimeControl({
   onChange,
   onPlay,
   label,
-  playIcon = 'play',
   color = '#00ff88',
 }: TimeControlProps) {
   const lastAngle = useSharedValue(0);
@@ -63,24 +61,27 @@ export function TimeControl({
 
   return (
     <View style={styles.container}>
-      {/* 时间显示行 - 可点击播放 */}
+      {/* 时间显示行 - 可滑动微调 */}
       <GestureDetector gesture={panGesture}>
         <Animated.View style={animatedStyle}>
-          <TouchableOpacity 
-            style={[styles.timeRow, { borderColor: color }]}
-            onPress={onPlay}
-            activeOpacity={0.7}
-          >
-            <View style={styles.timeLeft}>
-              <FontAwesome6 name={playIcon === 'play' ? 'play' : playIcon === 'play-from' ? 'backward' : 'forward'} size={16} color={color} />
-              <Text style={[styles.label, { color }]}>{label}</Text>
-            </View>
+          <View style={[styles.timeRow, { borderColor: color }]}>
+            <Text style={[styles.label, { color }]}>{label}</Text>
             <Text style={[styles.timeValue, { color }]}>
               {formatTime(value)}
             </Text>
-          </TouchableOpacity>
+          </View>
         </Animated.View>
       </GestureDetector>
+      
+      {/* 播放按钮行 */}
+      <TouchableOpacity 
+        style={[styles.playBtn, { backgroundColor: color }]}
+        onPress={onPlay}
+        activeOpacity={0.8}
+      >
+        <FontAwesome6 name="play" size={18} color="#000" />
+        <Text style={styles.playBtnText}>播放试听</Text>
+      </TouchableOpacity>
       
       {/* 调整按钮行 */}
       <View style={styles.buttonRow}>
@@ -117,7 +118,7 @@ export function TimeControl({
         </TouchableOpacity>
       </View>
       
-      <Text style={styles.hint}>← 滑动时间可微调 →</Text>
+      <Text style={styles.hint}>← 滑动上方时间可微调 →</Text>
     </View>
   );
 }
@@ -125,26 +126,21 @@ export function TimeControl({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   timeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 2,
     backgroundColor: '#1a1a1a',
-    minWidth: 280,
-  },
-  timeLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    minWidth: 260,
   },
   label: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -153,6 +149,20 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+  },
+  playBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+    marginTop: 12,
+  },
+  playBtnText: {
+    color: '#000',
+    fontSize: 15,
+    fontWeight: '700',
   },
   buttonRow: {
     flexDirection: 'row',

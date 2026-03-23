@@ -546,7 +546,6 @@ export default function TimestampEditorScreen() {
           }}
           onPlay={playCurrentSentence}
           label="开始"
-          playIcon="play-from"
           color="#00ff88"
         />
         
@@ -576,7 +575,6 @@ export default function TimestampEditorScreen() {
           }}
           onPlay={playCurrentSentence}
           label="结束"
-          playIcon="play-to"
           color="#ff8800"
         />
       </View>
