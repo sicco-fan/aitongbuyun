@@ -373,7 +373,26 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
     console.log('文件大小:', buffer.length, 'bytes');
     console.log('分块数:', chunks.length, '/', session.chunks.length);
 
-    // 直接上传到对象存储（不做视频转换，让后续异步处理）
+    // 检测是否为视频文件
+    const isVideo = mimeType?.startsWith('video/') || 
+                    fileName?.toLowerCase().endsWith('.mov') ||
+                    fileName?.toLowerCase().endsWith('.mp4') ||
+                    fileName?.toLowerCase().endsWith('.avi') ||
+                    fileName?.toLowerCase().endsWith('.mkv') ||
+                    fileName?.toLowerCase().endsWith('.webm');
+    
+    if (isVideo) {
+      console.log('检测到视频文件，暂不支持');
+      // 清理会话
+      uploadChunks.delete(uploadId);
+      return res.status(400).json({ 
+        error: '暂不支持视频文件上传', 
+        message: '请上传音频文件（MP3、WAV、M4A 等），或使用"链接导入"功能导入视频平台的视频。',
+        hint: '您可以在首页点击"链接导入"，粘贴 YouTube、B站 等视频链接，系统会自动提取音频。'
+      });
+    }
+
+    // 上传到对象存储
     const fileKey = await storage.uploadFile({
       fileContent: buffer,
       fileName: `audio/${Date.now()}_${fileName}`,
@@ -404,8 +423,8 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
 
     console.log(`材料创建成功: ID=${material.id}, 标题=${title}`);
 
-    // 异步处理：视频转音频 + ASR（不阻塞响应）
-    processVideoAsync(material.id, fileKey, fileName, mimeType).catch(err => {
+    // 异步处理：ASR + 分句
+    processAudioAsync(material.id, fileKey).catch(err => {
       console.error(`异步处理失败 [material=${material.id}]:`, err.message);
     });
 
@@ -421,13 +440,11 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
 });
 
 /**
- * 异步处理视频文件：转换 + ASR + 分句
+ * 异步处理音频文件：ASR + 分句
  */
-async function processVideoAsync(
+async function processAudioAsync(
   materialId: number,
-  fileKey: string,
-  fileName: string,
-  mimeType: string
+  fileKey: string
 ): Promise<void> {
   console.log(`\n[异步处理] 开始处理材料 ${materialId}`);
   
@@ -435,81 +452,10 @@ async function processVideoAsync(
     const supabase = getSupabaseClient();
     
     // 生成签名 URL
-    const fileUrl = await storage.generatePresignedUrl({
+    const audioUrl = await storage.generatePresignedUrl({
       key: fileKey,
       expireTime: 86400,
     });
-
-    const isVideo = mimeType?.startsWith('video/') || 
-                    fileName?.toLowerCase().endsWith('.mov') ||
-                    fileName?.toLowerCase().endsWith('.mp4');
-
-    let audioUrl = fileUrl;
-    let audioKey = fileKey;
-
-    // 如果是视频且 ffmpeg 可用，尝试转换
-    if (isVideo) {
-      try {
-        console.log(`[异步处理] 检测到视频文件，尝试转换...`);
-        
-        // 下载视频文件
-        const response = await axios({
-          method: 'GET',
-          url: fileUrl,
-          responseType: 'arraybuffer',
-          timeout: 5 * 60 * 1000,
-        });
-        
-        const videoBuffer = Buffer.from(response.data);
-        const tempDir = '/tmp/video_processing';
-        await fs.mkdir(tempDir, { recursive: true });
-        
-        const tempVideoPath = path.join(tempDir, `${materialId}_${fileName}`);
-        const tempAudioPath = tempVideoPath.replace(/\.[^.]+$/, '.mp3');
-        
-        await fs.writeFile(tempVideoPath, videoBuffer);
-        
-        // 尝试转换
-        try {
-          const ffmpegCmd = `ffmpeg -y -i "${tempVideoPath}" -vn -acodec libmp3lame -ab 192k "${tempAudioPath}"`;
-          await execAsync(ffmpegCmd, { timeout: 5 * 60 * 1000 });
-          
-          // 上传音频
-          const audioBuffer = await fs.readFile(tempAudioPath);
-          audioKey = await storage.uploadFile({
-            fileContent: audioBuffer,
-            fileName: `audio/${materialId}_converted.mp3`,
-            contentType: 'audio/mpeg',
-          });
-          
-          audioUrl = await storage.generatePresignedUrl({
-            key: audioKey,
-            expireTime: 86400,
-          });
-          
-          console.log(`[异步处理] 视频转换成功`);
-          
-          // 更新材料音频 URL
-          await supabase
-            .from('materials')
-            .update({ audio_url: audioKey })
-            .eq('id', materialId);
-          
-        } catch (ffmpegError: any) {
-          console.log(`[异步处理] ffmpeg 不可用或转换失败: ${ffmpegError.message}`);
-          // 继续使用原始文件 URL（ASR 可能支持直接处理视频）
-        } finally {
-          // 清理临时文件
-          try {
-            await fs.unlink(tempVideoPath);
-            await fs.unlink(tempAudioPath);
-          } catch (e) {}
-        }
-        
-      } catch (e) {
-        console.log(`[异步处理] 视频处理失败，尝试直接 ASR: ${(e as Error).message}`);
-      }
-    }
 
     // 执行 ASR
     console.log(`[异步处理] 开始 ASR 识别...`);
@@ -559,7 +505,6 @@ async function processVideoAsync(
     
   } catch (error) {
     console.error(`[异步处理] 失败:`, error);
-    // 可以考虑更新材料状态为"处理失败"
   }
 }
 

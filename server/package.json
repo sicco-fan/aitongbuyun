@@ -9,6 +9,9 @@
     "start": "NODE_ENV=production PORT=${PORT:-5000} node dist/index.js"
   },
   "dependencies": {
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@supabase/supabase-js": "2.95.3",
     "axios": "^1.13.6",
     "cors": "^2.8.5",
