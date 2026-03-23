@@ -361,109 +361,138 @@ export default function PracticeScreen() {
     // 不再自动清除错误状态，让用户看到错误位置直到改正
   }, []);
 
-  // 处理输入变化
+  // 处理输入变化（支持任意顺序输入单词）
   const handleInputChange = useCallback((text: string) => {
     const inputLower = text.toLowerCase().trim();
     
-    // 获取当前单词列表（非标点）
-    const wordList = wordStatuses.filter(w => !w.isPunctuation);
+    // 如果输入为空，清除所有未完成单词的显示状态
+    if (inputLower.length === 0) {
+      setWordStatuses(prev => prev.map(ws => {
+        if (ws.isPunctuation || ws.revealed) return ws;
+        return {
+          ...ws,
+          revealedChars: new Array(ws.word.length).fill(false),
+          errorCharIndex: -1,
+        };
+      }));
+      setCurrentInput('');
+      return;
+    }
     
-    // 计算已完成的单词数
-    const completedCount = wordList.filter(w => w.revealed).length;
+    // 获取所有未完成的单词
+    const incompleteWords = wordStatuses.filter(w => !w.isPunctuation && !w.revealed);
     
-    // 如果已经全部完成，不处理
-    if (completedCount >= wordList.length) return;
+    if (incompleteWords.length === 0) return;
     
-    // 获取当前应该输入的单词
-    const currentWordIndex = completedCount;
-    const currentWord = wordList[currentWordIndex];
+    // 检查输入是否完全匹配某个未完成的单词
+    const exactMatch = incompleteWords.find(w => w.word.toLowerCase() === inputLower);
     
-    if (!currentWord) return;
-    
-    const targetWord = currentWord.word.toLowerCase();
-    
-    // 检查输入是否匹配当前单词
-    setWordStatuses(prev => {
-      const newStatuses = [...prev];
-      let wordFound = false;
-      let wordIdx = 0;
-      
-      for (let i = 0; i < newStatuses.length; i++) {
-        const ws = newStatuses[i];
-        if (ws.isPunctuation) continue;
-        
-        if (wordIdx === currentWordIndex && !wordFound) {
-          wordFound = true;
-          
-          // 检查输入是否完全匹配这个单词
-          if (inputLower === targetWord) {
-            // 完全匹配！标记为完成
-            newStatuses[i] = {
-              ...ws,
-              revealed: true,
-              revealedChars: new Array(ws.word.length).fill(true),
-              errorCharIndex: -1,
-            };
-            // 清空输入框
-            setCurrentInput('');
-          } else if (inputLower.length > 0) {
-            // 部分输入，检查匹配情况
-            const matchedChars: boolean[] = [];
-            let hasError = false;
-            let errorIndex = -1;
-            
-            for (let j = 0; j < targetWord.length; j++) {
-              if (j < inputLower.length) {
-                if (inputLower[j] === targetWord[j]) {
-                  matchedChars.push(true);
-                } else {
-                  matchedChars.push(false);
-                  hasError = true;
-                  if (errorIndex === -1) errorIndex = j;
-                }
-              } else {
-                matchedChars.push(false);
-              }
-            }
-            
-            // 检查是否输入了多余的字符
-            if (inputLower.length > targetWord.length) {
-              hasError = true;
-              errorIndex = targetWord.length;
-            }
-            
-            newStatuses[i] = {
-              ...ws,
-              revealedChars: matchedChars,
-              errorCharIndex: errorIndex,
-            };
-            
-            // 显示错误闪烁
-            if (hasError) {
-              showErrorFlash();
-              // 输入框中删除错误字母，只保留正确的部分
-              const correctPart = inputLower.slice(0, errorIndex);
-              setCurrentInput(correctPart);
-            } else {
-              // 没有错误，保留输入框内容
-              setCurrentInput(text.trim());
-            }
-          } else {
-            // 输入为空，重置状态
-            newStatuses[i] = {
-              ...ws,
-              revealedChars: new Array(ws.word.length).fill(false),
-              errorCharIndex: -1,
-            };
-            setCurrentInput('');
-          }
+    if (exactMatch) {
+      // 完全匹配！标记该单词为完成
+      setWordStatuses(prev => prev.map(ws => {
+        if (ws.index === exactMatch.index) {
+          return {
+            ...ws,
+            revealed: true,
+            revealedChars: new Array(ws.word.length).fill(true),
+            errorCharIndex: -1,
+          };
         }
-        
-        wordIdx++;
+        // 清除其他单词的显示状态
+        if (!ws.revealed && !ws.isPunctuation) {
+          return {
+            ...ws,
+            revealedChars: new Array(ws.word.length).fill(false),
+            errorCharIndex: -1,
+          };
+        }
+        return ws;
+      }));
+      setCurrentInput('');
+      return;
+    }
+    
+    // 没有完全匹配，找最佳部分匹配
+    let bestMatch: { index: number; matchedChars: boolean[]; matchedCount: number } | null = null;
+    
+    for (const word of incompleteWords) {
+      const targetWord = word.word.toLowerCase();
+      const matchedChars: boolean[] = [];
+      let matchedCount = 0;
+      let hasError = false;
+      
+      for (let j = 0; j < targetWord.length; j++) {
+        if (j < inputLower.length) {
+          if (inputLower[j] === targetWord[j]) {
+            matchedChars.push(true);
+            matchedCount++;
+          } else {
+            matchedChars.push(false);
+            hasError = true;
+          }
+        } else {
+          matchedChars.push(false);
+        }
       }
       
-      return newStatuses;
-    });
+      // 检查输入是否比单词长（多余字符）
+      if (inputLower.length > targetWord.length) {
+        hasError = true;
+      }
+      
+      // 如果没有错误且匹配数最多，这是最佳匹配
+      if (!hasError && matchedCount > (bestMatch?.matchedCount || 0)) {
+        bestMatch = { index: word.index, matchedChars, matchedCount };
+      }
+    }
+    
+    // 更新显示状态
+    setWordStatuses(prev => prev.map(ws => {
+      if (ws.revealed || ws.isPunctuation) return ws;
+      
+      // 如果是最佳匹配的单词，显示匹配进度
+      if (bestMatch && ws.index === bestMatch.index) {
+        return {
+          ...ws,
+          revealedChars: bestMatch.matchedChars,
+          errorCharIndex: -1,
+        };
+      }
+      
+      // 清除其他单词的显示状态
+      return {
+        ...ws,
+        revealedChars: new Array(ws.word.length).fill(false),
+        errorCharIndex: -1,
+      };
+    }));
+    
+    // 如果没有找到任何匹配（所有单词都不匹配开头），显示错误
+    if (!bestMatch) {
+      showErrorFlash();
+      // 尝试找到一个可能匹配的单词，保留最长匹配前缀
+      for (const word of incompleteWords) {
+        const targetWord = word.word.toLowerCase();
+        let prefixLen = 0;
+        for (let i = 0; i < Math.min(inputLower.length, targetWord.length); i++) {
+          if (inputLower[i] === targetWord[i]) {
+            prefixLen = i + 1;
+          } else {
+            break;
+          }
+        }
+        if (prefixLen > 0) {
+          // 保留正确的前缀部分
+          setCurrentInput(inputLower.slice(0, prefixLen));
+          return;
+        }
+      }
+      // 完全不匹配，清空输入
+      setCurrentInput('');
+      return;
+    }
+    
+    setCurrentInput(text.trim());
   }, [wordStatuses, showErrorFlash]);
 
   // 检查是否完成
