@@ -166,6 +166,21 @@ export default function TimestampEditorScreen() {
     if (!audioUrl) return null;
     
     try {
+      // 先确保音频模式正确（从扬声器播放，而非听筒）
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          interruptionModeIOS: 1, // DoNotMix
+          shouldDuckAndroid: true,
+          interruptionModeAndroid: 1, // DoNotMix
+          playThroughEarpieceAndroid: false,
+          staysActiveInBackground: false,
+        });
+      } catch (e) {
+        console.log('设置音频模式失败:', e);
+      }
+      
       if (soundRef.current) {
         await soundRef.current.unloadAsync();
       }
@@ -439,6 +454,49 @@ export default function TimestampEditorScreen() {
     const minutes = Math.floor(seconds / 60);
     return `${minutes}:${(seconds % 60).toString().padStart(2, '0')}.${Math.floor((totalSeconds % 1) * 100).toString().padStart(2, '0')}`;
   };
+
+  // 删除当前句子
+  const handleDeleteSentence = useCallback(async () => {
+    if (!currentSentence || !materialId) return;
+    
+    Alert.alert(
+      '确认删除',
+      `确定要删除这句话吗？\n\n"${currentSentence.text.substring(0, 50)}${currentSentence.text.length > 50 ? '...' : ''}"`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/sentences/${currentSentence.id}`, {
+                method: 'DELETE',
+              });
+              
+              const data = await res.json();
+              
+              if (data.success) {
+                // 从本地列表中移除
+                const newSentences = sentences.filter((_, idx) => idx !== currentIndex);
+                setSentences(newSentences);
+                
+                // 调整当前索引
+                if (currentIndex >= newSentences.length) {
+                  setCurrentIndex(Math.max(0, newSentences.length - 1));
+                }
+                
+                Alert.alert('成功', '句子已删除');
+              } else {
+                Alert.alert('错误', '删除失败');
+              }
+            } catch (e) {
+              Alert.alert('错误', `删除失败: ${(e as Error).message}`);
+            }
+          },
+        },
+      ]
+    );
+  }, [currentSentence, materialId, sentences, currentIndex]);
 
   // 获取当前句子范围内的单词
   const getSentenceWords = useCallback(() => {
@@ -717,6 +775,11 @@ export default function TimestampEditorScreen() {
 
       {/* 底部控制栏 */}
       <View style={styles.controls}>
+        <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteSentence}>
+          <FontAwesome6 name="trash" size={16} color="#ff4444" />
+          <Text style={styles.deleteBtnText}>删除</Text>
+        </TouchableOpacity>
+        
         <TouchableOpacity style={styles.stopBtn} onPress={handleStopPlaying}>
           <FontAwesome6 name="stop" size={16} color="#888" />
           <Text style={styles.stopBtnText}>停止</Text>
@@ -983,6 +1046,22 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#333',
     gap: 12,
+  },
+  deleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 20,
+    backgroundColor: '#2a1a1a',
+    borderWidth: 1,
+    borderColor: '#ff4444',
+  },
+  deleteBtnText: {
+    color: '#ff4444',
+    fontSize: 13,
+    fontWeight: '500',
   },
   stopBtn: {
     flexDirection: 'row',

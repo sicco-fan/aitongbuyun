@@ -264,6 +264,22 @@ export default function PracticeScreen() {
     if (!material?.audio_url) return;
 
     try {
+      // 先确保音频模式正确（从扬声器播放，而非听筒）
+      // 这在 iOS 上特别重要，因为录音后会切换到听筒
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+          shouldDuckAndroid: true,
+          interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+          playThroughEarpieceAndroid: false,
+          staysActiveInBackground: false,
+        });
+      } catch (e) {
+        console.log('设置音频模式失败:', e);
+      }
+
       // 停止之前的播放
       if (soundRef.current) {
         await soundRef.current.unloadAsync();
