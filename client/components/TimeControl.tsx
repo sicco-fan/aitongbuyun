@@ -66,27 +66,24 @@ export function TimeControl({
 
   return (
     <View style={styles.container}>
-      {/* 时间显示行 - 可滑动微调 */}
+      {/* 时间显示行 - 点击播放，滑动微调 */}
       <GestureDetector gesture={panGesture}>
         <Animated.View style={animatedStyle}>
-          <View style={[styles.timeRow, { borderColor: color }]}>
-            <Text style={[styles.label, { color }]}>{label}</Text>
+          <TouchableOpacity 
+            style={[styles.timeRow, { borderColor: color }]}
+            onPress={handlePlay}
+            activeOpacity={0.7}
+          >
+            <View style={styles.labelRow}>
+              <FontAwesome6 name="play-circle" size={18} color={color} />
+              <Text style={[styles.label, { color }]}>{label}</Text>
+            </View>
             <Text style={[styles.timeValue, { color }]}>
               {formatTime(value)}
             </Text>
-          </View>
+          </TouchableOpacity>
         </Animated.View>
       </GestureDetector>
-      
-      {/* 播放按钮 */}
-      <TouchableOpacity 
-        style={[styles.playButton, { backgroundColor: color }]}
-        onPress={handlePlay}
-        activeOpacity={0.7}
-      >
-        <FontAwesome6 name="play" size={18} color="#000" />
-        <Text style={styles.playButtonText}>播放试听</Text>
-      </TouchableOpacity>
       
       {/* 调整按钮行 */}
       <View style={styles.buttonRow}>
@@ -123,7 +120,7 @@ export function TimeControl({
         </TouchableOpacity>
       </View>
       
-      <Text style={styles.hint}>← 滑动上方时间可微调 →</Text>
+      <Text style={styles.hint}>点击时间播放 | ← 滑动微调 →</Text>
     </View>
   );
 }
@@ -144,6 +141,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
     minWidth: 280,
   },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   label: {
     fontSize: 16,
     fontWeight: '700',
@@ -154,20 +156,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
-  },
-  playButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 24,
-    marginTop: 12,
-  },
-  playButtonText: {
-    color: '#000',
-    fontSize: 16,
-    fontWeight: '700',
   },
   buttonRow: {
     flexDirection: 'row',
