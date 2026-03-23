@@ -140,6 +140,22 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: '#F59E0B20',
       borderColor: '#F59E0B',
     },
+    wordWithTranslation: {
+      alignItems: 'center',
+      marginBottom: Spacing.xs,
+    },
+    wordTranslationText: {
+      fontSize: 11,
+      color: theme.textMuted,
+      marginTop: 2,
+    },
+    sentenceTranslationBox: {
+      marginTop: Spacing.lg,
+      paddingTop: Spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: theme.borderLight,
+      alignItems: 'center',
+    },
     wordText: {},
     wordTextCorrect: {},
     wordTextHint: {

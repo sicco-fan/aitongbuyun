@@ -75,7 +75,7 @@ export function TimeControl({
             activeOpacity={0.7}
           >
             <View style={styles.labelRow}>
-              <FontAwesome6 name="play-circle" size={18} color={color} />
+              <FontAwesome6 name="play" size={18} color={color} />
               <Text style={[styles.label, { color }]}>{label}</Text>
             </View>
             <Text style={[styles.timeValue, { color }]}>

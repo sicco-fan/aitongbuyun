@@ -73,7 +73,7 @@ export default function PracticeScreen() {
   const [hintWordIndex, setHintWordIndex] = useState<number | null>(null); // 当前显示提示的单词索引
   
   // 翻译显示
-  const [wordTranslation, setWordTranslation] = useState<string | null>(null); // 当前完成的单词翻译
+  const [wordTranslations, setWordTranslations] = useState<Record<number, string>>({}); // 每个单词的翻译
   const [sentenceTranslation, setSentenceTranslation] = useState<string | null>(null); // 句子完成后的翻译
   
   // 音频控制状态
@@ -157,7 +157,7 @@ export default function PracticeScreen() {
       setFeedback(null);
       setHintWordIndex(null);
       setPlayCount(0);
-      setWordTranslation(null); // 清除单词翻译
+      setWordTranslations({}); // 清除单词翻译
       setSentenceTranslation(null); // 清除句子翻译
       
       // 保存当前句子的时间范围
@@ -399,7 +399,7 @@ export default function PracticeScreen() {
       wordStatuses.filter(w => !w.isPunctuation).every(w => w.revealed);
     
     if (allWordsRevealed && currentSentence && !completed) {
-      // 获取句子翻译
+      // 句子完成后才获取翻译
       fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -412,9 +412,6 @@ export default function PracticeScreen() {
           }
         })
         .catch(err => console.error('翻译失败:', err));
-      
-      // 清除单词翻译
-      setWordTranslation(null);
       
       // 延迟一下再跳转，让用户看到完成状态和翻译
       const timer = setTimeout(() => {
@@ -459,11 +456,6 @@ export default function PracticeScreen() {
       return;
     }
     
-    // 新单词开始输入时，清除上一个单词的翻译
-    if (text.length === 1) {
-      setWordTranslation(null);
-    }
-    
     setCurrentInput(text);
     
     // 实时检查输入
@@ -489,7 +481,7 @@ export default function PracticeScreen() {
     }
   };
 
-  // 监听单词完成，自动清空输入框并显示翻译
+  // 监听单词完成，自动清空输入框并获取翻译
   useEffect(() => {
     if (!currentInput) return;
     
@@ -504,12 +496,13 @@ export default function PracticeScreen() {
     if (matchedWord) {
       // 找到了完整匹配的单词，清空输入
       const completedWord = currentInput;
+      const wordIndex = matchedWord.index;
       setCurrentInput('');
       setFeedbackWord(completedWord);
       setFeedback('correct');
       setTimeout(() => setFeedback(null), 300);
       
-      // 获取单词翻译
+      // 获取单词翻译并存储
       fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -518,7 +511,10 @@ export default function PracticeScreen() {
         .then(res => res.json())
         .then(data => {
           if (data.translation) {
-            setWordTranslation(data.translation);
+            setWordTranslations(prev => ({
+              ...prev,
+              [wordIndex]: data.translation
+            }));
           }
         })
         .catch(err => console.error('翻译失败:', err));
@@ -733,7 +729,7 @@ export default function PracticeScreen() {
     }
   };
 
-  // 渲染单词显示（带字母进度）
+  // 渲染单词显示（带字母进度和翻译）
   const renderWordDisplay = (ws: WordStatus, idx: number) => {
     if (ws.isPunctuation) {
       return (
@@ -746,18 +742,27 @@ export default function PracticeScreen() {
       );
     }
     
-    // 如果单词已完成或正在提示，显示完整单词
+    // 获取该单词的翻译
+    const translation = wordTranslations[idx];
+    
+    // 如果单词已完成，显示完整单词和翻译
     if (ws.revealed) {
       return (
-        <TouchableOpacity 
-          key={idx} 
-          style={[styles.wordSlot, styles.wordCorrect]}
-          activeOpacity={0.7}
-        >
-          <Text style={{ color: theme.success, fontWeight: '600', fontSize: 16 }}>
-            {ws.displayText}
-          </Text>
-        </TouchableOpacity>
+        <View key={idx} style={styles.wordWithTranslation}>
+          <TouchableOpacity 
+            style={[styles.wordSlot, styles.wordCorrect]}
+            activeOpacity={0.7}
+          >
+            <Text style={{ color: theme.success, fontWeight: '600', fontSize: 16 }}>
+              {ws.displayText}
+            </Text>
+          </TouchableOpacity>
+          {translation && (
+            <Text style={styles.wordTranslationText}>
+              {translation}
+            </Text>
+          )}
+        </View>
       );
     }
     
@@ -979,27 +984,6 @@ export default function PracticeScreen() {
           </View>
         </View>
 
-        {/* 翻译显示区 - 右上角 */}
-        {(wordTranslation || sentenceTranslation) && (
-          <View style={styles.translationBox}>
-            {sentenceTranslation ? (
-              <>
-                <ThemedText variant="caption" color={theme.textMuted}>整句翻译：</ThemedText>
-                <ThemedText variant="body" color={theme.textPrimary} style={styles.translationText}>
-                  {sentenceTranslation}
-                </ThemedText>
-              </>
-            ) : wordTranslation && (
-              <>
-                <ThemedText variant="caption" color={theme.textMuted}>单词释义：</ThemedText>
-                <ThemedText variant="body" color={theme.textPrimary} style={styles.translationText}>
-                  {wordTranslation}
-                </ThemedText>
-              </>
-            )}
-          </View>
-        )}
-
         {/* Sentence Display */}
         <View style={styles.sentenceSection}>
           <View style={styles.sentenceHeader}>
@@ -1010,6 +994,16 @@ export default function PracticeScreen() {
           <View style={styles.wordsContainer}>
             {wordStatuses.map((ws, idx) => renderWordDisplay(ws, idx))}
           </View>
+          
+          {/* 句子完成后的翻译显示 */}
+          {sentenceTranslation && (
+            <View style={styles.sentenceTranslationBox}>
+              <ThemedText variant="small" color={theme.textSecondary}>
+                {sentenceTranslation}
+              </ThemedText>
+            </View>
+          )}
+          
           <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 8, textAlign: 'center' }}>
             点击未答出的单词可以查看提示
           </ThemedText>
