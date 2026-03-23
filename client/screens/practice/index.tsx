@@ -277,7 +277,6 @@ export default function PracticeScreen() {
       isPunctuation: token.isPunctuation,
     })));
     setCurrentInput('');
-    setCompletedWordCount(0);
     setIsLooping(true);
     
     const timer = setTimeout(() => {
@@ -291,6 +290,12 @@ export default function PracticeScreen() {
       stopPlayback();
     };
   }, [currentSentence?.id]);
+
+  // 自动计算完成的单词数
+  useEffect(() => {
+    const completed = wordStatuses.filter(w => !w.isPunctuation && w.revealed).length;
+    setCompletedWordCount(completed);
+  }, [wordStatuses]);
 
   // 显示错误闪烁效果
   const showErrorFlash = useCallback(() => {
@@ -321,130 +326,105 @@ export default function PracticeScreen() {
 
   // 处理输入变化
   const handleInputChange = useCallback((text: string) => {
-    const inputLower = text.toLowerCase();
+    const inputLower = text.toLowerCase().trim();
     
-    // 先处理单词状态
+    // 获取当前单词列表（非标点）
+    const wordList = wordStatuses.filter(w => !w.isPunctuation);
+    
+    // 计算已完成的单词数
+    const completedCount = wordList.filter(w => w.revealed).length;
+    
+    // 如果已经全部完成，不处理
+    if (completedCount >= wordList.length) return;
+    
+    // 获取当前应该输入的单词
+    const currentWordIndex = completedCount;
+    const currentWord = wordList[currentWordIndex];
+    
+    if (!currentWord) return;
+    
+    const targetWord = currentWord.word.toLowerCase();
+    
+    // 检查输入是否匹配当前单词
     setWordStatuses(prev => {
       const newStatuses = [...prev];
-      let inputIndex = 0;
-      let hasError = false;
-      let wordsCompleted = 0;
+      let wordFound = false;
+      let wordIdx = 0;
       
       for (let i = 0; i < newStatuses.length; i++) {
         const ws = newStatuses[i];
         if (ws.isPunctuation) continue;
         
-        const wordLower = ws.word.toLowerCase();
-        
-        // 已经完成的单词跳过
-        if (ws.revealed) continue;
-        
-        // 检查当前单词的匹配情况
-        let allMatched = true;
-        let firstErrorIndex = -1;
-        const matchedChars: boolean[] = [];
-        
-        for (let j = 0; j < wordLower.length; j++) {
-          const inputCharIndex = inputIndex + j;
-          if (inputCharIndex >= inputLower.length) {
-            allMatched = false;
-            matchedChars.push(false);
-            continue;
-          }
+        if (wordIdx === currentWordIndex && !wordFound) {
+          wordFound = true;
           
-          if (inputLower[inputCharIndex] === wordLower[j]) {
-            matchedChars.push(true);
-          } else {
-            matchedChars.push(false);
-            allMatched = false;
-            if (firstErrorIndex === -1) {
-              firstErrorIndex = j;
-            }
-          }
-        }
-        
-        // 判断单词是否完全匹配
-        if (allMatched && inputIndex + wordLower.length <= inputLower.length) {
-          const nextInputIndex = inputIndex + wordLower.length;
-          const nextChar = inputLower[nextInputIndex];
-          
-          // 检查单词边界：下一个字符必须是空格、结束或标点
-          const nextWord = newStatuses[i + 1];
-          const isWordEnd = !nextChar || nextChar === ' ' || (nextWord && nextWord.isPunctuation);
-          
-          if (isWordEnd) {
-            // 单词匹配成功！标记为完成
+          // 检查输入是否完全匹配这个单词
+          if (inputLower === targetWord) {
+            // 完全匹配！标记为完成
             newStatuses[i] = {
               ...ws,
               revealed: true,
               revealedChars: new Array(ws.word.length).fill(true),
               errorCharIndex: -1,
             };
-            wordsCompleted++;
-            inputIndex = nextInputIndex + (nextChar === ' ' ? 1 : 0);
-          } else {
-            // 还有后续字符，但不是空格分隔，可能是错误
+            // 清空输入框
+            setCurrentInput('');
+          } else if (inputLower.length > 0) {
+            // 部分输入，检查匹配情况
+            const matchedChars: boolean[] = [];
+            let hasError = false;
+            let errorIndex = -1;
+            
+            for (let j = 0; j < targetWord.length; j++) {
+              if (j < inputLower.length) {
+                if (inputLower[j] === targetWord[j]) {
+                  matchedChars.push(true);
+                } else {
+                  matchedChars.push(false);
+                  hasError = true;
+                  if (errorIndex === -1) errorIndex = j;
+                }
+              } else {
+                matchedChars.push(false);
+              }
+            }
+            
+            // 检查是否输入了多余的字符
+            if (inputLower.length > targetWord.length) {
+              hasError = true;
+              errorIndex = targetWord.length;
+            }
+            
             newStatuses[i] = {
               ...ws,
               revealedChars: matchedChars,
-              errorCharIndex: firstErrorIndex >= 0 ? firstErrorIndex : wordLower.length,
+              errorCharIndex: errorIndex,
             };
-            hasError = true;
-            break;
+            
+            // 显示错误闪烁
+            if (hasError) {
+              showErrorFlash();
+            }
+            
+            // 保留输入框内容
+            setCurrentInput(text.trim());
+          } else {
+            // 输入为空，重置状态
+            newStatuses[i] = {
+              ...ws,
+              revealedChars: new Array(ws.word.length).fill(false),
+              errorCharIndex: -1,
+            };
+            setCurrentInput('');
           }
-        } else {
-          // 部分匹配或有错误
-          newStatuses[i] = {
-            ...ws,
-            revealedChars: matchedChars,
-            errorCharIndex: firstErrorIndex,
-          };
-          
-          if (firstErrorIndex >= 0) {
-            hasError = true;
-          }
-          break;
-        }
-      }
-      
-      // 计算新的输入框内容：去掉已完成的单词部分
-      // 找到第一个未完成的单词，保留从那里开始的输入
-      let remainingInput = '';
-      let charCount = 0;
-      
-      for (let i = 0; i < newStatuses.length; i++) {
-        const ws = newStatuses[i];
-        if (ws.isPunctuation) continue;
-        
-        if (ws.revealed) {
-          // 已完成的单词，跳过其字符数+空格
-          charCount += ws.word.length + 1;
-          continue;
         }
         
-        // 找到第一个未完成的单词
-        const matchedLength = ws.revealedChars.filter(Boolean).length;
-        if (matchedLength > 0) {
-          // 保留当前正在输入的部分
-          remainingInput = inputLower.slice(charCount, charCount + matchedLength);
-        } else if (charCount < inputLower.length) {
-          // 可能是开始输入新单词
-          remainingInput = inputLower.slice(charCount);
-        }
-        break;
+        wordIdx++;
       }
-      
-      // 如果有错误，触发闪烁
-      if (hasError) {
-        showErrorFlash();
-      }
-      
-      // 更新输入框
-      setCurrentInput(remainingInput);
       
       return newStatuses;
     });
-  }, [showErrorFlash]);
+  }, [wordStatuses, showErrorFlash]);
 
   // 检查是否完成
   useEffect(() => {
