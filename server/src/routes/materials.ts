@@ -1242,6 +1242,158 @@ async function processASRResultWithSilenceAsync(
 }
 
 /**
+ * 智能匹配句子到时间戳
+ * 使用多种策略：单词时间戳精确匹配、文本位置估算、字符比例估算
+ */
+function matchSentenceToTimestamps(
+  sentenceText: string,
+  wordsWithTime: WordWithTime[],
+  fullText: string,
+  audioDuration: number
+): { start_time: number; end_time: number; method: string } {
+  console.log(`\n----- 匹配句子: "${sentenceText.substring(0, 30)}..." -----`);
+  
+  let startTime = 0;
+  let endTime = 0;
+  let matched = false;
+  let method = 'none';
+
+  // 提取句子的单词
+  const sentenceWords = sentenceText.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 0);
+
+  // 策略1: 使用单词时间戳精确匹配
+  if (wordsWithTime && wordsWithTime.length > 0) {
+    console.log(`尝试单词时间戳精确匹配，共 ${wordsWithTime.length} 个单词时间戳`);
+    
+    const firstWords = sentenceWords.slice(0, Math.min(3, sentenceWords.length));
+    const lastWords = sentenceWords.slice(-Math.min(3, sentenceWords.length));
+    
+    const lowerWords = wordsWithTime.map(w => ({ 
+      ...w, 
+      wordLower: w.word.toLowerCase().replace(/[.,!?;:'"]/g, '') 
+    }));
+
+    // 查找前几个单词的起始位置
+    let startMatch = { index: -1, confidence: 0 };
+    for (let i = 0; i <= lowerWords.length - firstWords.length; i++) {
+      const slice = lowerWords.slice(i, i + firstWords.length);
+      const matchCount = slice.filter((w, idx) => 
+        w.wordLower === firstWords[idx] || 
+        w.wordLower.includes(firstWords[idx]) ||
+        firstWords[idx].includes(w.wordLower)
+      ).length;
+      
+      const confidence = matchCount / firstWords.length;
+      if (confidence > startMatch.confidence && confidence >= 0.5) {
+        startMatch = { index: i, confidence };
+      }
+    }
+
+    // 查找后几个单词的结束位置
+    let endMatch = { index: -1, confidence: 0 };
+    for (let i = firstWords.length; i <= lowerWords.length; i++) {
+      const slice = lowerWords.slice(i - lastWords.length, i);
+      const matchCount = slice.filter((w, idx) => 
+        w.wordLower === lastWords[idx] || 
+        w.wordLower.includes(lastWords[idx]) ||
+        lastWords[idx].includes(w.wordLower)
+      ).length;
+      
+      const confidence = matchCount / lastWords.length;
+      if (confidence > endMatch.confidence && confidence >= 0.5) {
+        endMatch = { index: i, confidence };
+      }
+    }
+
+    if (startMatch.index >= 0 && endMatch.index > startMatch.index) {
+      startTime = lowerWords[startMatch.index].start_time;
+      endTime = lowerWords[endMatch.index - 1].end_time;
+      matched = true;
+      method = 'word_timestamps';
+      console.log(`单词时间戳匹配成功: 索引 ${startMatch.index} 到 ${endMatch.index - 1}, 时间 ${startTime}-${endTime}ms`);
+    }
+  }
+
+  // 策略2: 基于文本位置估算
+  if (!matched && audioDuration > 0 && fullText) {
+    console.log('尝试文本位置估算');
+    
+    const cleanFullText = fullText.toLowerCase().replace(/[^\w\s]/g, ' ');
+    const cleanSentence = sentenceText.toLowerCase().replace(/[^\w\s]/g, ' ');
+    
+    const fullTextWords = cleanFullText.split(/\s+/).filter(w => w.length > 0);
+    const sentenceWordList = cleanSentence.split(/\s+/).filter(w => w.length > 0);
+    
+    if (sentenceWordList.length > 0 && fullTextWords.length > 0) {
+      // 找到句子在全文中的位置
+      let foundIndex = -1;
+      const firstSentenceWord = sentenceWordList[0];
+      
+      for (let i = 0; i <= fullTextWords.length - sentenceWordList.length; i++) {
+        if (fullTextWords[i] === firstSentenceWord) {
+          let matchCount = 0;
+          for (let j = 0; j < Math.min(sentenceWordList.length, 5); j++) {
+            if (fullTextWords[i + j] === sentenceWordList[j]) {
+              matchCount++;
+            }
+          }
+          if (matchCount >= Math.min(sentenceWordList.length, 3)) {
+            foundIndex = i;
+            break;
+          }
+        }
+      }
+      
+      if (foundIndex >= 0) {
+        const startRatio = foundIndex / fullTextWords.length;
+        const endRatio = Math.min((foundIndex + sentenceWordList.length) / fullTextWords.length, 1);
+        
+        const bufferTime = audioDuration * 0.02;
+        startTime = Math.round(startRatio * audioDuration) + bufferTime;
+        endTime = Math.round(endRatio * audioDuration) - bufferTime;
+        
+        matched = true;
+        method = 'text_position_estimate';
+        console.log(`文本位置估算成功: 单词位置 ${foundIndex}, 时间 ${startTime}-${endTime}ms`);
+      }
+    }
+  }
+
+  // 策略3: 基于字符比例估算（最后的备选）
+  if (!matched && audioDuration > 0 && fullText) {
+    console.log('使用字符比例估算');
+    
+    const charRatio = sentenceText.length / fullText.length;
+    // 找到句子在全文中的字符位置
+    const charIndex = fullText.indexOf(sentenceText.substring(0, 20));
+    
+    if (charIndex >= 0) {
+      const startRatio = charIndex / fullText.length;
+      const endRatio = (charIndex + sentenceText.length) / fullText.length;
+      
+      startTime = Math.round(startRatio * audioDuration);
+      endTime = Math.round(endRatio * audioDuration);
+      method = 'char_ratio_estimate';
+      console.log(`字符比例估算: 位置 ${charIndex}, 时间 ${startTime}-${endTime}ms`);
+    } else {
+      // 完全无法匹配，按比例分配一个默认时长
+      endTime = startTime + Math.max(2000, audioDuration * 0.1);
+      method = 'default_estimate';
+      console.log(`无法匹配，使用默认时长: ${startTime}-${endTime}ms`);
+    }
+  }
+
+  // 确保时间戳有效
+  if (endTime <= startTime) {
+    endTime = startTime + 2000;
+  }
+  
+  console.log(`----- 匹配结果: ${startTime}-${endTime}ms (${method}) -----\n`);
+  
+  return { start_time: Math.round(startTime), end_time: Math.round(endTime), method };
+}
+
+/**
  * 从 ASR 结果中提取带时间戳的单词
  */
 function extractWordsWithTimestamps(asrResult: { text: string; duration?: number; utterances?: any[]; rawData?: any }): WordWithTime[] {
@@ -1783,7 +1935,7 @@ router.post('/:id/prepare-timestamps', async (req: Request, res: Response) => {
       return res.status(400).json({ error: '无法提取文本，请检查音频文件' });
     }
 
-    // Step 2: 检查是否已有句子
+    // Step 2: 检查是否已有句子且时间戳有效
     const { data: existingSentences } = await supabase
       .from('sentences')
       .select('*')
@@ -1791,11 +1943,72 @@ router.post('/:id/prepare-timestamps', async (req: Request, res: Response) => {
       .order('sentence_index');
 
     if (existingSentences && existingSentences.length > 0) {
-      console.log(`Step 2: 已有 ${existingSentences.length} 个句子，跳过切分`);
+      // 检查是否所有句子都有有效时间戳
+      const needsTimestamps = existingSentences.some(s => s.start_time === 0 || s.end_time === 0 || s.end_time <= s.start_time);
+      
+      if (!needsTimestamps) {
+        console.log(`Step 2: 已有 ${existingSentences.length} 个句子且时间戳有效，跳过处理`);
+        return res.json({ 
+          sentences: existingSentences,
+          message: '已有句子数据',
+          wasProcessed: false,
+        });
+      }
+      
+      console.log(`Step 2: 已有 ${existingSentences.length} 个句子，但需要更新时间戳`);
+      
+      // 需要更新时间戳，获取单词时间戳
+      const audioUrl = await storage.generatePresignedUrl({
+        key: material.audio_url,
+        expireTime: 86400,
+      });
+
+      const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+      const asrClient = new ASRClient(new Config(), customHeaders);
+      
+      const asrResult = await asrClient.recognize({
+        uid: 'user',
+        url: audioUrl,
+      });
+
+      const wordsWithTime = extractWordsWithTimestamps(asrResult);
+      const asrFullText = asrResult.text || asrResult.rawData?.text || '';
+      const asrDuration = (asrResult.duration || asrResult.rawData?.audio_info?.duration || 0) * 1000;
+      
+      console.log(`获取到 ${wordsWithTime.length} 个单词时间戳，时长 ${asrDuration}ms`);
+
+      // 为每个句子匹配时间戳
+      const updatedSentences = [];
+      for (const sentence of existingSentences) {
+        const matchResult = matchSentenceToTimestamps(
+          sentence.text,
+          wordsWithTime,
+          asrFullText,
+          asrDuration || duration
+        );
+        
+        const { error: updateError } = await supabase
+          .from('sentences')
+          .update({
+            start_time: matchResult.start_time,
+            end_time: matchResult.end_time,
+          })
+          .eq('id', sentence.id);
+        
+        if (!updateError) {
+          updatedSentences.push({
+            ...sentence,
+            start_time: matchResult.start_time,
+            end_time: matchResult.end_time,
+          });
+        }
+      }
+      
+      console.log(`===== 时间戳更新完成，共 ${updatedSentences.length} 个句子 =====\n`);
       return res.json({ 
-        sentences: existingSentences,
-        message: '已有句子数据',
-        wasProcessed: false,
+        sentences: updatedSentences,
+        message: `时间戳更新完成，共 ${updatedSentences.length} 个句子`,
+        wasProcessed: true,
       });
     }
 
