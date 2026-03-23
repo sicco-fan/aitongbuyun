@@ -166,7 +166,7 @@ export default function HomeScreen() {
         {/* Header */}
         <ThemedView level="root" style={styles.header}>
           <ThemedText variant="caption" color={theme.textMuted} style={styles.greeting}>
-            听力训练
+            啃句大师
           </ThemedText>
           <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
             今日学习

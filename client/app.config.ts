@@ -1,6 +1,6 @@
 import { ExpoConfig, ConfigContext } from 'expo/config';
 
-const appName = process.env.COZE_PROJECT_NAME || process.env.EXPO_PUBLIC_COZE_PROJECT_NAME || '应用';
+const appName = process.env.COZE_PROJECT_NAME || process.env.EXPO_PUBLIC_COZE_PROJECT_NAME || '啃句大师';
 const projectId = process.env.COZE_PROJECT_ID || process.env.EXPO_PUBLIC_COZE_PROJECT_ID;
 const slugAppName = projectId ? `app${projectId}` : 'myapp';
 
@@ -18,7 +18,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": `背单词音频对话App需要访问麦克风以播放音频内容。`
+        "NSMicrophoneUsageDescription": `啃句大师需要访问麦克风以播放音频内容。`
       }
     },
     "android": {
@@ -52,7 +52,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       [
         "expo-av",
         {
-          "microphonePermission": `背单词音频对话App需要访问麦克风以播放音频内容。`
+          "microphonePermission": `啃句大师需要访问麦克风以播放音频内容。`
         }
       ],
       [
@@ -64,9 +64,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       [
         "expo-image-picker",
         {
-          "photosPermission": `允许背单词音频对话App访问您的相册，以便您上传或保存图片。`,
-          "cameraPermission": `允许背单词音频对话App使用您的相机，以便您直接拍摄照片上传。`,
-          "microphonePermission": `允许背单词音频对话App访问您的麦克风，以便您拍摄带有声音的视频。`
+          "photosPermission": `允许啃句大师访问您的相册，以便您上传或保存图片。`,
+          "cameraPermission": `允许啃句大师使用您的相机，以便您直接拍摄照片上传。`,
+          "microphonePermission": `允许啃句大师访问您的麦克风，以便您拍摄带有声音的视频。`
         }
       ]
     ],
