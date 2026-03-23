@@ -27,6 +27,7 @@ interface FileInfo {
   name: string;
   size?: number;
   mimeType?: string;
+  file?: File; // Web 端原始 File 对象
 }
 
 // 后端服务地址配置
@@ -46,6 +47,123 @@ const BACKEND_URL = getBackendUrl();
 // 分块上传配置 - 使用较小的分块以避免代理限制
 // Base64 编码后每 4 字符 = 3 字节，所以 1MB 原始数据 ≈ 1.33MB base64
 const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB 原始字节大小
+
+/**
+ * Web 端分块上传文件
+ */
+const uploadFileInChunksWeb = async (
+  file: File,
+  params: Record<string, string>,
+  onProgress: (progress: number, status: string) => void
+): Promise<{ status: number; body: string }> => {
+  const fileSize = file.size;
+  const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+  
+  console.log(`[Web分块上传] 文件大小: ${(fileSize / 1024 / 1024).toFixed(2)} MB`);
+  console.log(`[Web分块上传] 分块数量: ${totalChunks}`);
+  
+  // 生成唯一上传 ID
+  const uploadId = `${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+  
+  // 逐块上传
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, fileSize);
+    const chunk = file.slice(start, end);
+    
+    onProgress(
+      Math.round((i / totalChunks) * 100),
+      `上传中... ${i + 1}/${totalChunks} 块`
+    );
+    
+    // 读取分块为 base64
+    const chunkBase64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // 移除 data:*/*;base64, 前缀
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(chunk);
+    });
+    
+    // 使用 JSON 格式上传分块
+    const chunkResponse = await fetch(`${BACKEND_URL}/api/v1/materials/chunk-json`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        chunkIndex: i,
+        totalChunks: totalChunks,
+        uploadId: uploadId,
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        data: chunkBase64,
+      }),
+    });
+    
+    if (!chunkResponse.ok) {
+      const errorBody = await chunkResponse.json().catch(() => ({}));
+      throw new Error(errorBody.error || `上传第 ${i + 1} 块失败`);
+    }
+    
+    console.log(`[Web分块上传] 块 ${i + 1}/${totalChunks} 完成`);
+  }
+  
+  // 完成上传
+  onProgress(100, '合并文件...');
+  
+  const completeResponse = await fetch(`${BACKEND_URL}/api/v1/materials/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      uploadId: uploadId,
+      title: params.title,
+      description: params.description,
+    }),
+  });
+  
+  const result = await completeResponse.json();
+  
+  return {
+    status: completeResponse.status,
+    body: JSON.stringify(result),
+  };
+};
+
+/**
+ * Web 端直接上传文件
+ */
+const uploadFileWeb = async (
+  file: File,
+  params: Record<string, string>,
+  onStatusChange: (status: string) => void
+): Promise<{ status: number; body: string }> => {
+  onStatusChange('正在连接服务器...');
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('title', params.title);
+  if (params.description) {
+    formData.append('description', params.description);
+  }
+  
+  const response = await fetch(`${BACKEND_URL}/api/v1/materials`, {
+    method: 'POST',
+    body: formData,
+  });
+  
+  const result = await response.json();
+  
+  return {
+    status: response.status,
+    body: JSON.stringify(result),
+  };
+};
 
 /**
  * 分块上传文件
@@ -276,6 +394,36 @@ export default function AddMaterialScreen() {
   };
 
   const pickAudioFile = async () => {
+    // Web 端使用原生 input 元素
+    if (Platform.OS === 'web') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'audio/*,video/*,.m4a,.mp3,.wav,.aac,.ogg,.flac,.mp4,.mov,.avi,.mkv,.webm';
+      
+      input.onchange = (e) => {
+        const target = e.target as HTMLInputElement;
+        const selectedFile = target.files?.[0];
+        if (selectedFile) {
+          setFile({
+            uri: URL.createObjectURL(selectedFile),
+            name: selectedFile.name,
+            size: selectedFile.size,
+            mimeType: selectedFile.type,
+            file: selectedFile, // 保存原始 File 对象
+          });
+          
+          if (!title) {
+            const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, '');
+            setTitle(nameWithoutExt);
+          }
+        }
+      };
+      
+      input.click();
+      return;
+    }
+    
+    // 移动端使用 DocumentPicker
     try {
       // 支持所有常见的音视频格式
       const result = await DocumentPicker.getDocumentAsync({
@@ -582,8 +730,32 @@ export default function AddMaterialScreen() {
 
       let uploadResult: { status: number; body: string };
 
-      if (isLargeFile) {
-        // 大文件使用分块上传
+      // Web 端使用专用上传函数
+      if (Platform.OS === 'web' && file.file) {
+        if (isLargeFile) {
+          console.log('[上传] Web 端分块上传模式');
+          setUploadStatus(`分块上传中... (${fileSizeMB.toFixed(1)} MB)`);
+          
+          uploadResult = await uploadFileInChunksWeb(
+            file.file,
+            params,
+            (progress, status) => {
+              setUploadProgress(progress);
+              setUploadStatus(status);
+            }
+          );
+        } else {
+          console.log('[上传] Web 端直接上传模式');
+          setUploadStatus(`上传中... (${fileSizeMB.toFixed(1)} MB)`);
+          
+          uploadResult = await uploadFileWeb(
+            file.file,
+            params,
+            (status) => setUploadStatus(status)
+          );
+        }
+      } else if (isLargeFile) {
+        // 移动端大文件使用分块上传
         console.log('[上传] 使用分块上传模式');
         setUploadStatus(`分块上传中... (${fileSizeMB.toFixed(1)} MB)`);
         
@@ -598,7 +770,7 @@ export default function AddMaterialScreen() {
           }
         );
       } else {
-        // 小文件直接上传
+        // 移动端小文件直接上传
         console.log('[上传] 使用直接上传模式');
         setUploadStatus(`上传中... (${fileSizeMB.toFixed(1)} MB)`);
         
