@@ -104,8 +104,6 @@ export default function PracticeScreen() {
   const isRecordingRef = useRef(false); // 使用 ref 跟踪录音状态，避免闭包问题
   const inputRef = useRef<TextInput>(null); // 输入框引用
   const currentSentenceIdRef = useRef<number | null>(null); // 跟踪当前句子ID，防止异步翻译混乱
-  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null); // 静音检测定时器
-  const audioChunksRef = useRef<string[]>([]); // 累积的音频片段
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -607,7 +605,7 @@ export default function PracticeScreen() {
       setIsRecording(true);
       isRecordingRef.current = true;
       setRecordingCount(0);
-      audioChunksRef.current = [];
+      setRecognitionHistory([]); // 清空识别历史
       
       // 开始连续录音循环
       await startRecordingLoop();
@@ -619,7 +617,7 @@ export default function PracticeScreen() {
     }
   };
 
-  // 录音循环 - 持续录音并检测停顿
+  // 录音循环 - 持续录音并实时识别
   const startRecordingLoop = async () => {
     if (!isRecordingRef.current) return;
 
@@ -629,7 +627,7 @@ export default function PracticeScreen() {
       await recording.startAsync();
       recordingRef.current = recording;
       
-      // 每500ms检查一次，检测停顿
+      // 每600ms录音一次并立即识别
       setTimeout(async () => {
         if (!isRecordingRef.current) return;
         
@@ -640,22 +638,9 @@ export default function PracticeScreen() {
             recordingRef.current = null;
             
             if (uri) {
-              // 累积音频
-              audioChunksRef.current.push(uri);
               setRecordingCount(prev => prev + 1);
-              
-              // 检查是否有停顿（通过音频长度判断）
-              // 如果累积了音频，等待一小段时间看是否继续说话
-              if (silenceTimerRef.current) {
-                clearTimeout(silenceTimerRef.current);
-              }
-              
-              // 800ms内没有新音频，认为意群结束，开始识别
-              silenceTimerRef.current = setTimeout(async () => {
-                if (audioChunksRef.current.length > 0 && isRecordingRef.current) {
-                  await recognizeAccumulatedAudio();
-                }
-              }, 800);
+              // 立即识别，不需要等待
+              await recognizeAudio(uri);
             }
           } catch (e) {
             console.error('停止录音片段失败:', e);
@@ -666,7 +651,7 @@ export default function PracticeScreen() {
         if (isRecordingRef.current) {
           await startRecordingLoop();
         }
-      }, 500);
+      }, 600);
       
     } catch (error) {
       console.error('录音失败:', error);
@@ -676,19 +661,11 @@ export default function PracticeScreen() {
     }
   };
 
-  // 识别累积的音频
-  const recognizeAccumulatedAudio = async () => {
-    const uris = [...audioChunksRef.current];
-    audioChunksRef.current = [];
-    
-    if (uris.length === 0) return;
-    
+  // 识别单个音频片段
+  const recognizeAudio = async (uri: string) => {
     try {
-      // 合并音频或分别识别（这里简化为识别最后一个片段）
-      const lastUri = uris[uris.length - 1];
-      
       const formData = new FormData();
-      const audioFile = await createFormDataFile(lastUri, 'recording.m4a', 'audio/m4a');
+      const audioFile = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
       formData.append('file', audioFile as any);
       formData.append('deviceId', deviceId);
       
@@ -711,83 +688,45 @@ export default function PracticeScreen() {
       
       console.log('[语音识别] 返回结果:', JSON.stringify(data));
       
-      if (data.success) {
-        // 后端返回识别结果和类型（字母或单词）
+      // 始终显示识别结果（不管成功或失败）
+      if (data.error) {
+        // 识别失败（如静音），不显示错误信息，避免干扰用户
+        // 只有在真正识别到内容时才显示
+        return;
+      }
+      
+      if (data.text) {
+        // 有识别结果，显示在历史区域
+        const itemType: 'letter' | 'word' | 'raw' = 
+          data.letters && data.letters.length > 0 ? 'letter' :
+          data.matchedWords && data.matchedWords.length > 0 ? 'word' : 'raw';
+        
+        const isMatched = !!(data.letters?.length || data.matchedWords?.length);
+        
+        console.log(`[语音识别] 显示结果: "${data.text}" 类型: ${itemType} 匹配: ${isMatched}`);
+        
+        setRecognitionHistory(prev => [...prev, {
+          text: data.text as string,
+          type: itemType,
+          matched: isMatched,
+          timestamp: Date.now(),
+        }].slice(-15)); // 只保留最近15条
+        
+        // 如果匹配成功，自动填入
         if (data.letters && data.letters.length > 0) {
           // 字母模式：逐个填入字母
-          console.log('[语音识别] 字母模式，字母:', data.letters);
-          
-          // 添加到识别历史
-          const lettersText = (data.letters as string[]).join(' ');
-          setRecognitionHistory(prev => [...prev, {
-            text: lettersText,
-            type: 'letter' as const,
-            matched: true,
-            timestamp: Date.now(),
-          }].slice(-10)); // 只保留最近10条
-          
           for (const letter of data.letters) {
-            console.log('[语音识别] 处理字母:', letter);
             checkInputRealtime(letter as string);
           }
         } else if (data.matchedWords && data.matchedWords.length > 0) {
           // 单词模式：填入匹配的单词
-          console.log('[语音识别] 单词模式，匹配单词:', data.matchedWords);
-          
-          // 添加到识别历史
-          const wordsText = (data.matchedWords as string[]).join(' ');
-          setRecognitionHistory(prev => [...prev, {
-            text: wordsText,
-            type: 'word' as const,
-            matched: true,
-            timestamp: Date.now(),
-          }].slice(-10)); // 只保留最近10条
-          
           for (const word of data.matchedWords) {
-            console.log('[语音识别] 处理单词:', word);
             checkInputRealtime(word as string);
           }
-        } else if (data.text) {
-          // 原始识别结果
-          console.log('[语音识别] 原始文本:', data.text);
-          
-          // 添加到识别历史（未匹配）
-          setRecognitionHistory(prev => [...prev, {
-            text: data.text as string,
-            type: 'raw' as const,
-            matched: false,
-            timestamp: Date.now(),
-          }].slice(-10)); // 只保留最近10条
-          
-          const words = (data.text as string).split(/\s+/).filter((w: string) => w.length > 0);
-          for (const word of words) {
-            console.log('[语音识别] 处理原始单词:', word);
-            checkInputRealtime(word);
-          }
-        }
-      } else {
-        console.log('[语音识别] 识别失败:', data.message);
-        
-        // 添加失败记录
-        if (data.text) {
-          setRecognitionHistory(prev => [...prev, {
-            text: data.text as string,
-            type: 'raw' as const,
-            matched: false,
-            timestamp: Date.now(),
-          }].slice(-10));
         }
       }
     } catch (error) {
       console.error('识别失败:', error);
-      
-      // 添加错误记录
-      setRecognitionHistory(prev => [...prev, {
-        text: '识别出错',
-        type: 'raw' as const,
-        matched: false,
-        timestamp: Date.now(),
-      }].slice(-10));
     }
   };
 
@@ -795,12 +734,6 @@ export default function PracticeScreen() {
   const stopContinuousRecording = async () => {
     setIsRecording(false);
     isRecordingRef.current = false;
-    
-    // 清除停顿计时器
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
     
     // 停止当前录音
     if (recordingRef.current) {
@@ -810,11 +743,6 @@ export default function PracticeScreen() {
       } catch (e) {
         // 忽略
       }
-    }
-    
-    // 识别剩余的音频
-    if (audioChunksRef.current.length > 0) {
-      await recognizeAccumulatedAudio();
     }
     
     // 恢复播放
@@ -1167,25 +1095,28 @@ export default function PracticeScreen() {
               />
             </TouchableOpacity>
           </View>
-          {isRecording && (
-            <ThemedText variant="caption" color={theme.primary} style={{ marginTop: 8, textAlign: 'center' }}>
-              {`正在识别... 说对的单词或字母会自动填入 · 已识别 ${recordingCount} 次`}
-            </ThemedText>
-          )}
           
-          {/* 实时识别历史显示区域 */}
-          {recognitionHistory.length > 0 && (
-            <View style={{
-              marginTop: 12,
-              paddingHorizontal: Spacing.md,
-              paddingVertical: Spacing.sm,
-              backgroundColor: theme.backgroundTertiary,
-              borderRadius: BorderRadius.lg,
-              minHeight: 60,
-            }}>
-              <ThemedText variant="caption" color={theme.textMuted} style={{ marginBottom: 4 }}>
-                实时识别结果
+          {/* 实时识别结果显示区域 - 始终显示在输入框下方 */}
+          <View style={{
+            marginTop: 12,
+            paddingHorizontal: Spacing.md,
+            paddingVertical: Spacing.sm,
+            backgroundColor: theme.backgroundTertiary,
+            borderRadius: BorderRadius.lg,
+            minHeight: 70,
+          }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <ThemedText variant="caption" color={theme.textMuted}>
+                实时识别结果 {isRecording && `· 识别中 ${recordingCount} 次`}
               </ThemedText>
+              {recognitionHistory.length > 0 && (
+                <TouchableOpacity onPress={() => setRecognitionHistory([])}>
+                  <ThemedText variant="caption" color={theme.textMuted}>清除</ThemedText>
+                </TouchableOpacity>
+              )}
+            </View>
+            
+            {recognitionHistory.length > 0 ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                   {recognitionHistory.map((item, index) => (
@@ -1215,8 +1146,12 @@ export default function PracticeScreen() {
                   ))}
                 </View>
               </ScrollView>
-            </View>
-          )}
+            ) : (
+              <ThemedText variant="caption" color={theme.textMuted} style={{ textAlign: 'center', paddingVertical: 8 }}>
+                点击麦克风开始语音识别，结果将显示在这里
+              </ThemedText>
+            )}
+          </View>
         </View>
 
         {/* Feedback - 只显示正确提示 */}
