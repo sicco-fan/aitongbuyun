@@ -174,15 +174,56 @@ export default function AddMaterialScreen() {
 
       if (!result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
+        console.log('选择的视频:', asset);
         
-        // 获取文件信息
-        const fileInfo = await (FileSystem as any).getInfoAsync(asset.uri, { size: true });
-        const fileName = asset.fileName || `video_${Date.now()}.mp4`;
+        // 获取文件名
+        let fileName = asset.fileName;
+        if (!fileName) {
+          // 从 URI 中提取文件名
+          const uriParts = asset.uri.split('/');
+          fileName = uriParts[uriParts.length - 1] || `video_${Date.now()}.mp4`;
+          // 确保 fileName 有扩展名
+          if (!fileName.includes('.')) {
+            fileName += '.mp4';
+          }
+        }
+        
+        // 对于 ph:// 或 content:// 格式的 URI，需要复制到缓存目录
+        let fileUri = asset.uri;
+        let fileSize = asset.fileSize;
+        
+        // 如果是 ph:// 格式（iOS 相册），需要复制到缓存目录
+        if (asset.uri.startsWith('ph://') || asset.uri.startsWith('content://')) {
+          console.log('复制相册文件到缓存目录...');
+          const cacheDir = (FileSystem as any).cacheDirectory;
+          const localUri = `${cacheDir}${fileName}`;
+          
+          // 复制文件
+          await (FileSystem as any).copyAsync({
+            from: asset.uri,
+            to: localUri,
+          });
+          
+          fileUri = localUri;
+          console.log('复制完成:', localUri);
+          
+          // 获取文件大小
+          const fileInfo = await (FileSystem as any).getInfoAsync(fileUri, { size: true });
+          if (fileInfo.exists) {
+            fileSize = (fileInfo as any).size;
+          }
+        } else if (!fileSize) {
+          // 对于其他格式，尝试获取文件大小
+          const fileInfo = await (FileSystem as any).getInfoAsync(fileUri, { size: true });
+          if (fileInfo.exists) {
+            fileSize = (fileInfo as any).size;
+          }
+        }
         
         setFile({
-          uri: asset.uri,
+          uri: fileUri,
           name: fileName,
-          size: fileInfo.exists ? (fileInfo as any).size : undefined,
+          size: fileSize,
           mimeType: asset.mimeType || 'video/mp4',
         });
         
@@ -194,7 +235,7 @@ export default function AddMaterialScreen() {
       }
     } catch (error) {
       console.error('选择视频失败:', error);
-      setErrorDialog({ visible: true, message: '选择视频失败，请重试' });
+      setErrorDialog({ visible: true, message: `选择视频失败：${(error as Error).message}` });
     }
   };
 
