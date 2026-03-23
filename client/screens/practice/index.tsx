@@ -94,6 +94,7 @@ export default function PracticeScreen() {
     text: string;
     type: 'letter' | 'word' | 'raw';
     matched: boolean;
+    aiCorrected?: boolean; // 是否经过AI纠正
     timestamp: number;
   }>>([]);
   
@@ -668,6 +669,7 @@ export default function PracticeScreen() {
       const audioFile = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
       formData.append('file', audioFile as any);
       formData.append('deviceId', deviceId);
+      formData.append('materialId', String(material?.id || 0)); // 添加材料ID用于AI学习
       
       // 获取未完成的单词列表用于模糊匹配
       const uncompletedWords = wordStatuses
@@ -702,13 +704,15 @@ export default function PracticeScreen() {
           data.matchedWords && data.matchedWords.length > 0 ? 'word' : 'raw';
         
         const isMatched = !!(data.letters?.length || data.matchedWords?.length);
+        const aiCorrected = data.aiCorrected || false; // AI纠正标识
         
-        console.log(`[语音识别] 显示结果: "${data.text}" 类型: ${itemType} 匹配: ${isMatched}`);
+        console.log(`[语音识别] 显示结果: "${data.text}" 类型: ${itemType} 匹配: ${isMatched} AI纠正: ${aiCorrected}`);
         
         setRecognitionHistory(prev => [...prev, {
           text: data.text as string,
           type: itemType,
           matched: isMatched,
+          aiCorrected,
           timestamp: Date.now(),
         }].slice(-15)); // 只保留最近15条
         
@@ -1141,6 +1145,7 @@ export default function PracticeScreen() {
                         fontWeight: '600',
                       }}>
                         {item.text}
+                        {item.aiCorrected && ' ✓'} {/* AI纠正标记 */}
                       </Text>
                     </View>
                   ))}
