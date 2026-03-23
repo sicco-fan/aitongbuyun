@@ -80,6 +80,9 @@ export default function PracticeScreen() {
   const [recentWordTranslation, setRecentWordTranslation] = useState<string | null>(null); // 最近完成单词的翻译
   const [sentenceTranslation, setSentenceTranslation] = useState<string | null>(null); // 句子完成后的翻译
   
+  // 刷新状态
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
   // 音频控制状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [playCount, setPlayCount] = useState(0);
@@ -119,6 +122,7 @@ export default function PracticeScreen() {
   const inputRef = useRef<TextInput>(null); // 输入框引用
   const currentSentenceIdRef = useRef<number | null>(null); // 跟踪当前句子ID，防止异步翻译混乱
   const completedRef = useRef(false); // 跟踪完成状态，用于音频回调中立即停止
+  const currentIndexRef = useRef(0); // 跟踪当前句子索引，用于刷新时保持位置
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -155,35 +159,62 @@ export default function PracticeScreen() {
     initDeviceId();
   }, []);
 
+  // 刷新材料数据（可手动调用或页面获得焦点时自动调用）
+  const refreshMaterial = useCallback(async (showLoading: boolean = false) => {
+    if (!materialId) return;
+    
+    if (showLoading) {
+      setIsRefreshing(true);
+    }
+
+    try {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}`);
+      const data = await response.json();
+
+      if (data.material && data.sentences) {
+        setMaterial(data.material);
+        // 使用 ref 获取当前句子 ID，避免依赖问题
+        const currentSentenceId = currentSentenceIdRef.current;
+        const updatedCurrentIndex = data.sentences.findIndex((s: Sentence) => s.id === currentSentenceId);
+        
+        if (updatedCurrentIndex >= 0 && !data.sentences[updatedCurrentIndex]?.is_completed) {
+          // 当前句子未完成，保持位置
+          setCurrentIndex(updatedCurrentIndex);
+        } else {
+          // 当前句子已完成或不存在，跳转到第一个未完成的
+          const firstIncomplete = data.sentences.findIndex((s: Sentence) => !s.is_completed);
+          setCurrentIndex(firstIncomplete >= 0 ? firstIncomplete : 0);
+        }
+        
+        setSentences(data.sentences);
+        const total = data.sentences.reduce((sum: number, s: Sentence) => sum + (s.attempts || 0), 0);
+        setTotalAttempts(total);
+        console.log('[刷新] 材料数据已更新，共', data.sentences.length, '个句子');
+      }
+    } catch (error) {
+      console.error('加载材料失败:', error);
+      if (showLoading) {
+        Alert.alert('错误', '加载材料失败');
+      }
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  // 只依赖 materialId，使用 ref 获取当前状态
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materialId]);
+
   // 加载材料数据（每次页面获得焦点时重新加载，确保获取最新时间戳）
   useFocusEffect(
     useCallback(() => {
-      const fetchMaterial = async () => {
-        if (!materialId) return;
-
-        try {
-          const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}`);
-          const data = await response.json();
-
-          if (data.material && data.sentences) {
-            setMaterial(data.material);
-            const firstIncomplete = data.sentences.findIndex((s: Sentence) => !s.is_completed);
-            setCurrentIndex(firstIncomplete >= 0 ? firstIncomplete : 0);
-            setSentences(data.sentences);
-            const total = data.sentences.reduce((sum: number, s: Sentence) => sum + (s.attempts || 0), 0);
-            setTotalAttempts(total);
-          }
-        } catch (error) {
-          console.error('加载材料失败:', error);
-          Alert.alert('错误', '加载材料失败');
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      fetchMaterial();
-    }, [materialId])
+      refreshMaterial(false);
+    }, [refreshMaterial])
   );
+
+  // 同步 currentIndex 到 ref
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
 
   // 当切换句子时，初始化单词状态并开始播放
   useEffect(() => {
@@ -1150,6 +1181,19 @@ export default function PracticeScreen() {
                 <FontAwesome6 name="chevron-right" size={14} color={theme.textPrimary} />
               </TouchableOpacity>
             </View>
+            
+            {/* 刷新按钮 */}
+            <TouchableOpacity
+              style={[styles.headerNavBtn, { marginLeft: 8 }]}
+              onPress={() => refreshMaterial(true)}
+              disabled={isRefreshing}
+            >
+              {isRefreshing ? (
+                <ActivityIndicator size="small" color={theme.primary} />
+              ) : (
+                <FontAwesome6 name="rotate" size={14} color={theme.textPrimary} />
+              )}
+            </TouchableOpacity>
           </View>
           <ThemedText variant="h4" color={theme.textPrimary}>
             {title || material?.title}
