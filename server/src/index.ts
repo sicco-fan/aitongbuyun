@@ -12,18 +12,22 @@ const port = process.env.PORT || 9091;
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
-// Health check
+// Health check - 在 body parser 之前，不需要解析 body
 app.get('/api/v1/health', (req, res) => {
   console.log('Health check success');
   res.status(200).json({ status: 'ok' });
 });
 
-// Routes - 注意：更具体的路由要放在前面
+// Routes - 文件上传路由放在 body parser 之前
 app.use('/api/v1/materials/download', videoDownloadRouter);
 app.use('/api/v1/materials', materialsRouter);
+
+// Body parser - 放在文件上传路由之后，避免影响 multipart/form-data
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// 其他 API 路由
 app.use('/api/v1/learning-records', learningRouter);
 app.use('/api/v1/speech-recognize', speechRouter);
 app.use('/api/v1/translate', translateRouter);
@@ -32,6 +36,16 @@ app.use('/api/v1/letter-pronunciation', letterPronunciationRouter);
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Error:', err.message);
+  console.error('Stack:', err.stack?.substring(0, 500));
+  
+  // 处理 payload too large 错误
+  if (err.message.includes('too large') || err.message.includes('entity')) {
+    return res.status(413).json({ 
+      error: '文件太大', 
+      message: '上传的文件超过了500MB限制，请选择较小的文件' 
+    });
+  }
+  
   res.status(500).json({ error: '服务器内部错误', message: err.message });
 });
 

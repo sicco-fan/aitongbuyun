@@ -20,7 +20,8 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { Spacing, BorderRadius } from '@/constants/theme';
 
-const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
+// 后端服务地址 - 直接连接后端服务器，不经过 Metro 代理
+const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
 interface Sentence {
   id: number;

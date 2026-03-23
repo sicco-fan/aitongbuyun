@@ -51,7 +51,8 @@ interface WordStatus {
   isPunctuation: boolean; // 是否是标点符号
 }
 
-const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
+// 后端服务地址 - 直接连接后端服务器，不经过 Metro 代理
+const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
 export default function PracticeScreen() {
   const { materialId, title } = useSafeSearchParams<{ materialId: number; title: string }>();
