@@ -417,7 +417,7 @@ export default function TimestampEditorScreen() {
     setSaving(true);
     try {
       for (const sentence of sentences) {
-        await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${sentence.id}`, {
+        await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/sentences/${sentence.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
