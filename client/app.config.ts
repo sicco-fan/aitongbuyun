@@ -74,8 +74,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "expo-media-library",
         {
           "photosPermission": `允许啃句大师访问您的相册，以便您上传视频文件。`,
-          "savePhotosPermission": `允许啃句大师保存图片到相册。`,
-          "isAccessMediaLocationEnabled": true
+          "savePhotosPermission": `允许啃句大师保存图片到相册。`
         }
       ]
     ],

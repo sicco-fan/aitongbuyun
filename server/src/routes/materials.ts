@@ -1216,27 +1216,78 @@ router.post('/:id/save-sentences', express.json(), async (req: Request, res: Res
     // 删除现有句子
     await supabase.from('sentences').delete().eq('material_id', id);
 
-    // 计算时间戳（基于总时长和字符数比例分配）
-    const totalDuration = material.duration || 0;
-    const totalChars = sentences.reduce((sum, s) => sum + s.length, 0);
-    const avgCharDuration = totalDuration / totalChars;
+    // 获取 ASR 单词级时间戳（用于精确匹配）
+    let wordsWithTime: WordWithTime[] = [];
+    let asrFullText = '';
+    let audioDuration = material.duration || 0;
 
-    // 插入新句子
-    let currentTime = 0;
-    const sentencesData = sentences.map((text, index) => {
-      const duration = text.length * avgCharDuration;
-      const start_time = Math.round(currentTime);
-      const end_time = Math.round(currentTime + duration);
-      currentTime = end_time + 100; // 句间停顿 100ms
+    if (material.audio_url) {
+      try {
+        console.log(`[保存句子] 获取 ASR 时间戳用于精确匹配...`);
+        
+        // 生成签名 URL
+        const audioUrl = await storage.generatePresignedUrl({
+          key: material.audio_url,
+          expireTime: 86400,
+        });
+
+        // 调用 ASR
+        const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+        const asrClient = new ASRClient(new Config(), customHeaders);
+        
+        const asrResult = await asrClient.recognize({
+          uid: 'user',
+          url: audioUrl,
+          lang: 'en',
+        } as any);
+
+        // 提取单词时间戳
+        wordsWithTime = extractWordsWithTimestamps(asrResult);
+        asrFullText = asrResult.text || asrResult.rawData?.text || '';
+        
+        // 提取总时长
+        const rawDuration = asrResult.duration || asrResult.rawData?.audio_info?.duration || 0;
+        if (rawDuration > 0) {
+          audioDuration = rawDuration > 1000 ? rawDuration : rawDuration * 1000;
+        }
+        
+        console.log(`[保存句子] ASR 返回 ${wordsWithTime.length} 个单词时间戳，总时长 ${audioDuration}ms`);
+      } catch (asrError) {
+        console.error('[保存句子] ASR 调用失败，使用字符比例估算:', asrError);
+        // 继续使用字符比例估算
+      }
+    }
+
+    // 为每个句子计算时间戳（使用智能匹配函数）
+    const sentencesData: Array<{
+      material_id: number;
+      sentence_index: number;
+      text: string;
+      start_time: number;
+      end_time: number;
+    }> = [];
+
+    console.log(`[保存句子] 使用智能时间戳匹配 (${wordsWithTime.length > 0 ? 'ASR时间戳优先' : '文本位置估算'})`);
+    
+    for (let i = 0; i < sentences.length; i++) {
+      const sentenceText = sentences[i].trim();
+      const matchResult = matchSentenceToTimestamps(
+        sentenceText,
+        wordsWithTime,
+        asrFullText,
+        audioDuration
+      );
       
-      return {
+      sentencesData.push({
         material_id: parseInt(id as string),
-        sentence_index: index,
-        text: text.trim(),
-        start_time,
-        end_time,
-      };
-    });
+        sentence_index: i,
+        text: sentenceText,
+        start_time: matchResult.start_time,
+        end_time: matchResult.end_time,
+      });
+      
+      console.log(`[保存句子] 句子 ${i}: "${sentenceText.substring(0, 30)}..." ${matchResult.start_time}ms - ${matchResult.end_time}ms (${matchResult.method})`);
+    }
 
     const { error: insertError } = await supabase
       .from('sentences')
@@ -1251,7 +1302,8 @@ router.post('/:id/save-sentences', express.json(), async (req: Request, res: Res
     res.json({ 
       success: true, 
       count: sentences.length,
-      message: '句子保存成功' 
+      message: '句子保存成功',
+      matchMethod: wordsWithTime.length > 0 ? 'asr-timestamps' : (asrFullText ? 'text-position' : 'char-ratio')
     });
   } catch (error) {
     console.error('保存句子失败:', error);

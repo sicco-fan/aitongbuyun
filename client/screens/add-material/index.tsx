@@ -643,7 +643,7 @@ export default function AddMaterialScreen() {
             errorMsg += '\n\n' + errorData.message;
           }
           if (errorData.hint) {
-            errorMsg += '\n\n💡 ' + errorData.hint;
+            errorMsg += '\n\n提示: ' + errorData.hint;
           }
         } catch {
           errorMsg = uploadResult.body?.substring(0, 200) || errorMsg;
