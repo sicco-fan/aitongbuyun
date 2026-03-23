@@ -123,6 +123,8 @@ export default function PracticeScreen() {
   const currentSentenceIdRef = useRef<number | null>(null); // 跟踪当前句子ID，防止异步翻译混乱
   const completedRef = useRef(false); // 跟踪完成状态，用于音频回调中立即停止
   const currentIndexRef = useRef(0); // 跟踪当前句子索引，用于刷新时保持位置
+  const isCreatingAudioRef = useRef(false); // 防止重复创建音频
+  const lastSentenceIdRef = useRef<number | null>(null); // 上一次播放的句子ID
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -197,6 +199,15 @@ export default function PracticeScreen() {
             start: newSentence.start_time || 0,
             end: newSentence.end_time || 0,
           };
+          // 更新当前句子ID
+          currentSentenceIdRef.current = newSentence.id;
+          // 重置音频创建状态，允许重新创建（但如果是手动刷新，先卸载旧音频）
+          if (showLoading && soundRef.current) {
+            soundRef.current.unloadAsync().catch((e) => console.log('卸载音频失败:', e));
+            soundRef.current = null;
+          }
+          lastSentenceIdRef.current = null;
+          isCreatingAudioRef.current = false;
           console.log('[刷新] 时间戳已更新:', newSentence.start_time, '-', newSentence.end_time, 'ms');
         }
         
@@ -231,6 +242,8 @@ export default function PracticeScreen() {
 
   // 当切换句子时，初始化单词状态并开始播放
   useEffect(() => {
+    console.log('[useEffect] 触发 - currentSentence:', currentSentence?.id, 'audio_url:', material?.audio_url ? '有' : '无');
+    
     if (currentSentence && material?.audio_url) {
       console.log('[切换句子] 句子ID:', currentSentence.id, '文本:', currentSentence.text?.substring(0, 30));
       console.log('[切换句子] 时间戳:', currentSentence.start_time, '-', currentSentence.end_time, 'ms');
@@ -314,7 +327,31 @@ export default function PracticeScreen() {
 
   // 开始句子片段循环播放
   const startSentenceLoopPlayback = useCallback(async () => {
-    if (!material?.audio_url) return;
+    // 防止重复创建：如果正在创建中，则跳过
+    if (isCreatingAudioRef.current) {
+      console.log('[startSentenceLoopPlayback] 正在创建中，跳过');
+      return;
+    }
+    
+    const currentSentenceId = currentSentenceIdRef.current;
+    // 如果句子ID相同且音频已存在，则跳过
+    if (lastSentenceIdRef.current === currentSentenceId && soundRef.current) {
+      console.log('[startSentenceLoopPlayback] 相同句子且音频存在，跳过');
+      return;
+    }
+    
+    console.log('[startSentenceLoopPlayback] 开始执行');
+    console.log('[startSentenceLoopPlayback] material?.audio_url:', material?.audio_url ? '有' : '无');
+    console.log('[startSentenceLoopPlayback] sentenceTimesRef:', sentenceTimesRef.current);
+    console.log('[startSentenceLoopPlayback] currentSentenceId:', currentSentenceId);
+    
+    if (!material?.audio_url) {
+      console.log('[startSentenceLoopPlayback] 没有音频URL，退出');
+      return;
+    }
+    
+    isCreatingAudioRef.current = true;
+    lastSentenceIdRef.current = currentSentenceId;
 
     try {
       // 先确保音频模式正确（从扬声器播放，而非听筒）
@@ -335,21 +372,31 @@ export default function PracticeScreen() {
 
       // 停止之前的播放
       if (soundRef.current) {
+        console.log('[startSentenceLoopPlayback] 卸载之前的音频');
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
 
       const { start, end } = sentenceTimesRef.current;
+      console.log('[startSentenceLoopPlayback] 准备播放:', { start, end, audioUrl: material.audio_url?.substring(0, 60) });
       
+      // 先创建音频（不自动播放）
       const { sound } = await Audio.Sound.createAsync(
         { uri: material.audio_url },
         { 
-          shouldPlay: true, 
-          isLooping: false, // 我们自己控制循环
+          shouldPlay: false, // 先不播放，等设置好位置再播放
+          isLooping: false,
           volume: volume,
-          positionMillis: start,
         },
         (status) => {
+          // 每次回调都打印状态（用于调试）
+          if (status.isLoaded) {
+            // 打印播放进度（每500ms一次）
+            if (Math.floor(status.positionMillis / 500) !== Math.floor((status.positionMillis - 50) / 500)) {
+              console.log('[播放回调] 位置:', Math.floor(status.positionMillis), 'ms, 正在播放:', status.isPlaying);
+            }
+          }
+          
           // 如果已完成，立即停止
           if (completedRef.current) {
             if (soundRef.current) {
@@ -361,25 +408,48 @@ export default function PracticeScreen() {
           if (status.isLoaded && soundRef.current && isLoopingRef.current) {
             // 当播放到句子结束位置时，跳回开始位置继续播放
             if (status.positionMillis >= end) {
+              console.log('[播放循环] 到达结束点，跳回开始');
               soundRef.current.setPositionAsync(start);
               setPlayCount(prev => prev + 1);
             }
             
             if (status.didJustFinish) {
+              console.log('[播放完成] 音频播放结束');
               setIsPlaying(false);
             }
+          } else if (!status.isLoaded && status.error) {
+            console.error('[播放错误]', status.error);
           }
         }
       );
 
+      console.log('[startSentenceLoopPlayback] 音频创建成功');
       soundRef.current = sound;
-      setIsPlaying(true);
       
-      // 设置初始播放位置
-      await sound.setPositionAsync(start);
+      // 使用 setStatusAsync 同时设置位置和播放状态
+      // 在 Web 环境下，需要使用这种方式来绕过自动播放限制
+      const setStatus = await sound.setStatusAsync({
+        positionMillis: start,
+        shouldPlay: true,
+      });
+      console.log('[startSentenceLoopPlayback] setStatusAsync 返回:', {
+        isLoaded: setStatus.isLoaded,
+        positionMillis: setStatus.isLoaded ? setStatus.positionMillis : 'N/A',
+        isPlaying: setStatus.isLoaded ? setStatus.isPlaying : 'N/A',
+      });
+      
+      if (setStatus.isLoaded && setStatus.isPlaying) {
+        setIsPlaying(true);
+        console.log('[startSentenceLoopPlayback] 播放已启动');
+      } else {
+        console.log('[startSentenceLoopPlayback] 播放可能被浏览器阻止，需要用户交互');
+      }
       
     } catch (error) {
       console.error('播放失败:', error);
+      lastSentenceIdRef.current = null; // 失败时重置，允许重试
+    } finally {
+      isCreatingAudioRef.current = false;
     }
   }, [material?.audio_url, volume]);
 
