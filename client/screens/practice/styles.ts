@@ -70,6 +70,74 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.full,
     },
     
+    // Audio Controls
+    audioControls: {
+      paddingHorizontal: Spacing.lg,
+      paddingVertical: Spacing.md,
+      backgroundColor: theme.backgroundDefault,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.borderLight,
+    },
+    controlItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      marginBottom: Spacing.sm,
+    },
+    sliderContainer: {
+      flex: 1,
+      height: 24,
+      position: 'relative',
+      justifyContent: 'center',
+    },
+    sliderTrack: {
+      height: 4,
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.full,
+      overflow: 'visible',
+    },
+    sliderFill: {
+      height: '100%',
+      backgroundColor: theme.primary,
+      borderRadius: BorderRadius.full,
+    },
+    sliderThumb: {
+      position: 'absolute',
+      top: -4,
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: theme.primary,
+      marginLeft: -6,
+    },
+    sliderTouchArea: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      flexDirection: 'row',
+    },
+    sliderTouchPoint: {
+      flex: 1,
+      height: '100%',
+    },
+    speedOptions: {
+      flex: 1,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 4,
+    },
+    speedBtn: {
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+      borderRadius: BorderRadius.sm,
+      backgroundColor: theme.backgroundTertiary,
+    },
+    speedBtnActive: {
+      backgroundColor: theme.primary,
+    },
+    
     // Sentence Card
     sentenceCard: {
       backgroundColor: theme.backgroundDefault,

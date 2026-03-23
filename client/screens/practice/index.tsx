@@ -75,6 +75,8 @@ export default function PracticeScreen() {
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(true);
+  const [volume, setVolume] = useState(1.0); // 音量 0-1
+  const [playbackRate, setPlaybackRate] = useState(1.0); // 语速 0.5-2.0
   const soundRef = useRef<Audio.Sound | null>(null);
   const isMountedRef = useRef(true);
   
@@ -197,7 +199,13 @@ export default function PracticeScreen() {
       
       const { sound } = await Audio.Sound.createAsync(
         { uri: audioUrl },
-        { shouldPlay: true, isLooping: false },
+        { 
+          shouldPlay: true, 
+          isLooping: false,
+          volume: volume,
+          rate: playbackRate,
+          shouldCorrectPitch: true, // 语速改变时保持音调
+        },
         (status) => {
           if (status.isLoaded) {
             if (status.didJustFinish) {
@@ -225,7 +233,23 @@ export default function PracticeScreen() {
     } catch (error) {
       console.error('[播放] 失败:', error);
     }
-  }, [currentSentence, generateAudioUrl, isPlaying, isLooping]);
+  }, [currentSentence, generateAudioUrl, isPlaying, isLooping, volume, playbackRate]);
+
+  // 更新音量
+  const updateVolume = useCallback(async (newVolume: number) => {
+    setVolume(newVolume);
+    if (soundRef.current) {
+      await soundRef.current.setVolumeAsync(newVolume);
+    }
+  }, []);
+
+  // 更新语速
+  const updatePlaybackRate = useCallback(async (newRate: number) => {
+    setPlaybackRate(newRate);
+    if (soundRef.current) {
+      await soundRef.current.setRateAsync(newRate, true);
+    }
+  }, []);
 
   // 暂停播放
   const pauseAudio = useCallback(async () => {
@@ -643,6 +667,51 @@ export default function PracticeScreen() {
       <View style={styles.progressContainer}>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${progress}%` }]} />
+        </View>
+      </View>
+      
+      {/* Audio Controls */}
+      <View style={styles.audioControls}>
+        {/* Volume Control */}
+        <View style={styles.controlItem}>
+          <FontAwesome6 name="volume-low" size={14} color={theme.textMuted} />
+          <View style={styles.sliderContainer}>
+            <View style={styles.sliderTrack}>
+              <View style={[styles.sliderFill, { width: `${volume * 100}%` }]} />
+              <View style={[styles.sliderThumb, { left: `${volume * 100}%` }]} />
+            </View>
+            <View style={styles.sliderTouchArea}>
+              {[...Array(11)].map((_, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={styles.sliderTouchPoint}
+                  onPress={() => updateVolume(i / 10)}
+                />
+              ))}
+            </View>
+          </View>
+          <FontAwesome6 name="volume-high" size={14} color={theme.textMuted} />
+        </View>
+        
+        {/* Speed Control */}
+        <View style={styles.controlItem}>
+          <ThemedText variant="tiny" color={theme.textMuted}>语速</ThemedText>
+          <View style={styles.speedOptions}>
+            {[0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0].map((rate) => (
+              <TouchableOpacity
+                key={rate}
+                style={[styles.speedBtn, playbackRate === rate && styles.speedBtnActive]}
+                onPress={() => updatePlaybackRate(rate)}
+              >
+                <ThemedText 
+                  variant="tiny" 
+                  color={playbackRate === rate ? theme.buttonPrimaryText : theme.textMuted}
+                >
+                  {rate}x
+                </ThemedText>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       </View>
       

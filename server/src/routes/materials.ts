@@ -161,7 +161,8 @@ router.post('/download', async (req: Request, res: Response) => {
       videoTitle = videoTitle || lines[1].trim();
     }
     if (lines.length >= 3) {
-      duration = parseInt(lines[2].trim()) || 0;
+      // yt-dlp 返回的是秒，需要转换为毫秒
+      duration = (parseInt(lines[2].trim()) || 0) * 1000;
     }
     
     // 如果没有找到文件，尝试在目录中查找
