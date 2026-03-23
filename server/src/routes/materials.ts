@@ -595,6 +595,20 @@ async function processMediaAsync(
       expireTime: 86400,
     });
 
+    // 使用 ffprobe 获取音频的实际时长
+    let actualDurationMs = 0;
+    try {
+      const ffprobeCmd = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioUrl}"`;
+      const ffprobeResult = await execAsync(ffprobeCmd, { timeout: 30000 });
+      const durationSeconds = parseFloat(ffprobeResult.stdout.trim());
+      if (durationSeconds > 0) {
+        actualDurationMs = Math.round(durationSeconds * 1000);
+        console.log(`[异步处理] FFprobe 获取音频时长: ${actualDurationMs}ms (${durationSeconds.toFixed(2)}s)`);
+      }
+    } catch (e) {
+      console.log(`[异步处理] FFprobe 获取时长失败:`, (e as Error).message);
+    }
+
     // 执行 ASR
     console.log(`[异步处理] 开始 ASR 识别...`);
     
@@ -649,14 +663,12 @@ async function processMediaAsync(
       }
     }
 
-    // 处理句子
-    const sentences = await processASRResultWithSilence(asrResult, audioUrl);
+    // 处理句子（传递 ffprobe 获取的实际时长）
+    const sentences = await processASRResultWithSilence(asrResult, audioUrl, actualDurationMs);
     
-    // 计算时长（ASR 返回的是秒，需要转换为毫秒）
-    const asrDurationRaw = asrResult.duration || asrResult.rawData?.duration || 0;
-    const asrDurationMs = Math.round(asrDurationRaw * 1000);
+    // 计算时长（优先使用 ffprobe 获取的实际时长）
     const lastEndTime = sentences.length > 0 ? sentences[sentences.length - 1].end_time : 0;
-    const totalDuration = Math.round(asrDurationMs || lastEndTime || sentences.length * 2000);
+    const totalDuration = actualDurationMs || lastEndTime || sentences.length * 2000;
 
     // 插入句子
     if (sentences.length > 0) {
@@ -721,6 +733,11 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     let audioBuffer = buffer;
     let audioFileName = originalname;
     let duration = 0;
+    
+    // 先保存音频文件到临时位置，用于获取时长
+    const tempDir = '/tmp/audio_uploads';
+    await fs.mkdir(tempDir, { recursive: true });
+    const tempAudioPath = path.join(tempDir, `${Date.now()}_${originalname}`);
     
     if (isVideo) {
       console.log('检测到视频文件，开始转换为音频...');
@@ -801,6 +818,18 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       expireTime: 86400 * 7, // 7天有效期
     });
 
+    // 使用 ffprobe 获取音频的实际时长（如果还没有）
+    if (duration === 0) {
+      try {
+        const ffprobeCmd = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioUrl}"`;
+        const durationResult = await execAsync(ffprobeCmd, { timeout: 30000 });
+        duration = Math.round(parseFloat(durationResult.stdout.trim()) * 1000);
+        console.log('FFprobe 获取音频时长:', duration, 'ms');
+      } catch (e) {
+        console.log('获取音频时长失败:', (e as Error).message);
+      }
+    }
+
     // 使用 ASR 识别音频
     const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
     const asrClient = new ASRClient(new Config(), customHeaders);
@@ -837,17 +866,14 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     }
     console.log('========================\n');
 
-    // 处理句子和时间戳（传入音频 URL 进行静音检测）
-    const sentences = await processASRResultWithSilence(asrResult, audioUrl);
+    // 处理句子和时间戳（传入 ffprobe 获取的实际时长）
+    const sentences = await processASRResultWithSilence(asrResult, audioUrl, duration);
     
-    // 计算总时长：优先使用从视频获取的时长，然后是 ASR 返回的时长，最后使用估算
-    // 注意：ASR 返回的 duration 是秒，需要转换为毫秒
-    const asrDurationRaw = asrResult.duration || asrResult.rawData?.duration || 0;
-    const asrDurationMs = asrDurationRaw ? Math.round(asrDurationRaw * 1000) : 0;
+    // 计算总时长（优先使用 ffprobe 获取的实际时长）
     const lastSentenceEndTime = sentences.length > 0 ? sentences[sentences.length - 1].end_time : 0;
-    const totalDuration = Math.round(duration || asrDurationMs || lastSentenceEndTime || sentences.length * 2000);
+    const totalDuration = duration || lastSentenceEndTime || sentences.length * 2000;
     
-    console.log(`\n时长计算: ASR原始=${asrDurationRaw}s, ASR毫秒=${asrDurationMs}, 最后句结束=${lastSentenceEndTime}, 最终=${totalDuration}`);
+    console.log(`\n时长计算: FFprobe=${duration}, 最后句结束=${lastSentenceEndTime}, 最终=${totalDuration}`);
     console.log(`生成 ${sentences.length} 个句子，示例:`, sentences.slice(0, 3));
     
     // 存储到数据库
@@ -1893,9 +1919,10 @@ async function detectSilenceSegments(audioUrl: string, minSilenceDuration: numbe
 
 function processASRResultWithSilence(
   asrResult: { text: string; duration?: number; utterances?: any[]; rawData?: any },
-  audioUrl?: string
+  audioUrl?: string,
+  actualDurationMs?: number
 ): Promise<SentenceWithTime[]> {
-  return processASRResultWithSilenceAsync(asrResult, audioUrl);
+  return processASRResultWithSilenceAsync(asrResult, audioUrl, actualDurationMs);
 }
 
 /**
@@ -1903,7 +1930,8 @@ function processASRResultWithSilence(
  */
 async function processASRResultWithSilenceAsync(
   asrResult: { text: string; duration?: number; utterances?: any[]; rawData?: any },
-  audioUrl?: string
+  audioUrl?: string,
+  actualDurationMs?: number
 ): Promise<SentenceWithTime[]> {
   const result: SentenceWithTime[] = [];
 
@@ -1919,13 +1947,14 @@ async function processASRResultWithSilenceAsync(
   
   console.log(`\n提取到 ${wordsWithTime.length} 个带时间戳的单词`);
 
-  // 步骤2：正确提取总时长（优先从 rawData.audio_info.duration 获取）
-  const totalDuration = asrResult.duration || 
+  // 步骤2：正确提取总时长（优先使用 ffprobe 获取的实际时长，然后是 ASR 返回的时长）
+  const asrDuration = asrResult.duration || 
                         asrResult.rawData?.audio_info?.duration || 
                         asrResult.rawData?.duration || 
                         0;
-  const totalDurationMs = Math.round(totalDuration * 1000); // 转换为毫秒并取整
-  console.log('总时长 (ms):', totalDurationMs);
+  // 优先使用 ffprobe 获取的实际时长，然后是 ASR 返回的时长
+  const totalDurationMs = actualDurationMs || Math.round(asrDuration * 1000);
+  console.log('总时长 (ms):', totalDurationMs, actualDurationMs ? '(来自 ffprobe)' : '(来自 ASR)');
 
   // 步骤3：按文字内容分割句子
   const fullText = asrResult.text || asrResult.rawData?.result?.text || '';
@@ -1960,92 +1989,61 @@ async function processASRResultWithSilenceAsync(
     }
   } else if (totalDurationMs > 0) {
     // 没有时间戳数据，但有总时长
-    console.log('\n使用静音检测辅助的时间分配算法');
+    console.log('\n使用按比例分配时间算法');
     
-    // 步骤4：静音检测（如果有音频 URL）
-    let silenceSegments: SilenceSegment[] = [];
-    
-    if (audioUrl) {
-      try {
-        silenceSegments = await detectSilenceSegments(audioUrl, 0.3);
-        console.log(`检测到 ${silenceSegments.length} 个静音段`);
-      } catch (err) {
-        console.log('静音检测失败，使用默认算法:', err);
-      }
-    }
-    
-    // 策略：基于字符数估算时长，结合静音段调整边界
+    // 策略：基于字符数按比例分配时长，确保相邻句子时间连续
     const charCounts = sentenceTexts.map(s => s.length);
     const totalChars = charCounts.reduce((a, b) => a + b, 0);
     
-    // 基础时长分配（按字符比例）
-    const avgCharDuration = totalDurationMs / totalChars;
-    console.log(`总字符数: ${totalChars}, 平均每字符: ${avgCharDuration.toFixed(0)}ms`);
+    // 计算每个句子的时长比例
+    const durations: number[] = [];
+    let allocatedDuration = 0;
     
+    for (let i = 0; i < sentenceTexts.length; i++) {
+      const ratio = charCounts[i] / totalChars;
+      // 最后一句获取剩余所有时间，避免舍入误差
+      if (i === sentenceTexts.length - 1) {
+        durations.push(totalDurationMs - allocatedDuration);
+      } else {
+        const sentenceDuration = Math.round(ratio * totalDurationMs);
+        durations.push(sentenceDuration);
+        allocatedDuration += sentenceDuration;
+      }
+    }
+    
+    console.log(`总时长: ${totalDurationMs}ms, 总字符数: ${totalChars}, 句子数: ${sentenceTexts.length}`);
+    
+    // 分配时间，确保连续性
     let currentTime = 0;
     
     for (let i = 0; i < sentenceTexts.length; i++) {
       const sentenceText = sentenceTexts[i];
-      const charCount = charCounts[i];
+      const sentenceDuration = durations[i];
       
-      // 基于字符数估算基础时长
-      let baseDuration = charCount * avgCharDuration;
-      
-      // 查找当前时间点附近的静音段
-      const expectedEndTime = (currentTime + baseDuration) / 1000; // 转换为秒
-      
-      // 找到最近的静音段（在预期的结束时间附近 ±0.5 秒）
-      const nearbySilence = silenceSegments.find(seg => 
-        seg.start >= expectedEndTime - 0.5 && 
-        seg.start <= expectedEndTime + 0.5
-      );
-      
-      let startTime = currentTime;
-      let endTime: number;
-      
-      if (nearbySilence) {
-        // 如果找到静音段，将句子结束时间设在静音开始前
-        endTime = nearbySilence.start * 1000 - 50; // 提前 50ms
-        console.log(`句子 ${i + 1} 使用静音段调整: 结束时间 ${endTime.toFixed(0)}ms`);
-      } else {
-        // 没有静音段，使用基础估算
-        endTime = currentTime + baseDuration;
-        console.log(`句子 ${i + 1} 使用估算: ${startTime.toFixed(0)}-${endTime.toFixed(0)}ms`);
-      }
-      
-      // 确保不超过总时长
-      if (endTime > totalDurationMs - 100) {
-        endTime = totalDurationMs - 100;
-      }
+      // 确保至少有 500ms 的时长
+      const actualDuration = Math.max(500, sentenceDuration);
       
       result.push({
         text: sentenceText,
-        start_time: Math.max(0, startTime),
-        end_time: Math.max(startTime + 100, endTime), // 至少 100ms
+        start_time: currentTime,
+        end_time: currentTime + actualDuration,
       });
       
-      // 更新当前时间（加入句间停顿）
-      currentTime = endTime + 150; // 假设句间停顿 150ms
+      console.log(`句子 ${i + 1}: [${currentTime}-${currentTime + actualDuration}ms] "${sentenceText.substring(0, 30)}..."`);
+      
+      // 下一句的开始时间 = 当前句的结束时间（确保连续性）
+      currentTime += actualDuration;
     }
     
     // 调整最后一句的结束时间，确保覆盖到音频末尾
     if (result.length > 0) {
-      result[result.length - 1].end_time = totalDurationMs - 50;
+      result[result.length - 1].end_time = totalDurationMs;
     }
   } else {
-    // 最后兜底：每个句子默认2秒
-    console.log('警告：无法计算时间，使用默认2秒/句');
-    let currentTime = 0;
-    
-    for (const sentenceText of sentenceTexts) {
-      const duration = 2000;
-      result.push({
-        text: sentenceText,
-        start_time: currentTime,
-        end_time: currentTime + duration,
-      });
-      currentTime += duration;
-    }
+    // 最后兜底：无法获取时长，句子时间戳将无法正确分配
+    console.log('警告：无法获取音频时长，句子时间戳将无法正确分配');
+    // 返回空数组，让调用方处理
+    return [];
   }
 
   console.log(`\n最终生成 ${result.length} 个句子:`);
