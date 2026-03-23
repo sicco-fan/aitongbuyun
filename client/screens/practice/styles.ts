@@ -142,14 +142,36 @@ export const createStyles = (theme: Theme) => {
       borderColor: theme.error,
     },
     
-    // Skip Button
-    skipBtn: {
+    // Translation Card
+    translationCard: {
+      backgroundColor: theme.primary + '10',
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.xl,
+      marginBottom: Spacing.xl,
+      borderWidth: 1,
+      borderColor: theme.primary + '30',
+    },
+    
+    // Navigation Buttons
+    navButtons: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: Spacing.lg,
+    },
+    navBtn: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      padding: Spacing.md,
+      paddingVertical: Spacing.md,
+      paddingHorizontal: Spacing.xl,
       borderRadius: BorderRadius.lg,
+      backgroundColor: theme.primary + '10',
+      borderWidth: 1,
+      borderColor: theme.primary + '30',
+    },
+    navBtnDisabled: {
       backgroundColor: theme.backgroundTertiary,
+      borderColor: theme.borderLight,
     },
   });
 };

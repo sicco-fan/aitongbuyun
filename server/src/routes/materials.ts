@@ -3031,13 +3031,15 @@ router.post('/:id/finalize', async (req: Request, res: Response) => {
 
       try {
         // 使用 ffmpeg 切分音频
+        // 将 -ss 放在 -i 后面可以更精确地定位（虽然速度稍慢）
         // -ss: 开始时间（秒）
         // -t: 持续时间（秒）
         // -y: 覆盖输出文件
         const startSeconds = startTime / 1000;
         const durationSeconds = duration / 1000;
         
-        const ffmpegCmd = `ffmpeg -y -ss ${startSeconds} -i "${originalAudioUrl}" -t ${durationSeconds} -acodec libmp3lame -ab 128k "${outputPath}"`;
+        // 更精确的切分方式：-ss 放在 -i 后面，并添加 -accurate_seek 参数
+        const ffmpegCmd = `ffmpeg -y -i "${originalAudioUrl}" -ss ${startSeconds} -t ${durationSeconds} -accurate_seek -acodec libmp3lame -ab 128k "${outputPath}"`;
         
         console.log(`  执行: ffmpeg -ss ${startSeconds} -t ${durationSeconds} ...`);
         

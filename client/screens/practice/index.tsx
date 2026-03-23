@@ -30,6 +30,7 @@ interface Sentence {
   start_time: number;
   end_time: number;
   is_completed: boolean;
+  translation?: string;
 }
 
 interface Material {
@@ -66,6 +67,10 @@ export default function PracticeScreen() {
   const [wordStatuses, setWordStatuses] = useState<WordStatus[]>([]);
   const [currentInput, setCurrentInput] = useState('');
   const [completedWordCount, setCompletedWordCount] = useState(0); // 已完成的单词数
+  
+  // 翻译显示
+  const [showTranslation, setShowTranslation] = useState(false);
+  const [currentTranslation, setCurrentTranslation] = useState('');
   
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
@@ -318,10 +323,7 @@ export default function PracticeScreen() {
       }),
     ]).start();
     
-    // 0.15秒后清除错误状态
-    errorTimeoutRef.current = setTimeout(() => {
-      setWordStatuses(prev => prev.map(w => ({ ...w, errorCharIndex: -1 })));
-    }, 150);
+    // 不再自动清除错误状态，让用户看到错误位置直到改正
   }, []);
 
   // 处理输入变化
@@ -404,10 +406,13 @@ export default function PracticeScreen() {
             // 显示错误闪烁
             if (hasError) {
               showErrorFlash();
+              // 输入框中删除错误字母，只保留正确的部分
+              const correctPart = inputLower.slice(0, errorIndex);
+              setCurrentInput(correctPart);
+            } else {
+              // 没有错误，保留输入框内容
+              setCurrentInput(text.trim());
             }
-            
-            // 保留输入框内容
-            setCurrentInput(text.trim());
           } else {
             // 输入为空，重置状态
             newStatuses[i] = {
@@ -450,10 +455,39 @@ export default function PracticeScreen() {
       console.error('标记完成失败:', e);
     }
     
-    setTimeout(() => {
-      goToNextSentence();
-    }, 600);
+    // 获取翻译并显示
+    try {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: currentSentence?.text, type: 'sentence' }),
+      });
+      const data = await response.json();
+      setCurrentTranslation(data.translation || '');
+      setShowTranslation(true);
+      
+      // 显示翻译1秒后跳转
+      setTimeout(() => {
+        setShowTranslation(false);
+        setCurrentTranslation('');
+        goToNextSentence();
+      }, 1000);
+    } catch (e) {
+      console.error('获取翻译失败:', e);
+      // 翻译失败也跳转
+      setTimeout(() => {
+        goToNextSentence();
+      }, 600);
+    }
   }, [currentSentence, materialId, pauseAudio]);
+
+  // 跳转到上一句
+  const goToPrevSentence = useCallback(() => {
+    if (currentIndex > 0) {
+      stopPlayback();
+      setCurrentIndex(prev => prev - 1);
+    }
+  }, [currentIndex, stopPlayback]);
 
   // 跳转到下一句
   const goToNextSentence = useCallback(() => {
@@ -597,12 +631,6 @@ export default function PracticeScreen() {
         {/* 右侧小控制按钮 */}
         <View style={styles.headerControls}>
           <TouchableOpacity 
-            style={[styles.smallControlBtn, isLooping && styles.smallControlBtnActive]}
-            onPress={toggleLoop}
-          >
-            <FontAwesome6 name="repeat" size={14} color={isLooping ? theme.primary : theme.textMuted} />
-          </TouchableOpacity>
-          <TouchableOpacity 
             style={[styles.smallControlBtn, isPlaying && styles.smallControlBtnActive]}
             onPress={togglePlayPause}
           >
@@ -690,11 +718,39 @@ export default function PracticeScreen() {
           </TouchableOpacity>
         </View>
         
-        {/* Skip Button */}
-        <TouchableOpacity style={styles.skipBtn} onPress={skipSentence}>
-          <ThemedText variant="small" color={theme.textMuted}>跳过此句</ThemedText>
-          <FontAwesome6 name="forward-step" size={14} color={theme.textMuted} style={{ marginLeft: 4 }} />
-        </TouchableOpacity>
+        {/* Translation Display */}
+        {showTranslation && currentTranslation && (
+          <View style={styles.translationCard}>
+            <ThemedText variant="body" color={theme.textSecondary} style={{ textAlign: 'center' }}>
+              {currentTranslation}
+            </ThemedText>
+          </View>
+        )}
+        
+        {/* Navigation Buttons */}
+        <View style={styles.navButtons}>
+          <TouchableOpacity 
+            style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
+            onPress={goToPrevSentence}
+            disabled={currentIndex === 0}
+          >
+            <FontAwesome6 name="arrow-left" size={14} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
+            <ThemedText variant="small" color={currentIndex === 0 ? theme.textMuted : theme.primary} style={{ marginLeft: 6 }}>
+              上一句
+            </ThemedText>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
+            onPress={goToNextSentence}
+            disabled={currentIndex === sentences.length - 1}
+          >
+            <ThemedText variant="small" color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} style={{ marginRight: 6 }}>
+              下一句
+            </ThemedText>
+            <FontAwesome6 name="arrow-right" size={14} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </Screen>
   );
