@@ -327,6 +327,7 @@ export const createStyles = (theme: Theme) => {
     completedSubtitle: {
       textAlign: 'center',
       marginBottom: Spacing['2xl'],
+      paddingHorizontal: Spacing.lg,
     },
     statsRow: {
       flexDirection: 'row',
@@ -338,6 +339,13 @@ export const createStyles = (theme: Theme) => {
     },
     statValue: {
       marginBottom: Spacing.xs,
+    },
+    completedButton: {
+      width: 200,
+      borderRadius: BorderRadius.lg,
+      paddingVertical: Spacing.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     
     // 统计信息

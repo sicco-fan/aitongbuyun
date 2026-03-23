@@ -338,6 +338,13 @@ export default function PracticeScreen() {
     }
   }, []);
 
+  // 当完成时，停止音频播放
+  useEffect(() => {
+    if (completed) {
+      stopPlayback();
+    }
+  }, [completed, stopPlayback]);
+
   // 暂停播放
   const pausePlayback = useCallback(async () => {
     if (soundRef.current) {
@@ -1067,7 +1074,7 @@ export default function PracticeScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.button, styles.primaryButton, { marginTop: Spacing.lg }]}
+            style={[styles.completedButton, styles.primaryButton]}
             onPress={() => router.back()}
           >
             <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
