@@ -212,8 +212,8 @@ export default function TimestampEditorScreen() {
     }
   }, []);
 
-  // 播放从开始时间起的一小段（按住开始时间按钮时触发）
-  const playFromStartTime = async () => {
+  // 播放完整句子（按住播放按钮时触发）
+  const playFullSentence = async () => {
     // 加载音频
     if (!soundRef.current) {
       const loadedDuration = await loadAudio();
@@ -228,57 +228,22 @@ export default function TimestampEditorScreen() {
     const status = await soundRef.current.getStatusAsync();
     if (!status.isLoaded) return;
     
-    const start = currentSentence.start_time;
-    const end = currentSentence.end_time;
+    const actualDuration = status.durationMillis || 0;
+    let start = currentSentence.start_time;
+    let end = currentSentence.end_time;
     
-    // 播放从开始时间起的片段
-    const playEnd = Math.min(start + 2000, end); // 播放最多2秒或到结束时间
+    // 确保时间戳在有效范围内
+    start = Math.max(0, Math.min(start, actualDuration - 100));
+    end = Math.max(start + 100, Math.min(end, actualDuration));
     
-    console.log('播放开始时间片段:', start, '-', playEnd);
+    if (end <= start) {
+      console.log('时间戳无效');
+      return;
+    }
+    
+    console.log('播放完整句子:', start, '-', end, '时长:', end - start, 'ms');
     
     await soundRef.current.setPositionAsync(start);
-    await soundRef.current.playAsync();
-    setIsPlaying(true);
-    
-    const checkInterval = setInterval(async () => {
-      if (!soundRef.current) {
-        clearInterval(checkInterval);
-        return;
-      }
-      const s = await soundRef.current.getStatusAsync();
-      if (s.isLoaded && (s.positionMillis >= playEnd || s.positionMillis >= end)) {
-        await soundRef.current.pauseAsync();
-        setIsPlaying(false);
-        clearInterval(checkInterval);
-      }
-    }, 50);
-  };
-
-  // 播放从结束时间前一小段到结束时间（按住结束时间按钮时触发）
-  const playFromEndTime = async () => {
-    // 加载音频
-    if (!soundRef.current) {
-      const loadedDuration = await loadAudio();
-      if (!loadedDuration) {
-        console.log('音频加载失败');
-        return;
-      }
-    }
-    
-    if (!soundRef.current || !currentSentence) return;
-    
-    const status = await soundRef.current.getStatusAsync();
-    if (!status.isLoaded) return;
-    
-    const start = currentSentence.start_time;
-    const end = currentSentence.end_time;
-    
-    // 播放到结束时间的一小段
-    const playStart = Math.max(start, end - 1500); // 从结束前1.5秒或开始时间
-    
-    console.log('播放结束时间片段:', playStart, '-', end);
-    
-    await soundRef.current.setPositionAsync(playStart);
     await soundRef.current.playAsync();
     setIsPlaying(true);
     
@@ -296,6 +261,7 @@ export default function TimestampEditorScreen() {
     }, 50);
   };
 
+  // 播放从结束时间前一小段到结束时间（按住结束时间按钮时触发）
   // 播放单个单词
   const playWord = async (word: WordTimestamp) => {
     // 加载音频
@@ -550,7 +516,7 @@ export default function TimestampEditorScreen() {
             };
             setSentences(newSentences);
           }}
-          onPlayStart={playFromStartTime}
+          onPlayStart={playFullSentence}
           onPlayStop={handleStopPlaying}
           label="开始"
           color="#00ff88"
@@ -580,7 +546,7 @@ export default function TimestampEditorScreen() {
             };
             setSentences(newSentences);
           }}
-          onPlayStart={playFromEndTime}
+          onPlayStart={playFullSentence}
           onPlayStop={handleStopPlaying}
           label="结束"
           color="#ff8800"

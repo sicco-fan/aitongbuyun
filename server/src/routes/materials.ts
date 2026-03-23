@@ -442,23 +442,30 @@ router.post('/:id/extract-text', async (req: Request, res: Response) => {
     // 提取完整文本
     const fullText = asrResult.text || asrResult.rawData?.text || '';
     
-    // 提取时长
-    const duration = asrResult.duration || asrResult.rawData?.audio_info?.duration || 0;
+    // 提取时长 - ASR 返回的可能是秒或毫秒
+    // 如果大于 1000，认为是毫秒；否则认为是秒
+    let rawDuration = asrResult.duration || asrResult.rawData?.audio_info?.duration || 0;
+    let durationMs: number;
+    if (rawDuration > 1000) {
+      durationMs = rawDuration;
+    } else {
+      durationMs = rawDuration * 1000;
+    }
 
-    console.log(`ASR 完成: 文本长度=${fullText.length}, 时长=${duration}s`);
+    console.log(`ASR 完成: 文本长度=${fullText.length}, 时长=${durationMs}ms (${durationMs / 1000}s)`);
 
     // 更新材料
     await supabase
       .from('materials')
       .update({ 
         full_text: fullText,
-        duration: duration * 1000, // 转换为毫秒
+        duration: durationMs,
       })
       .eq('id', id);
 
     res.json({ 
       text: fullText,
-      duration: duration * 1000,
+      duration: durationMs,
       message: '文本提取成功' 
     });
   } catch (error) {
@@ -1915,9 +1922,16 @@ router.post('/:id/prepare-timestamps', async (req: Request, res: Response) => {
       });
 
       fullText = asrResult.text || asrResult.rawData?.text || '';
-      duration = (asrResult.duration || asrResult.rawData?.audio_info?.duration || 0) * 1000;
+      
+      // ASR 返回的可能是秒或毫秒
+      let rawDuration = asrResult.duration || asrResult.rawData?.audio_info?.duration || 0;
+      if (rawDuration > 1000) {
+        duration = rawDuration;
+      } else {
+        duration = rawDuration * 1000;
+      }
 
-      console.log(`ASR 完成: 文本长度=${fullText.length}, 时长=${duration}ms`);
+      console.log(`ASR 完成: 文本长度=${fullText.length}, 时长=${duration}ms (${duration / 1000}s)`);
 
       // 更新材料
       await supabase
@@ -1973,9 +1987,20 @@ router.post('/:id/prepare-timestamps', async (req: Request, res: Response) => {
 
       const wordsWithTime = extractWordsWithTimestamps(asrResult);
       const asrFullText = asrResult.text || asrResult.rawData?.text || '';
-      const asrDuration = (asrResult.duration || asrResult.rawData?.audio_info?.duration || 0) * 1000;
       
-      console.log(`获取到 ${wordsWithTime.length} 个单词时间戳，时长 ${asrDuration}ms`);
+      // ASR 返回的 duration 可能是秒或毫秒，需要判断
+      // 如果大于 1000，认为是毫秒；否则认为是秒
+      let rawDuration = asrResult.duration || asrResult.rawData?.audio_info?.duration || 0;
+      let asrDuration: number;
+      if (rawDuration > 1000) {
+        // 已经是毫秒
+        asrDuration = rawDuration;
+      } else {
+        // 是秒，转换为毫秒
+        asrDuration = rawDuration * 1000;
+      }
+      
+      console.log(`获取到 ${wordsWithTime.length} 个单词时间戳，时长 ${asrDuration}ms (${asrDuration / 1000}s)`);
 
       // 为每个句子匹配时间戳
       const updatedSentences = [];
