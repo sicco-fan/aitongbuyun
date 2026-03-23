@@ -321,13 +321,14 @@ export default function PracticeScreen() {
 
   // 处理输入变化
   const handleInputChange = useCallback((text: string) => {
-    const inputLower = text.toLowerCase().trim();
+    const inputLower = text.toLowerCase();
     
+    // 先处理单词状态
     setWordStatuses(prev => {
       const newStatuses = [...prev];
       let inputIndex = 0;
       let hasError = false;
-      let errorWordIndex = -1;
+      let wordsCompleted = 0;
       
       for (let i = 0; i < newStatuses.length; i++) {
         const ws = newStatuses[i];
@@ -335,7 +336,7 @@ export default function PracticeScreen() {
         
         const wordLower = ws.word.toLowerCase();
         
-        // 已经完成的单词
+        // 已经完成的单词跳过
         if (ws.revealed) continue;
         
         // 检查当前单词的匹配情况
@@ -362,30 +363,33 @@ export default function PracticeScreen() {
           }
         }
         
-        // 如果输入足够长且完全匹配
+        // 判断单词是否完全匹配
         if (allMatched && inputIndex + wordLower.length <= inputLower.length) {
           const nextInputIndex = inputIndex + wordLower.length;
           const nextChar = inputLower[nextInputIndex];
           
+          // 检查单词边界：下一个字符必须是空格、结束或标点
           const nextWord = newStatuses[i + 1];
-          if (!nextWord || nextWord.isPunctuation || nextChar === ' ' || nextChar === undefined) {
-            // 单词匹配成功！
+          const isWordEnd = !nextChar || nextChar === ' ' || (nextWord && nextWord.isPunctuation);
+          
+          if (isWordEnd) {
+            // 单词匹配成功！标记为完成
             newStatuses[i] = {
               ...ws,
               revealed: true,
               revealedChars: new Array(ws.word.length).fill(true),
               errorCharIndex: -1,
             };
+            wordsCompleted++;
             inputIndex = nextInputIndex + (nextChar === ' ' ? 1 : 0);
           } else {
-            // 后面还有内容但不匹配，继续处理
+            // 还有后续字符，但不是空格分隔，可能是错误
             newStatuses[i] = {
               ...ws,
               revealedChars: matchedChars,
-              errorCharIndex: firstErrorIndex,
+              errorCharIndex: firstErrorIndex >= 0 ? firstErrorIndex : wordLower.length,
             };
             hasError = true;
-            errorWordIndex = i;
             break;
           }
         } else {
@@ -398,39 +402,46 @@ export default function PracticeScreen() {
           
           if (firstErrorIndex >= 0) {
             hasError = true;
-            errorWordIndex = i;
           }
           break;
         }
       }
       
-      // 更新输入框内容：只保留当前正在输入的部分
-      let newInput = '';
+      // 计算新的输入框内容：去掉已完成的单词部分
+      // 找到第一个未完成的单词，保留从那里开始的输入
+      let remainingInput = '';
+      let charCount = 0;
+      
       for (let i = 0; i < newStatuses.length; i++) {
         const ws = newStatuses[i];
         if (ws.isPunctuation) continue;
-        if (ws.revealed) continue;
         
-        // 当前正在输入的单词，保留已输入的部分
+        if (ws.revealed) {
+          // 已完成的单词，跳过其字符数+空格
+          charCount += ws.word.length + 1;
+          continue;
+        }
+        
+        // 找到第一个未完成的单词
         const matchedLength = ws.revealedChars.filter(Boolean).length;
-        if (matchedLength > 0 && inputLower.length > 0) {
-          const currentWordInput = inputLower.slice(
-            inputLower.indexOf(ws.word.substring(0, 1)), 
-            inputLower.indexOf(ws.word.substring(0, 1)) + matchedLength + 1
-          );
-          newInput = currentWordInput || inputLower.slice(-matchedLength);
-        } else {
-          newInput = inputLower.slice(-text.length);
+        if (matchedLength > 0) {
+          // 保留当前正在输入的部分
+          remainingInput = inputLower.slice(charCount, charCount + matchedLength);
+        } else if (charCount < inputLower.length) {
+          // 可能是开始输入新单词
+          remainingInput = inputLower.slice(charCount);
         }
         break;
       }
       
       // 如果有错误，触发闪烁
-      if (hasError && errorWordIndex >= 0) {
+      if (hasError) {
         showErrorFlash();
       }
       
-      setCurrentInput(newInput);
+      // 更新输入框
+      setCurrentInput(remainingInput);
+      
       return newStatuses;
     });
   }, [showErrorFlash]);
