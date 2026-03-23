@@ -1,17 +1,15 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   TouchableOpacity,
   ActivityIndicator,
   Text,
-  Dimensions,
   StyleSheet,
+  ScrollView,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
 import { Screen } from '@/components/Screen';
-import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -49,14 +47,6 @@ export default function TimestampEditorScreen() {
   
   const [wordTimestamps, setWordTimestamps] = useState<WordTimestamp[]>([]);
   
-  // 选择区域
-  const [selectionStart, setSelectionStart] = useState(0);
-  const [selectionEnd, setSelectionEnd] = useState(0);
-  
-  // 缩放状态
-  const [zoomLevel, setZoomLevel] = useState(1);
-  
-  const webViewRef = useRef<any>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   
   const [dialog, setDialog] = useState<{ visible: boolean; message: string; onConfirm?: () => void }>({
@@ -65,6 +55,45 @@ export default function TimestampEditorScreen() {
   });
 
   const currentSentence = sentences[currentIndex];
+
+  // 根据句子文本匹配单词时间戳，找到开始和结束时间
+  const matchSentenceToTimestamps = useCallback((sentenceText: string, words: WordTimestamp[]): { start: number; end: number } => {
+    if (words.length === 0) {
+      return { start: 0, end: 0 };
+    }
+    
+    // 清理句子文本，提取单词
+    const sentenceWords = sentenceText.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 0);
+    
+    if (sentenceWords.length === 0) {
+      return { start: 0, end: 0 };
+    }
+    
+    const firstWord = sentenceWords[0];
+    const lastWord = sentenceWords[sentenceWords.length - 1];
+    
+    // 找第一个单词的时间戳
+    let startTime = 0;
+    for (let i = 0; i < words.length; i++) {
+      const wordLower = words[i].word.toLowerCase().replace(/[^\w]/g, '');
+      if (wordLower === firstWord || wordLower.startsWith(firstWord) || firstWord.startsWith(wordLower)) {
+        startTime = words[i].start_time;
+        break;
+      }
+    }
+    
+    // 找最后一个单词的时间戳
+    let endTime = duration || 0;
+    for (let i = words.length - 1; i >= 0; i--) {
+      const wordLower = words[i].word.toLowerCase().replace(/[^\w]/g, '');
+      if (wordLower === lastWord || wordLower.endsWith(lastWord) || lastWord.endsWith(wordLower)) {
+        endTime = words[i].end_time;
+        break;
+      }
+    }
+    
+    return { start: startTime, end: endTime };
+  }, [duration]);
 
   const fetchData = useCallback(async () => {
     if (!materialId) return;
@@ -79,30 +108,52 @@ export default function TimestampEditorScreen() {
         setDuration(materialData.material.duration || 0);
       }
       
-      if (materialData.sentences && materialData.sentences.length > 0) {
-        setSentences(materialData.sentences);
-      }
+      let wordsData: WordTimestamp[] = [];
       
+      // 获取单词时间戳
       try {
         const wordsRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/word-timestamps`, {
           method: 'POST',
         });
-        const wordsData = await wordsRes.json();
-        if (wordsData.words && wordsData.words.length > 0) {
-          setWordTimestamps(wordsData.words);
-          if (wordsData.duration) {
-            setDuration(wordsData.duration);
+        const wordsJson = await wordsRes.json();
+        if (wordsJson.words && wordsJson.words.length > 0) {
+          wordsData = wordsJson.words;
+          setWordTimestamps(wordsData);
+          if (wordsJson.duration) {
+            setDuration(wordsJson.duration);
           }
         }
       } catch (e) {
         console.log('未获取到单词时间戳');
       }
+      
+      // 获取句子
+      if (materialData.sentences && materialData.sentences.length > 0) {
+        // 自动匹配每个句子的时间戳
+        const processedSentences = materialData.sentences.map((s: Sentence) => {
+          // 如果已经有时间戳，保持不变
+          if (s.start_time > 0 && s.end_time > 0) {
+            return s;
+          }
+          
+          // 否则自动匹配
+          const { start, end } = matchSentenceToTimestamps(s.text, wordsData);
+          return {
+            ...s,
+            start_time: start,
+            end_time: end,
+          };
+        });
+        
+        setSentences(processedSentences);
+      }
+      
     } catch (error) {
       console.error('获取数据失败:', error);
     } finally {
       setLoading(false);
     }
-  }, [materialId]);
+  }, [materialId, matchSentenceToTimestamps]);
 
   useEffect(() => {
     fetchData();
@@ -112,389 +163,6 @@ export default function TimestampEditorScreen() {
       }
     };
   }, [fetchData]);
-
-  // 当句子切换时，更新选区
-  useEffect(() => {
-    if (currentSentence && duration > 0) {
-      let start = 0;
-      let end = duration;
-      
-      if (currentSentence.start_time > 0 || currentSentence.end_time > 0) {
-        start = currentSentence.start_time || 0;
-        end = currentSentence.end_time || duration;
-      } else {
-        const prevEnd = currentIndex > 0 ? sentences[currentIndex - 1].end_time : 0;
-        const estimatedDuration = Math.min(3000, duration - prevEnd);
-        start = prevEnd;
-        end = Math.min(prevEnd + estimatedDuration, duration);
-      }
-      
-      setSelectionStart(start);
-      setSelectionEnd(end);
-      
-      // 通知WebView更新选区
-      if (webViewRef.current) {
-        webViewRef.current.injectJavaScript(`
-          if (window.setSelection) {
-            window.setSelection(${start}, ${end});
-          }
-          true;
-        `);
-      }
-    }
-  }, [currentIndex, currentSentence, duration, sentences]);
-
-  // 缩放变化时通知WebView
-  useEffect(() => {
-    if (webViewRef.current && duration > 0) {
-      webViewRef.current.injectJavaScript(`
-        if (window.setZoom) {
-          window.setZoom(${zoomLevel});
-        }
-        true;
-      `);
-    }
-  }, [zoomLevel, duration]);
-
-  // 缩放控制
-  const zoomIn = () => setZoomLevel(prev => Math.min(prev * 1.5, 20));
-  const zoomOut = () => setZoomLevel(prev => Math.max(prev / 1.5, 1));
-
-  // 生成波形HTML
-  const generateWaveformData = useCallback((barCount: number, dur: number, words: WordTimestamp[]) => {
-    const bars: number[] = [];
-    
-    const seed = 12345;
-    let rand = seed;
-    const seededRandom = () => {
-      rand = (rand * 9301 + 49297) % 233280;
-      return rand / 233280;
-    };
-    
-    for (let i = 0; i < barCount; i++) {
-      const startTime = (i / barCount) * dur;
-      const endTime = ((i + 1) / barCount) * dur;
-      
-      const hasWord = words.some(
-        w => w.start_time < endTime && w.end_time > startTime
-      );
-      
-      let height: number;
-      if (hasWord) {
-        height = 0.4 + seededRandom() * 0.55;
-      } else {
-        height = 0.05 + seededRandom() * 0.15;
-      }
-      bars.push(height);
-    }
-    
-    return bars;
-  }, []);
-
-  const waveformHTML = useMemo(() => {
-    if (duration === 0) return '';
-    
-    const barCount = 800;
-    const bars = generateWaveformData(barCount, duration, wordTimestamps);
-    
-    return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { background: #0a0a0a; overflow: hidden; height: 100%; touch-action: none; }
-    .wrapper { height: 100%; display: flex; flex-direction: column; }
-    .waveform-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; background: #0a0a0a; position: relative; }
-    .waveform-container { position: relative; height: 100%; background: #0a0a0a; cursor: crosshair; }
-    canvas { display: block; }
-    .info-bar { display: flex; justify-content: space-between; padding: 8px 16px; background: #111; border-top: 1px solid #333; font-family: monospace; }
-    .time-range { color: #888; font-size: 12px; }
-    .zoom-indicator { color: #00ff88; font-size: 12px; }
-    .selection-time { color: #00ff88; font-size: 14px; font-weight: bold; }
-  </style>
-</head>
-<body>
-  <div class="wrapper">
-    <div class="waveform-scroll" id="scrollContainer">
-      <div class="waveform-container" id="container">
-        <canvas id="waveform"></canvas>
-      </div>
-    </div>
-    <div class="info-bar">
-      <span class="time-range" id="timeRange">0:00</span>
-      <span class="selection-time" id="selectionTime">0:00.00</span>
-      <span class="zoom-indicator" id="zoomIndicator">1.0x</span>
-    </div>
-  </div>
-  
-  <script>
-    const canvas = document.getElementById('waveform');
-    const ctx = canvas.getContext('2d');
-    const container = document.getElementById('container');
-    const scrollContainer = document.getElementById('scrollContainer');
-    const timeRangeEl = document.getElementById('timeRange');
-    const zoomIndicatorEl = document.getElementById('zoomIndicator');
-    const selectionTimeEl = document.getElementById('selectionTime');
-    
-    let baseWidth = window.innerWidth;
-    let width = baseWidth;
-    let height = 200;
-    let barHeights = ${JSON.stringify(bars)};
-    let duration = ${duration};
-    let selectionStart = ${selectionStart};
-    let selectionEnd = ${selectionEnd};
-    let zoomLevel = ${zoomLevel};
-    
-    let isDragging = false;
-    let dragStartTime = 0;
-    
-    function formatTime(ms) {
-      const totalSeconds = ms / 1000;
-      const seconds = Math.floor(totalSeconds);
-      const minutes = Math.floor(seconds / 60);
-      const remainingSeconds = seconds % 60;
-      const decimal = Math.floor((totalSeconds % 1) * 100);
-      return minutes + ':' + remainingSeconds.toString().padStart(2, '0') + '.' + decimal.toString().padStart(2, '0');
-    }
-    
-    function formatTimeSimple(ms) {
-      const totalSeconds = Math.floor(ms / 1000);
-      return Math.floor(totalSeconds / 60) + ':' + (totalSeconds % 60).toString().padStart(2, '0');
-    }
-    
-    function timeToX(time) {
-      return (time / duration) * width;
-    }
-    
-    function xToTime(x) {
-      const scrollLeft = scrollContainer.scrollLeft;
-      const absoluteX = scrollLeft + x;
-      return Math.max(0, Math.min((absoluteX / width) * duration, duration));
-    }
-    
-    function resize() {
-      height = container.clientHeight || 200;
-      width = baseWidth * zoomLevel;
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-      canvas.style.width = width + 'px';
-      canvas.style.height = height + 'px';
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      container.style.width = width + 'px';
-      draw();
-    }
-    
-    function draw() {
-      ctx.fillStyle = '#0a0a0a';
-      ctx.fillRect(0, 0, width, height);
-      
-      const centerY = height / 2;
-      const barWidth = width / barHeights.length;
-      const gap = Math.max(0.5, barWidth * 0.2);
-      const actualBarWidth = Math.max(1, barWidth - gap);
-      
-      // 绘制波形
-      ctx.fillStyle = '#00ff88';
-      for (let i = 0; i < barHeights.length; i++) {
-        const x = i * barWidth;
-        const barHeight = barHeights[i] * centerY * 0.85;
-        ctx.fillRect(x, centerY - barHeight, actualBarWidth, barHeight);
-        ctx.fillRect(x, centerY, actualBarWidth, barHeight);
-      }
-      
-      // 零电平线
-      ctx.strokeStyle = '#ff4444';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, centerY);
-      ctx.lineTo(width, centerY);
-      ctx.stroke();
-      
-      // 选区
-      const startX = timeToX(selectionStart);
-      const endX = timeToX(selectionEnd);
-      const leftX = Math.min(startX, endX);
-      const rightX = Math.max(startX, endX);
-      
-      // 遮罩
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      if (leftX > 0) ctx.fillRect(0, 0, leftX, height);
-      if (rightX < width) ctx.fillRect(rightX, 0, width - rightX, height);
-      
-      // 高亮
-      ctx.fillStyle = 'rgba(0, 255, 136, 0.25)';
-      ctx.fillRect(leftX, 0, rightX - leftX, height);
-      
-      // 边界线
-      ctx.strokeStyle = '#00ff88';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(leftX, 0);
-      ctx.lineTo(leftX, height);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(rightX, 0);
-      ctx.lineTo(rightX, height);
-      ctx.stroke();
-      
-      updateInfo();
-    }
-    
-    function updateInfo() {
-      const scrollLeft = scrollContainer.scrollLeft;
-      const viewWidth = scrollContainer.clientWidth;
-      const startTime = (scrollLeft / width) * duration;
-      const endTime = ((scrollLeft + viewWidth) / width) * duration;
-      timeRangeEl.textContent = formatTimeSimple(startTime) + ' - ' + formatTimeSimple(endTime);
-      zoomIndicatorEl.textContent = zoomLevel.toFixed(1) + 'x';
-      selectionTimeEl.textContent = formatTime(Math.abs(selectionEnd - selectionStart));
-    }
-    
-    function scrollToSelection() {
-      const startX = timeToX(selectionStart);
-      const endX = timeToX(selectionEnd);
-      const centerX = (startX + endX) / 2;
-      const viewWidth = scrollContainer.clientWidth;
-      scrollContainer.scrollLeft = Math.max(0, centerX - viewWidth / 2);
-    }
-    
-    // 鼠标事件
-    container.addEventListener('mousedown', function(e) {
-      e.preventDefault();
-      isDragging = true;
-      const rect = container.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const time = xToTime(x);
-      dragStartTime = time;
-      selectionStart = time;
-      selectionEnd = time;
-      draw();
-    });
-    
-    document.addEventListener('mousemove', function(e) {
-      if (!isDragging) return;
-      e.preventDefault();
-      const rect = container.getBoundingClientRect();
-      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-      const time = xToTime(x);
-      if (time < dragStartTime) {
-        selectionStart = time;
-        selectionEnd = dragStartTime;
-      } else {
-        selectionStart = dragStartTime;
-        selectionEnd = time;
-      }
-      draw();
-    });
-    
-    document.addEventListener('mouseup', function() {
-      if (!isDragging) return;
-      isDragging = false;
-      
-      // 确保最小选择时长
-      if (Math.abs(selectionEnd - selectionStart) < 100) {
-        selectionEnd = selectionStart + 1000;
-        if (selectionEnd > duration) selectionEnd = duration;
-      }
-      
-      draw();
-      notifyParent();
-    });
-    
-    // 触摸事件
-    container.addEventListener('touchstart', function(e) {
-      if (e.touches.length === 1) {
-        e.preventDefault();
-        isDragging = true;
-        const rect = container.getBoundingClientRect();
-        const x = e.touches[0].clientX - rect.left;
-        const time = xToTime(x);
-        dragStartTime = time;
-        selectionStart = time;
-        selectionEnd = time;
-        draw();
-      }
-    }, { passive: false });
-    
-    container.addEventListener('touchmove', function(e) {
-      if (!isDragging || e.touches.length !== 1) return;
-      e.preventDefault();
-      const rect = container.getBoundingClientRect();
-      const x = Math.max(0, Math.min(e.touches[0].clientX - rect.left, rect.width));
-      const time = xToTime(x);
-      if (time < dragStartTime) {
-        selectionStart = time;
-        selectionEnd = dragStartTime;
-      } else {
-        selectionStart = dragStartTime;
-        selectionEnd = time;
-      }
-      draw();
-    }, { passive: false });
-    
-    container.addEventListener('touchend', function() {
-      if (!isDragging) return;
-      isDragging = false;
-      if (Math.abs(selectionEnd - selectionStart) < 100) {
-        selectionEnd = selectionStart + 1000;
-        if (selectionEnd > duration) selectionEnd = duration;
-      }
-      draw();
-      notifyParent();
-    });
-    
-    scrollContainer.addEventListener('scroll', updateInfo);
-    
-    function notifyParent() {
-      if (window.ReactNativeWebView) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({
-          type: 'selection',
-          start: Math.min(selectionStart, selectionEnd),
-          end: Math.max(selectionStart, selectionEnd)
-        }));
-      }
-    }
-    
-    window.setSelection = function(start, end) {
-      selectionStart = start;
-      selectionEnd = end;
-      draw();
-      scrollToSelection();
-    };
-    
-    window.setZoom = function(zoom) {
-      zoomLevel = zoom;
-      resize();
-      scrollToSelection();
-    };
-    
-    window.getSelectionData = function() {
-      return { start: Math.min(selectionStart, selectionEnd), end: Math.max(selectionStart, selectionEnd) };
-    };
-    
-    window.addEventListener('resize', resize);
-    resize();
-    scrollToSelection();
-  </script>
-</body>
-</html>`;
-  }, [duration, wordTimestamps, selectionStart, selectionEnd, zoomLevel, generateWaveformData]);
-
-  // 处理WebView消息
-  const handleWebViewMessage = useCallback((event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === 'selection') {
-        setSelectionStart(data.start);
-        setSelectionEnd(data.end);
-      }
-    } catch (e) {
-      console.error('WebView消息解析失败:', e);
-    }
-  }, []);
 
   const loadAudio = async () => {
     if (!audioUrl) return null;
@@ -537,15 +205,23 @@ export default function TimestampEditorScreen() {
     }
   };
 
-  const playSelection = async () => {
+  // 播放当前句子
+  const playCurrentSentence = async () => {
     if (!soundRef.current) await loadAudio();
-    if (!soundRef.current) return;
+    if (!soundRef.current || !currentSentence) return;
     
     await stopPlaying();
-    const start = Math.min(selectionStart, selectionEnd);
-    const end = Math.max(selectionStart, selectionEnd);
     
-    console.log('播放选区:', start, '-', end, '时长:', end - start);
+    const start = currentSentence.start_time;
+    const end = currentSentence.end_time;
+    
+    if (end <= start) {
+      console.log('时间戳无效');
+      return;
+    }
+    
+    console.log('播放句子:', currentSentence.text);
+    console.log('时间:', start, '-', end);
     
     await soundRef.current.setPositionAsync(start);
     await soundRef.current.playAsync();
@@ -565,30 +241,57 @@ export default function TimestampEditorScreen() {
     }, 50);
   };
 
-  const confirmSelection = async () => {
-    const start = Math.min(selectionStart, selectionEnd);
-    const end = Math.max(selectionStart, selectionEnd);
+  // 播放单个单词
+  const playWord = async (word: WordTimestamp) => {
+    if (!soundRef.current) await loadAudio();
+    if (!soundRef.current) return;
     
+    await stopPlaying();
+    
+    await soundRef.current.setPositionAsync(word.start_time);
+    await soundRef.current.playAsync();
+    setIsPlaying(true);
+    
+    const checkInterval = setInterval(async () => {
+      if (!soundRef.current) {
+        clearInterval(checkInterval);
+        return;
+      }
+      const status = await soundRef.current.getStatusAsync();
+      if (status.isLoaded && status.positionMillis >= word.end_time) {
+        await soundRef.current.pauseAsync();
+        setIsPlaying(false);
+        clearInterval(checkInterval);
+      }
+    }, 50);
+  };
+
+  // 调整句子开始时间（选择一个单词作为开始）
+  const setStartFromWord = (word: WordTimestamp) => {
     const newSentences = [...sentences];
     newSentences[currentIndex] = {
       ...newSentences[currentIndex],
-      start_time: Math.round(start),
-      end_time: Math.round(end),
+      start_time: word.start_time,
     };
-    
-    if (currentIndex < sentences.length - 1) {
-      newSentences[currentIndex + 1] = {
-        ...newSentences[currentIndex + 1],
-        start_time: Math.round(end),
-      };
-    }
-    
     setSentences(newSentences);
-    
+  };
+
+  // 调整句子结束时间（选择一个单词作为结束）
+  const setEndFromWord = (word: WordTimestamp) => {
+    const newSentences = [...sentences];
+    newSentences[currentIndex] = {
+      ...newSentences[currentIndex],
+      end_time: word.end_time,
+    };
+    setSentences(newSentences);
+  };
+
+  // 确认并跳转下一句
+  const confirmAndNext = () => {
     if (currentIndex < sentences.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      setDialog({ visible: true, message: '已完成所有句子的音频分配！' });
+      setDialog({ visible: true, message: '已完成所有句子的时间轴设置！' });
     }
   };
 
@@ -596,7 +299,7 @@ export default function TimestampEditorScreen() {
     setSaving(true);
     try {
       for (const sentence of sentences) {
-        await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/sentences/${sentence.id}`, {
+        await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${sentence.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -625,12 +328,22 @@ export default function TimestampEditorScreen() {
     return `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
   };
 
+  // 获取当前句子范围内的单词
+  const getSentenceWords = useCallback(() => {
+    if (!currentSentence || wordTimestamps.length === 0) return [];
+    
+    const start = Math.min(currentSentence.start_time, currentSentence.end_time);
+    const end = Math.max(currentSentence.start_time, currentSentence.end_time);
+    
+    return wordTimestamps.filter(w => w.start_time >= start && w.end_time <= end);
+  }, [currentSentence, wordTimestamps]);
+
   if (loading) {
     return (
       <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
         <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a' }}>
           <ActivityIndicator size="large" color="#00ff88" />
-          <Text style={{ color: '#888', marginTop: 16 }}>正在加载音频...</Text>
+          <Text style={{ color: '#888', marginTop: 16 }}>正在加载...</Text>
         </ThemedView>
       </Screen>
     );
@@ -641,7 +354,7 @@ export default function TimestampEditorScreen() {
       <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
         <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a' }}>
           <FontAwesome6 name="file-lines" size={48} color="#666" />
-          <Text style={{ color: '#888', marginTop: 16 }}>没有句子，请先切分文本</Text>
+          <Text style={{ color: '#888', marginTop: 16 }}>没有句子</Text>
           <TouchableOpacity style={{ marginTop: 24, padding: 16, backgroundColor: '#00ff88', borderRadius: 8 }} onPress={() => router.back()}>
             <Text style={{ color: '#000', fontWeight: '600' }}>返回</Text>
           </TouchableOpacity>
@@ -650,97 +363,151 @@ export default function TimestampEditorScreen() {
     );
   }
 
+  const sentenceWords = getSentenceWords();
+  const sentenceDuration = Math.abs(currentSentence?.end_time - currentSentence?.start_time) || 0;
+
   return (
     <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
       {/* 顶部状态栏 */}
-      <View style={styles.statusBar}>
-        <View style={styles.statusLeft}>
-          <Text style={styles.statusText}>句子 {currentIndex + 1}/{sentences.length}</Text>
-          <Text style={styles.statusInfo}>总时长: {formatTimeSimple(duration)}</Text>
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle}>时间轴编辑</Text>
+          <Text style={styles.headerInfo}>句子 {currentIndex + 1}/{sentences.length}</Text>
         </View>
         <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
           <FontAwesome6 name="xmark" size={20} color="#888" />
         </TouchableOpacity>
       </View>
 
-      {/* 当前句子 */}
-      <View style={styles.sentenceBar}>
-        <TouchableOpacity style={styles.navBtn} onPress={() => currentIndex > 0 && setCurrentIndex(currentIndex - 1)} disabled={currentIndex === 0}>
+      {/* 句子导航 */}
+      <View style={styles.navBar}>
+        <TouchableOpacity 
+          style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
+          onPress={() => currentIndex > 0 && setCurrentIndex(currentIndex - 1)}
+        >
           <FontAwesome6 name="chevron-left" size={16} color={currentIndex === 0 ? '#444' : '#00ff88'} />
         </TouchableOpacity>
-        <View style={styles.sentenceContent}>
-          <Text style={styles.sentenceText} numberOfLines={2}>{currentSentence?.text}</Text>
+        
+        <View style={styles.sentenceBox}>
+          <Text style={styles.sentenceText}>{currentSentence?.text}</Text>
         </View>
-        <TouchableOpacity style={styles.navBtn} onPress={() => currentIndex < sentences.length - 1 && setCurrentIndex(currentIndex + 1)} disabled={currentIndex === sentences.length - 1}>
+        
+        <TouchableOpacity 
+          style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
+          onPress={() => currentIndex < sentences.length - 1 && setCurrentIndex(currentIndex + 1)}
+        >
           <FontAwesome6 name="chevron-right" size={16} color={currentIndex === sentences.length - 1 ? '#444' : '#00ff88'} />
         </TouchableOpacity>
       </View>
 
-      {/* 缩放控制 */}
-      <View style={styles.zoomControls}>
-        <Text style={styles.zoomLabel}>缩放:</Text>
-        <TouchableOpacity style={styles.zoomBtn} onPress={zoomOut} disabled={zoomLevel <= 1}>
-          <FontAwesome6 name="minus" size={14} color={zoomLevel <= 1 ? '#444' : '#00ff88'} />
-        </TouchableOpacity>
-        <Text style={styles.zoomValue}>{zoomLevel.toFixed(1)}x</Text>
-        <TouchableOpacity style={styles.zoomBtn} onPress={zoomIn} disabled={zoomLevel >= 20}>
-          <FontAwesome6 name="plus" size={14} color={zoomLevel >= 20 ? '#444' : '#00ff88'} />
-        </TouchableOpacity>
-      </View>
-
-      {/* 波形编辑区域 */}
-      <View style={styles.waveformContainer}>
-        <WebView
-          ref={webViewRef}
-          source={{ html: waveformHTML }}
-          style={styles.webView}
-          onMessage={handleWebViewMessage}
-          originWhitelist={['*']}
-          scrollEnabled={false}
-          bounces={false}
-          overScrollMode="never"
-          containerStyle={{ backgroundColor: '#0a0a0a' }}
-          allowsBackForwardNavigationGestures={false}
-          decelerationRate="normal"
-        />
-      </View>
-
-      {/* 选区时间信息 */}
-      <View style={styles.selectionInfo}>
-        <View style={styles.selectionTimeBox}>
-          <Text style={styles.selectionLabel}>开始</Text>
-          <Text style={styles.selectionValue}>{formatTime(Math.min(selectionStart, selectionEnd))}</Text>
+      {/* 时间信息 */}
+      <View style={styles.timeInfo}>
+        <View style={styles.timeBox}>
+          <Text style={styles.timeLabel}>开始</Text>
+          <Text style={styles.timeValue}>{formatTime(currentSentence?.start_time || 0)}</Text>
         </View>
-        <View style={styles.selectionDurationBox}>
-          <Text style={styles.selectionDuration}>{formatTime(Math.abs(selectionEnd - selectionStart))}</Text>
-          <Text style={styles.selectionDurationLabel}>选中时长</Text>
+        <View style={styles.durationBox}>
+          <Text style={styles.durationValue}>{formatTime(sentenceDuration)}</Text>
+          <Text style={styles.durationLabel}>时长</Text>
         </View>
-        <View style={styles.selectionTimeBox}>
-          <Text style={styles.selectionLabel}>结束</Text>
-          <Text style={styles.selectionValue}>{formatTime(Math.max(selectionStart, selectionEnd))}</Text>
+        <View style={styles.timeBox}>
+          <Text style={styles.timeLabel}>结束</Text>
+          <Text style={styles.timeValue}>{formatTime(currentSentence?.end_time || 0)}</Text>
         </View>
       </View>
 
-      {/* 操作提示 */}
-      <View style={styles.tipBar}>
-        <FontAwesome6 name="hand-pointer" size={14} color="#00ff88" />
-        <Text style={styles.tipText}>放大波形后，拖动选择精确的音频范围</Text>
+      {/* 单词列表 */}
+      <View style={styles.wordsSection}>
+        <Text style={styles.sectionTitle}>句子中的单词 (点击可播放，长按可设置时间)</Text>
+        <ScrollView style={styles.wordsList} contentContainerStyle={styles.wordsContent}>
+          {sentenceWords.length > 0 ? (
+            sentenceWords.map((word, idx) => (
+              <TouchableOpacity 
+                key={idx} 
+                style={styles.wordItem}
+                onPress={() => playWord(word)}
+                onLongPress={() => setStartFromWord(word)}
+              >
+                <Text style={styles.wordText}>{word.word}</Text>
+                <Text style={styles.wordTime}>{formatTime(word.start_time)}</Text>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <Text style={styles.noWords}>该时间范围内没有单词，请调整开始/结束时间</Text>
+          )}
+        </ScrollView>
+      </View>
+
+      {/* 调整时间 */}
+      <View style={styles.adjustSection}>
+        <Text style={styles.sectionTitle}>调整时间边界</Text>
+        <View style={styles.adjustButtons}>
+          <TouchableOpacity style={styles.adjustBtn} onPress={() => {
+            // 找到比当前开始时间早的单词
+            const currentStart = currentSentence?.start_time || 0;
+            const earlierWords = wordTimestamps.filter(w => w.end_time < currentStart);
+            if (earlierWords.length > 0) {
+              setStartFromWord(earlierWords[earlierWords.length - 1]);
+            }
+          }}>
+            <FontAwesome6 name="backward" size={16} color="#00ff88" />
+            <Text style={styles.adjustBtnText}>开始前移</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.adjustBtn} onPress={() => {
+            // 找到比当前开始时间晚的单词
+            const currentStart = currentSentence?.start_time || 0;
+            const laterWords = wordTimestamps.filter(w => w.start_time > currentStart);
+            if (laterWords.length > 0) {
+              setStartFromWord(laterWords[0]);
+            }
+          }}>
+            <FontAwesome6 name="forward" size={16} color="#00ff88" />
+            <Text style={styles.adjustBtnText}>开始后移</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.adjustBtn} onPress={() => {
+            // 找到比当前结束时间早的单词
+            const currentEnd = currentSentence?.end_time || duration;
+            const earlierWords = wordTimestamps.filter(w => w.end_time < currentEnd);
+            if (earlierWords.length > 0) {
+              setEndFromWord(earlierWords[earlierWords.length - 1]);
+            }
+          }}>
+            <FontAwesome6 name="backward" size={16} color="#ff8800" />
+            <Text style={styles.adjustBtnText}>结束前移</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.adjustBtn} onPress={() => {
+            // 找到比当前结束时间晚的单词
+            const currentEnd = currentSentence?.end_time || 0;
+            const laterWords = wordTimestamps.filter(w => w.start_time > currentEnd);
+            if (laterWords.length > 0) {
+              setEndFromWord(laterWords[0]);
+            }
+          }}>
+            <FontAwesome6 name="forward" size={16} color="#ff8800" />
+            <Text style={styles.adjustBtnText}>结束后移</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 底部控制栏 */}
       <View style={styles.controls}>
         <View style={styles.playControls}>
-          <TouchableOpacity style={styles.playBtn} onPress={playSelection}>
+          <TouchableOpacity style={styles.playBtn} onPress={playCurrentSentence}>
             <FontAwesome6 name={isPlaying ? "pause" : "play"} size={24} color="#000" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.controlBtn} onPress={stopPlaying}>
+          <TouchableOpacity style={styles.stopBtn} onPress={stopPlaying}>
             <FontAwesome6 name="stop" size={18} color="#888" />
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.confirmBtn} onPress={confirmSelection}>
+        
+        <TouchableOpacity style={styles.confirmBtn} onPress={confirmAndNext}>
           <FontAwesome6 name="check" size={18} color="#000" />
           <Text style={styles.confirmBtnText}>确认并下一句</Text>
         </TouchableOpacity>
+        
         <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
           {saving ? <ActivityIndicator size="small" color="#00ff88" /> : <FontAwesome6 name="floppy-disk" size={18} color="#00ff88" />}
         </TouchableOpacity>
@@ -759,35 +526,225 @@ export default function TimestampEditorScreen() {
 }
 
 const styles = StyleSheet.create({
-  statusBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#222', borderBottomWidth: 1, borderBottomColor: '#333' },
-  statusLeft: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  statusText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  statusInfo: { color: '#888', fontSize: 12 },
-  closeBtn: { padding: 8 },
-  sentenceBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#1a1a1a', borderBottomWidth: 1, borderBottomColor: '#333' },
-  navBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' },
-  sentenceContent: { flex: 1, paddingHorizontal: 16 },
-  sentenceText: { color: '#fff', fontSize: 16, textAlign: 'center', lineHeight: 24 },
-  zoomControls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#111', borderBottomWidth: 1, borderBottomColor: '#333' },
-  zoomLabel: { color: '#888', fontSize: 12 },
-  zoomBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' },
-  zoomValue: { color: '#00ff88', fontSize: 14, fontWeight: '600', minWidth: 40, textAlign: 'center' },
-  waveformContainer: { height: 240, backgroundColor: '#0a0a0a' },
-  webView: { flex: 1, backgroundColor: '#0a0a0a' },
-  selectionInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, backgroundColor: '#111', borderTopWidth: 1, borderTopColor: '#333' },
-  selectionTimeBox: { alignItems: 'center' },
-  selectionLabel: { color: '#666', fontSize: 10, marginBottom: 4 },
-  selectionValue: { color: '#00ff88', fontSize: 16, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  selectionDurationBox: { alignItems: 'center', backgroundColor: 'rgba(0, 255, 136, 0.15)', paddingHorizontal: 20, paddingVertical: 8, borderRadius: 8 },
-  selectionDuration: { color: '#00ff88', fontSize: 24, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  selectionDurationLabel: { color: '#00ff88', fontSize: 10, marginTop: 2 },
-  tipBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10, backgroundColor: '#111', borderTopWidth: 1, borderTopColor: '#333' },
-  tipText: { color: '#888', fontSize: 12 },
-  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#222', borderTopWidth: 1, borderTopColor: '#333' },
-  playControls: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  controlBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' },
-  playBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#00ff88', justifyContent: 'center', alignItems: 'center' },
-  confirmBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#00ff88', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 24 },
-  confirmBtnText: { color: '#000', fontSize: 14, fontWeight: '600' },
-  saveBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#00ff88' },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#222',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  headerInfo: {
+    color: '#00ff88',
+    fontSize: 14,
+  },
+  closeBtn: {
+    padding: 8,
+  },
+  
+  navBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#1a1a1a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  navBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  navBtnDisabled: {
+    opacity: 0.5,
+  },
+  sentenceBox: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  sentenceText: {
+    color: '#fff',
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  
+  timeInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: '#111',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  timeBox: {
+    alignItems: 'center',
+  },
+  timeLabel: {
+    color: '#666',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  timeValue: {
+    color: '#00ff88',
+    fontSize: 18,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  durationBox: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 255, 136, 0.15)',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  durationValue: {
+    color: '#00ff88',
+    fontSize: 28,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  durationLabel: {
+    color: '#00ff88',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  
+  wordsSection: {
+    flex: 1,
+    backgroundColor: '#0a0a0a',
+  },
+  sectionTitle: {
+    color: '#888',
+    fontSize: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#111',
+  },
+  wordsList: {
+    flex: 1,
+  },
+  wordsContent: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 8,
+    gap: 8,
+  },
+  wordItem: {
+    backgroundColor: '#222',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  wordText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  wordTime: {
+    color: '#666',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  noWords: {
+    color: '#666',
+    fontSize: 14,
+    textAlign: 'center',
+    padding: 32,
+  },
+  
+  adjustSection: {
+    backgroundColor: '#111',
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+    paddingVertical: 12,
+  },
+  adjustButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 8,
+  },
+  adjustBtn: {
+    alignItems: 'center',
+    padding: 8,
+  },
+  adjustBtnText: {
+    color: '#888',
+    fontSize: 10,
+    marginTop: 4,
+  },
+  
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#222',
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+  },
+  playControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  playBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#00ff88',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stopBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#00ff88',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+  },
+  confirmBtnText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  saveBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#00ff88',
+  },
 });
