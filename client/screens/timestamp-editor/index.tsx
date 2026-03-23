@@ -25,6 +25,7 @@ interface Sentence {
   text: string;
   start_time: number;
   end_time: number;
+  sentence_index?: number;
 }
 
 interface WordTimestamp {
@@ -437,8 +438,13 @@ export default function TimestampEditorScreen() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      let hasError = false;
+      const errors: string[] = [];
+      
       for (const sentence of sentences) {
-        await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/sentences/${sentence.id}`, {
+        console.log(`[保存] 句子 ${sentence.id}: start_time=${sentence.start_time}, end_time=${sentence.end_time}`);
+        
+        const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/sentences/${sentence.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -446,8 +452,22 @@ export default function TimestampEditorScreen() {
             end_time: sentence.end_time,
           }),
         });
+        
+        const result = await response.json();
+        
+        if (!response.ok || !result.success) {
+          hasError = true;
+          errors.push(`句子 ${(sentence.sentence_index ?? 0) + 1}: ${result.error || '保存失败'}`);
+          console.error(`[保存失败] 句子 ${sentence.id}:`, result);
+        }
       }
-      setDialog({ visible: true, message: '保存成功！', onConfirm: () => router.back() });
+      
+      if (hasError) {
+        setDialog({ visible: true, message: `部分保存失败：\n${errors.join('\n')}` });
+      } else {
+        console.log('[保存] 全部保存成功');
+        setDialog({ visible: true, message: '保存成功！', onConfirm: () => router.back() });
+      }
     } catch (error) {
       setDialog({ visible: true, message: `保存失败: ${(error as Error).message}` });
     } finally {

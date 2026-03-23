@@ -11,6 +11,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
+import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
@@ -154,33 +155,35 @@ export default function PracticeScreen() {
     initDeviceId();
   }, []);
 
-  // 加载材料数据
-  useEffect(() => {
-    const fetchMaterial = async () => {
-      if (!materialId) return;
+  // 加载材料数据（每次页面获得焦点时重新加载，确保获取最新时间戳）
+  useFocusEffect(
+    useCallback(() => {
+      const fetchMaterial = async () => {
+        if (!materialId) return;
 
-      try {
-        const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}`);
-        const data = await response.json();
+        try {
+          const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}`);
+          const data = await response.json();
 
-        if (data.material && data.sentences) {
-          setMaterial(data.material);
-          const firstIncomplete = data.sentences.findIndex((s: Sentence) => !s.is_completed);
-          setCurrentIndex(firstIncomplete >= 0 ? firstIncomplete : 0);
-          setSentences(data.sentences);
-          const total = data.sentences.reduce((sum: number, s: Sentence) => sum + (s.attempts || 0), 0);
-          setTotalAttempts(total);
+          if (data.material && data.sentences) {
+            setMaterial(data.material);
+            const firstIncomplete = data.sentences.findIndex((s: Sentence) => !s.is_completed);
+            setCurrentIndex(firstIncomplete >= 0 ? firstIncomplete : 0);
+            setSentences(data.sentences);
+            const total = data.sentences.reduce((sum: number, s: Sentence) => sum + (s.attempts || 0), 0);
+            setTotalAttempts(total);
+          }
+        } catch (error) {
+          console.error('加载材料失败:', error);
+          Alert.alert('错误', '加载材料失败');
+        } finally {
+          setLoading(false);
         }
-      } catch (error) {
-        console.error('加载材料失败:', error);
-        Alert.alert('错误', '加载材料失败');
-      } finally {
-        setLoading(false);
-      }
-    };
+      };
 
-    fetchMaterial();
-  }, [materialId]);
+      fetchMaterial();
+    }, [materialId])
+  );
 
   // 当切换句子时，初始化单词状态并开始播放
   useEffect(() => {
@@ -302,7 +305,7 @@ export default function PracticeScreen() {
           // 如果已完成，立即停止
           if (completedRef.current) {
             if (soundRef.current) {
-              soundRef.current.stopAsync().catch(() => {});
+              soundRef.current.stopAsync().catch((e) => console.log('停止播放失败:', e));
             }
             return;
           }
