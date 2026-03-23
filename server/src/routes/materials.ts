@@ -373,25 +373,6 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
     console.log('文件大小:', buffer.length, 'bytes');
     console.log('分块数:', chunks.length, '/', session.chunks.length);
 
-    // 检测是否为视频文件
-    const isVideo = mimeType?.startsWith('video/') || 
-                    fileName?.toLowerCase().endsWith('.mov') ||
-                    fileName?.toLowerCase().endsWith('.mp4') ||
-                    fileName?.toLowerCase().endsWith('.avi') ||
-                    fileName?.toLowerCase().endsWith('.mkv') ||
-                    fileName?.toLowerCase().endsWith('.webm');
-    
-    if (isVideo) {
-      console.log('检测到视频文件，暂不支持');
-      // 清理会话
-      uploadChunks.delete(uploadId);
-      return res.status(400).json({ 
-        error: '暂不支持视频文件上传', 
-        message: '请上传音频文件（MP3、WAV、M4A 等），或使用"链接导入"功能导入视频平台的视频。',
-        hint: '您可以在首页点击"链接导入"，粘贴 YouTube、B站 等视频链接，系统会自动提取音频。'
-      });
-    }
-
     // 上传到对象存储
     const fileKey = await storage.uploadFile({
       fileContent: buffer,
@@ -423,8 +404,8 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
 
     console.log(`材料创建成功: ID=${material.id}, 标题=${title}`);
 
-    // 异步处理：ASR + 分句
-    processAudioAsync(material.id, fileKey).catch(err => {
+    // 异步处理：视频转音频 + ASR + 分句
+    processMediaAsync(material.id, fileKey, fileName, mimeType).catch(err => {
       console.error(`异步处理失败 [material=${material.id}]:`, err.message);
     });
 
@@ -440,20 +421,98 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
 });
 
 /**
- * 异步处理音频文件：ASR + 分句
+ * 异步处理媒体文件：视频转音频 + ASR + 分句
  */
-async function processAudioAsync(
+async function processMediaAsync(
   materialId: number,
-  fileKey: string
+  fileKey: string,
+  fileName: string,
+  mimeType: string
 ): Promise<void> {
   console.log(`\n[异步处理] 开始处理材料 ${materialId}`);
   
   try {
     const supabase = getSupabaseClient();
     
-    // 生成签名 URL
-    const audioUrl = await storage.generatePresignedUrl({
-      key: fileKey,
+    // 检测是否为视频文件
+    const isVideo = mimeType?.startsWith('video/') || 
+                    fileName?.toLowerCase().endsWith('.mov') ||
+                    fileName?.toLowerCase().endsWith('.mp4') ||
+                    fileName?.toLowerCase().endsWith('.avi') ||
+                    fileName?.toLowerCase().endsWith('.mkv') ||
+                    fileName?.toLowerCase().endsWith('.webm');
+
+    let audioKey = fileKey;
+    let audioUrl: string;
+
+    // 如果是视频，使用 ffmpeg 提取音频
+    if (isVideo) {
+      console.log(`[异步处理] 检测到视频文件，使用 ffmpeg 提取音频...`);
+      
+      // 生成临时签名 URL 下载视频
+      const videoUrl = await storage.generatePresignedUrl({
+        key: fileKey,
+        expireTime: 86400,
+      });
+      
+      // 下载视频文件
+      const response = await axios({
+        method: 'GET',
+        url: videoUrl,
+        responseType: 'arraybuffer',
+        timeout: 5 * 60 * 1000,
+      });
+      
+      const videoBuffer = Buffer.from(response.data);
+      const tempDir = '/tmp/video_processing';
+      await fs.mkdir(tempDir, { recursive: true });
+      
+      const tempVideoPath = path.join(tempDir, `${materialId}_${fileName}`);
+      const tempAudioPath = path.join(tempDir, `${materialId}_audio.mp3`);
+      
+      await fs.writeFile(tempVideoPath, videoBuffer);
+      console.log(`[异步处理] 视频文件已保存: ${videoBuffer.length} bytes`);
+      
+      try {
+        // 使用 ffmpeg 提取音频
+        const ffmpegCmd = `ffmpeg -y -i "${tempVideoPath}" -vn -acodec libmp3lame -ab 192k "${tempAudioPath}"`;
+        console.log(`[异步处理] 执行: ${ffmpegCmd}`);
+        
+        await execAsync(ffmpegCmd, { timeout: 5 * 60 * 1000 });
+        
+        // 检查音频文件是否生成
+        const audioStats = await fs.stat(tempAudioPath);
+        if (audioStats.size > 0) {
+          // 上传音频到对象存储
+          const audioBuffer = await fs.readFile(tempAudioPath);
+          audioKey = await storage.uploadFile({
+            fileContent: audioBuffer,
+            fileName: `audio/${materialId}_converted.mp3`,
+            contentType: 'audio/mpeg',
+          });
+          
+          console.log(`[异步处理] 音频提取成功: ${audioBuffer.length} bytes`);
+          
+          // 更新材料音频 URL
+          await supabase
+            .from('materials')
+            .update({ audio_url: audioKey })
+            .eq('id', materialId);
+        } else {
+          throw new Error('音频文件生成失败：文件大小为 0');
+        }
+      } finally {
+        // 清理临时文件
+        try {
+          await fs.unlink(tempVideoPath);
+          await fs.unlink(tempAudioPath);
+        } catch (e) {}
+      }
+    }
+    
+    // 生成音频签名 URL
+    audioUrl = await storage.generatePresignedUrl({
+      key: audioKey,
       expireTime: 86400,
     });
 
