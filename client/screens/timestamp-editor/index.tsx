@@ -664,19 +664,41 @@ export default function TimestampEditorScreen() {
     if (!soundRef.current) return;
     
     await stopPlaying();
-    const start = Math.min(selectionStart, selectionEnd);
-    const end = Math.max(selectionStart, selectionEnd);
+    
+    // 优先使用 ref 中的最新值（Web端拖拽后可能还没更新到React状态）
+    let start: number, end: number;
+    if (Platform.OS === 'web') {
+      start = Math.min(selectionStartRef.current, selectionEndRef.current);
+      end = Math.max(selectionStartRef.current, selectionEndRef.current);
+    } else {
+      start = Math.min(selectionStart, selectionEnd);
+      end = Math.max(selectionStart, selectionEnd);
+    }
+    
+    // 确保选区有效
+    if (end <= start) {
+      end = Math.min(start + 3000, duration);
+    }
+    
+    console.log('播放选区:', start, '-', end, '时长:', end - start);
     
     await soundRef.current.setPositionAsync(start);
     await soundRef.current.playAsync();
     setIsPlaying(true);
     
-    setTimeout(async () => {
-      if (soundRef.current) {
+    // 使用播放状态回调来停止，而不是 setTimeout
+    const checkInterval = setInterval(async () => {
+      if (!soundRef.current) {
+        clearInterval(checkInterval);
+        return;
+      }
+      const status = await soundRef.current.getStatusAsync();
+      if (status.isLoaded && status.positionMillis >= end) {
         await soundRef.current.pauseAsync();
         setIsPlaying(false);
+        clearInterval(checkInterval);
       }
-    }, end - start);
+    }, 50);
   };
 
   const confirmSelection = async () => {
