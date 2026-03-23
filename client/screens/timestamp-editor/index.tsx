@@ -225,17 +225,43 @@ export default function TimestampEditorScreen() {
     
     if (!soundRef.current || !currentSentence) return;
     
-    // 检查音频是否已加载
+    // 检查音频是否已加载，并获取实际时长
     const status = await soundRef.current.getStatusAsync();
     if (!status.isLoaded) {
       console.log('音频未加载');
       return;
     }
     
+    // 获取音频实际时长
+    const actualDuration = status.durationMillis || 0;
+    console.log('音频实际时长:', actualDuration, 'ms');
+    
     await stopPlaying();
     
-    const start = currentSentence.start_time;
-    const end = currentSentence.end_time;
+    // 获取时间戳，确保在有效范围内
+    let start = currentSentence.start_time;
+    let end = currentSentence.end_time;
+    
+    // 如果时间戳超出音频范围，按比例调整
+    if (start > actualDuration || end > actualDuration) {
+      console.log('时间戳超出范围，需要调整');
+      // 如果数据库中的 duration 与实际时长差异过大，按比例缩放
+      const dbDuration = duration || actualDuration;
+      if (dbDuration > 0 && actualDuration > 0) {
+        const ratio = actualDuration / dbDuration;
+        start = Math.round(start * ratio);
+        end = Math.round(end * ratio);
+        console.log('调整后时间:', start, '-', end);
+      } else {
+        // 无法调整，使用整个音频
+        start = 0;
+        end = actualDuration;
+      }
+    }
+    
+    // 确保时间戳在有效范围内
+    start = Math.max(0, Math.min(start, actualDuration - 100));
+    end = Math.max(start + 100, Math.min(end, actualDuration));
     
     if (end <= start) {
       Alert.alert('提示', '该句子尚未匹配到时间戳，请先进行自动匹配');
@@ -243,7 +269,7 @@ export default function TimestampEditorScreen() {
     }
     
     console.log('播放句子:', currentSentence.text);
-    console.log('时间:', start, '-', end);
+    console.log('时间:', start, '-', end, '时长:', end - start, 'ms');
     
     await soundRef.current.setPositionAsync(start);
     await soundRef.current.playAsync();
