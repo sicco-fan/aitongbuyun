@@ -117,6 +117,7 @@ export default function PracticeScreen() {
   const isRecordingRef = useRef(false); // 使用 ref 跟踪录音状态，避免闭包问题
   const inputRef = useRef<TextInput>(null); // 输入框引用
   const currentSentenceIdRef = useRef<number | null>(null); // 跟踪当前句子ID，防止异步翻译混乱
+  const completedRef = useRef(false); // 跟踪完成状态，用于音频回调中立即停止
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -298,6 +299,14 @@ export default function PracticeScreen() {
           positionMillis: start,
         },
         (status) => {
+          // 如果已完成，立即停止
+          if (completedRef.current) {
+            if (soundRef.current) {
+              soundRef.current.stopAsync().catch(() => {});
+            }
+            return;
+          }
+          
           if (status.isLoaded && soundRef.current && isLoopingRef.current) {
             // 当播放到句子结束位置时，跳回开始位置继续播放
             if (status.positionMillis >= end) {
@@ -325,8 +334,9 @@ export default function PracticeScreen() {
 
   // 停止播放
   const stopPlayback = useCallback(async () => {
-    // 先设置循环标志为 false，防止回调继续循环
+    // 先设置标志，防止回调继续循环
     isLoopingRef.current = false;
+    completedRef.current = true;
     
     if (soundRef.current) {
       try {
@@ -572,6 +582,9 @@ export default function PracticeScreen() {
         if (currentIndex < sentences.length - 1) {
           setCurrentIndex(prev => prev + 1);
         } else {
+          // 先设置 ref，确保音频回调能立即检测到
+          completedRef.current = true;
+          isLoopingRef.current = false;
           setCompleted(true);
         }
       }, 2000); // 延长到2秒，让用户有时间看翻译
@@ -922,6 +935,8 @@ export default function PracticeScreen() {
     if (currentIndex < sentences.length - 1) {
       setCurrentIndex(prev => prev + 1);
     } else {
+      completedRef.current = true;
+      isLoopingRef.current = false;
       setCompleted(true);
     }
   };
