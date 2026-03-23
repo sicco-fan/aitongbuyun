@@ -195,6 +195,7 @@ export const createStyles = (theme: Theme) => {
       fontSize: 28,
       color: theme.textPrimary,
       fontWeight: '600',
+      textAlign: 'center',
     },
     voiceBtn: {
       width: 60,
