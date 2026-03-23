@@ -1074,12 +1074,15 @@ router.post('/:id/extract-text', async (req: Request, res: Response) => {
  * 保存用户手动切分的句子
  * Body: { sentences: string[] }
  */
-router.post('/:id/save-sentences', async (req: Request, res: Response) => {
+router.post('/:id/save-sentences', express.json(), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { sentences } = req.body;
 
+    console.log(`[保存句子] 材料 ${id}, 句子数量: ${sentences?.length || 0}`);
+
     if (!sentences || !Array.isArray(sentences) || sentences.length === 0) {
+      console.log(`[保存句子] 无效的句子数据:`, req.body);
       return res.status(400).json({ error: '请提供有效的句子数组' });
     }
 
