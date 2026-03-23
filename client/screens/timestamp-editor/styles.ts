@@ -92,7 +92,7 @@ export const createStyles = (theme: Theme) => {
       gap: Spacing.sm,
     },
     waveformContainer: {
-      height: 140,
+      height: 150,
       backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.lg,
       position: 'relative',
@@ -117,7 +117,20 @@ export const createStyles = (theme: Theme) => {
       position: 'absolute',
       top: 0,
       bottom: 0,
-      backgroundColor: theme.backgroundRoot + 'cc',
+      backgroundColor: theme.backgroundRoot + 'aa',
+    },
+    selectionHighlight: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      backgroundColor: theme.primary + '25',
+    },
+    selectionEdge: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      width: 3,
+      zIndex: 5,
     },
     playhead: {
       position: 'absolute',
@@ -125,42 +138,7 @@ export const createStyles = (theme: Theme) => {
       bottom: 0,
       width: 2,
       backgroundColor: theme.error,
-      zIndex: 5,
-    },
-    handle: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      width: 32,
-      justifyContent: 'flex-start',
-      alignItems: 'center',
-      zIndex: 10,
-    },
-    handleEnd: {
-      // 右侧把手样式相同
-    },
-    handleBar: {
-      width: 4,
-      height: '80%',
-      borderRadius: 2,
-      marginTop: 8,
-    },
-    handleTriangle: {
-      width: 0,
-      height: 0,
-      borderLeftWidth: 8,
-      borderRightWidth: 8,
-      borderTopWidth: 8,
-      borderLeftColor: 'transparent',
-      borderRightColor: 'transparent',
-    },
-    waveformTouchLayer: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      zIndex: 1,
+      zIndex: 4,
     },
     timeLabels: {
       flexDirection: 'row',
@@ -171,26 +149,21 @@ export const createStyles = (theme: Theme) => {
       fontSize: 11,
     },
     
-    // 快捷按钮
-    quickButtons: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: Spacing.md,
-      marginTop: Spacing.md,
-    },
-    quickBtn: {
+    // 提示
+    tipBox: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: Spacing.sm,
-      paddingHorizontal: Spacing.md,
+      backgroundColor: theme.accent + '15',
+      padding: Spacing.md,
       borderRadius: BorderRadius.md,
-      gap: Spacing.xs,
+      gap: Spacing.sm,
+      marginBottom: Spacing.lg,
     },
     
     // 操作按钮
     actionSection: {
       gap: Spacing.md,
-      marginBottom: Spacing.lg,
+      marginBottom: Spacing.xl,
     },
     playBtn: {
       flexDirection: 'row',
@@ -209,17 +182,6 @@ export const createStyles = (theme: Theme) => {
       paddingVertical: Spacing.lg,
       borderRadius: BorderRadius.lg,
       gap: Spacing.sm,
-    },
-    
-    // 提示
-    tipBox: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: theme.accent + '15',
-      padding: Spacing.md,
-      borderRadius: BorderRadius.md,
-      gap: Spacing.sm,
-      marginBottom: Spacing.xl,
     },
     
     // 句子列表

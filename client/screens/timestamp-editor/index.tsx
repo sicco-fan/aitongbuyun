@@ -52,7 +52,7 @@ export default function TimestampEditorScreen() {
   const [position, setPosition] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   
-  // 单词级时间戳（用于显示波形参考）
+  // 单词级时间戳
   const [wordTimestamps, setWordTimestamps] = useState<WordTimestamp[]>([]);
   
   // 选择区域（毫秒）
@@ -61,14 +61,14 @@ export default function TimestampEditorScreen() {
   
   // 波形容器宽度
   const [waveformWidth, setWaveformWidth] = useState(SCREEN_WIDTH - 48);
-  const waveformRef = useRef<View>(null);
   
-  // 拖拽状态
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragType, setDragType] = useState<'selection' | 'start' | 'end' | null>(null);
-  const dragStartRef = useRef({ x: 0, start: 0, end: 0 });
+  // 拖拽选择状态
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionOrigin, setSelectionOrigin] = useState(0); // 开始选择时的位置
+  const [dragCurrentTime, setDragCurrentTime] = useState(0); // 当前拖动位置
   
   const soundRef = useRef<Audio.Sound | null>(null);
+  const waveformRef = useRef<View>(null);
   
   // 提示对话框
   const [dialog, setDialog] = useState<{ visible: boolean; message: string; onConfirm?: () => void }>({
@@ -274,7 +274,7 @@ export default function TimestampEditorScreen() {
   };
 
   const pixelToTime = (pixel: number) => {
-    return (pixel / waveformWidth) * duration;
+    return Math.max(0, Math.min((pixel / waveformWidth) * duration, duration));
   };
 
   // 生成波形数据
@@ -298,102 +298,85 @@ export default function TimestampEditorScreen() {
     return bars;
   }, [waveformWidth, duration, wordTimestamps]);
 
-  // ========== 鼠标/触摸事件处理 ==========
+  // ========== 鼠标拖拽选择 ==========
   
-  // 获取事件位置相对于波形容器的x坐标
-  const getEventX = (evt: any): number => {
-    // 对于Web端的鼠标事件
-    if (Platform.OS === 'web' && evt.nativeEvent.offsetX !== undefined) {
-      return evt.nativeEvent.offsetX;
-    }
-    // 对于触摸事件
-    if (evt.nativeEvent.locationX !== undefined) {
-      return evt.nativeEvent.locationX;
-    }
-    // 对于Web触摸事件
-    const touch = evt.nativeEvent.touches?.[0];
-    if (touch) {
-      return touch.clientX - (evt.currentTarget?.offsetLeft || 0);
-    }
-    return 0;
-  };
-
-  // 开始拖拽选择
-  const handleDragStart = (evt: any, type: 'selection' | 'start' | 'end') => {
-    const x = getEventX(evt);
-    setIsDragging(true);
-    setDragType(type);
-    dragStartRef.current = {
-      x,
-      start: selectionStart,
-      end: selectionEnd,
-    };
-  };
-
-  // 拖拽移动
-  const handleDragMove = (evt: any) => {
-    if (!isDragging || !dragType) return;
-    
-    const x = getEventX(evt);
-    const deltaX = x - dragStartRef.current.x;
-    const deltaTime = pixelToTime(deltaX);
-    
-    if (dragType === 'start') {
-      // 移动开始位置
-      const newStart = Math.max(0, Math.min(dragStartRef.current.start + deltaTime, selectionEnd - 100));
-      setSelectionStart(newStart);
-    } else if (dragType === 'end') {
-      // 移动结束位置
-      const newEnd = Math.max(selectionStart + 100, Math.min(dragStartRef.current.end + deltaTime, duration));
-      setSelectionEnd(newEnd);
-    } else if (dragType === 'selection') {
-      // 移动整个选择区域
-      const selectionDuration = dragStartRef.current.end - dragStartRef.current.start;
-      let newStart = dragStartRef.current.start + deltaTime;
-      let newEnd = newStart + selectionDuration;
-      
-      // 边界检查
-      if (newStart < 0) {
-        newStart = 0;
-        newEnd = selectionDuration;
+  // 获取相对于波形容器的X坐标
+  const getRelativeX = (evt: any): number => {
+    if (Platform.OS === 'web') {
+      // Web端：获取相对于元素的位置
+      const rect = evt.currentTarget?.getBoundingClientRect?.();
+      if (rect) {
+        return evt.clientX - rect.left;
       }
-      if (newEnd > duration) {
-        newEnd = duration;
-        newStart = duration - selectionDuration;
-      }
-      
-      setSelectionStart(newStart);
-      setSelectionEnd(newEnd);
+      return evt.nativeEvent?.offsetX || 0;
+    }
+    // 移动端
+    const touch = evt.nativeEvent?.touches?.[0];
+    if (touch && waveformRef.current) {
+      return touch.locationX || 0;
+    }
+    return evt.nativeEvent?.locationX || 0;
+  };
+
+  // 开始选择（鼠标按下）
+  const handleSelectionStart = (evt: any) => {
+    const x = getRelativeX(evt);
+    const time = pixelToTime(x);
+    
+    setIsSelecting(true);
+    setSelectionOrigin(time);
+    setDragCurrentTime(time);
+    setSelectionStart(time);
+    setSelectionEnd(time);
+    
+    // 停止播放
+    if (isPlaying) {
+      stopPlaying();
     }
   };
 
-  // 结束拖拽
-  const handleDragEnd = () => {
-    setIsDragging(false);
-    setDragType(null);
+  // 选择中（鼠标移动）
+  const handleSelectionMove = (evt: any) => {
+    if (!isSelecting) return;
+    
+    const x = getRelativeX(evt);
+    const time = pixelToTime(x);
+    
+    setDragCurrentTime(time);
+    
+    // 根据拖动方向确定开始和结束
+    if (time < selectionOrigin) {
+      setSelectionStart(time);
+      setSelectionEnd(selectionOrigin);
+    } else {
+      setSelectionStart(selectionOrigin);
+      setSelectionEnd(time);
+    }
   };
 
-  // 点击波形设置播放位置或开始新选择
+  // 结束选择（鼠标松开）
+  const handleSelectionEnd = () => {
+    if (!isSelecting) return;
+    
+    setIsSelecting(false);
+    
+    // 确保结束时间比开始时间大至少100ms
+    if (selectionEnd - selectionStart < 100) {
+      setSelectionEnd(selectionStart + 1000); // 默认1秒
+    }
+  };
+
+  // 点击波形播放
   const handleWaveformClick = (evt: any) => {
-    if (isDragging) return;
+    if (isSelecting) return;
     
-    const x = getEventX(evt);
-    const time = pixelToTime(Math.max(0, Math.min(x, waveformWidth)));
+    const x = getRelativeX(evt);
+    const time = pixelToTime(x);
     
-    // 跳转到点击位置播放
     if (soundRef.current) {
       soundRef.current.setPositionAsync(time);
       setPosition(time);
     }
-  };
-
-  // 双击设置开始/结束位置
-  const handleSetStart = () => {
-    setSelectionStart(Math.max(0, position));
-  };
-
-  const handleSetEnd = () => {
-    setSelectionEnd(Math.min(duration, Math.max(selectionStart + 100, position)));
   };
 
   // 上一句/下一句
@@ -404,6 +387,13 @@ export default function TimestampEditorScreen() {
   const goToNext = () => {
     if (currentIndex < sentences.length - 1) setCurrentIndex(currentIndex + 1);
   };
+
+  // 计算选择区域的样式
+  const selectionStyle = useMemo(() => {
+    const left = timeToPixel(Math.min(selectionStart, selectionEnd));
+    const width = timeToPixel(Math.abs(selectionEnd - selectionStart));
+    return { left, width: Math.max(width, 4) };
+  }, [selectionStart, selectionEnd, duration, waveformWidth]);
 
   if (loading) {
     return (
@@ -447,7 +437,7 @@ export default function TimestampEditorScreen() {
               音频分配
             </ThemedText>
             <ThemedText variant="caption" color={theme.textMuted}>
-              {currentIndex + 1}/{sentences.length} · {formatTime(duration)}
+              {currentIndex + 1}/{sentences.length} · 总时长 {formatTime(duration)}
             </ThemedText>
           </View>
           <TouchableOpacity onPress={handleSave} disabled={saving}>
@@ -498,17 +488,17 @@ export default function TimestampEditorScreen() {
           <View style={styles.timeDisplay}>
             <View style={styles.timeBox}>
               <ThemedText variant="caption" color={theme.textMuted}>开始</ThemedText>
-              <ThemedText variant="h4" color={theme.primary}>{formatTime(selectionStart)}</ThemedText>
+              <ThemedText variant="h4" color={theme.primary}>{formatTime(Math.min(selectionStart, selectionEnd))}</ThemedText>
             </View>
             <View style={styles.durationBox}>
-              <FontAwesome6 name="arrow-right" size={12} color={theme.textMuted} />
+              <FontAwesome6 name="arrows-left-right" size={12} color={theme.textMuted} />
               <ThemedText variant="bodyMedium" color={theme.textSecondary}>
-                {formatTime(selectionEnd - selectionStart)}
+                {formatTime(Math.abs(selectionEnd - selectionStart))}
               </ThemedText>
             </View>
             <View style={styles.timeBox}>
               <ThemedText variant="caption" color={theme.textMuted}>结束</ThemedText>
-              <ThemedText variant="h4" color={theme.success}>{formatTime(selectionEnd)}</ThemedText>
+              <ThemedText variant="h4" color={theme.success}>{formatTime(Math.max(selectionStart, selectionEnd))}</ThemedText>
             </View>
           </View>
           
@@ -518,12 +508,17 @@ export default function TimestampEditorScreen() {
             style={styles.waveformContainer}
             onLayout={(e) => setWaveformWidth(e.nativeEvent.layout.width)}
             // @ts-ignore - Web端鼠标事件
-            onMouseMove={isDragging ? handleDragMove : undefined}
+            onMouseDown={handleSelectionStart}
             // @ts-ignore - Web端鼠标事件
-            onMouseUp={handleDragEnd}
+            onMouseMove={handleSelectionMove}
             // @ts-ignore - Web端鼠标事件
-            onMouseLeave={handleDragEnd}
-            onClick={handleWaveformClick}
+            onMouseUp={handleSelectionEnd}
+            // @ts-ignore - Web端鼠标事件
+            onMouseLeave={handleSelectionEnd}
+            // 移动端触摸事件
+            onTouchStart={handleSelectionStart}
+            onTouchMove={handleSelectionMove}
+            onTouchEnd={handleSelectionEnd}
           >
             {/* 波形背景 */}
             <View style={styles.waveformTrack} pointerEvents="none">
@@ -546,7 +541,7 @@ export default function TimestampEditorScreen() {
             <View
               style={[
                 styles.maskOverlay,
-                { left: 0, width: timeToPixel(selectionStart) },
+                { left: 0, width: selectionStyle.left },
               ]}
               pointerEvents="none"
             />
@@ -555,60 +550,49 @@ export default function TimestampEditorScreen() {
             <View
               style={[
                 styles.maskOverlay,
-                { left: timeToPixel(selectionEnd), right: 0 },
+                { left: selectionStyle.left + selectionStyle.width, right: 0 },
+              ]}
+              pointerEvents="none"
+            />
+            
+            {/* 选中区域高亮 */}
+            <View
+              style={[
+                styles.selectionHighlight,
+                { 
+                  left: selectionStyle.left, 
+                  width: selectionStyle.width,
+                },
+              ]}
+              pointerEvents="none"
+            />
+            
+            {/* 选择边界线 */}
+            <View
+              style={[
+                styles.selectionEdge,
+                { left: selectionStyle.left, backgroundColor: theme.primary },
+              ]}
+              pointerEvents="none"
+            />
+            <View
+              style={[
+                styles.selectionEdge,
+                { left: selectionStyle.left + selectionStyle.width - 2, backgroundColor: theme.success },
               ]}
               pointerEvents="none"
             />
             
             {/* 播放位置指示器 */}
-            <View
-              style={[
-                styles.playhead,
-                { left: timeToPixel(position) },
-              ]}
-              pointerEvents="none"
-            />
-            
-            {/* 左侧把手 - 开始位置 */}
-            <View
-              style={[
-                styles.handle,
-                { left: timeToPixel(selectionStart) - 16 },
-              ]}
-              // @ts-ignore - Web端需要
-              onMouseDown={(e: any) => {
-                e.stopPropagation();
-                handleDragStart(e, 'start');
-              }}
-              // 移动端触摸事件
-              onTouchStart={(e: any) => handleDragStart(e, 'start')}
-              onTouchMove={handleDragMove}
-              onTouchEnd={handleDragEnd}
-            >
-              <View style={[styles.handleBar, { backgroundColor: theme.primary }]} />
-              <View style={[styles.handleTriangle, { borderTopColor: theme.primary }]} />
-            </View>
-            
-            {/* 右侧把手 - 结束位置 */}
-            <View
-              style={[
-                styles.handle,
-                styles.handleEnd,
-                { left: timeToPixel(selectionEnd) - 16 },
-              ]}
-              // @ts-ignore - Web端需要
-              onMouseDown={(e: any) => {
-                e.stopPropagation();
-                handleDragStart(e, 'end');
-              }}
-              // 移动端触摸事件
-              onTouchStart={(e: any) => handleDragStart(e, 'end')}
-              onTouchMove={handleDragMove}
-              onTouchEnd={handleDragEnd}
-            >
-              <View style={[styles.handleBar, { backgroundColor: theme.success }]} />
-              <View style={[styles.handleTriangle, { borderTopColor: theme.success }]} />
-            </View>
+            {!isSelecting && (
+              <View
+                style={[
+                  styles.playhead,
+                  { left: timeToPixel(position) },
+                ]}
+                pointerEvents="none"
+              />
+            )}
           </View>
           
           {/* 时间刻度 */}
@@ -621,25 +605,14 @@ export default function TimestampEditorScreen() {
               {formatTime(duration)}
             </Text>
           </View>
-          
-          {/* 快捷按钮 */}
-          <View style={styles.quickButtons}>
-            <TouchableOpacity 
-              style={[styles.quickBtn, { backgroundColor: theme.primary + '20' }]}
-              onPress={handleSetStart}
-            >
-              <FontAwesome6 name="play" size={12} color={theme.primary} />
-              <ThemedText variant="small" color={theme.primary}>设为开始</ThemedText>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.quickBtn, { backgroundColor: theme.success + '20' }]}
-              onPress={handleSetEnd}
-            >
-              <FontAwesome6 name="stop" size={12} color={theme.success} />
-              <ThemedText variant="small" color={theme.success}>设为结束</ThemedText>
-            </TouchableOpacity>
-          </View>
+        </View>
+
+        {/* 提示 */}
+        <View style={styles.tipBox}>
+          <FontAwesome6 name="hand-pointer" size={14} color={theme.accent} />
+          <ThemedText variant="small" color={theme.textSecondary}>
+            在波形上按住鼠标拖动来选择音频范围，松开后点击确认
+          </ThemedText>
         </View>
 
         {/* 操作按钮 */}
@@ -647,7 +620,7 @@ export default function TimestampEditorScreen() {
           <TouchableOpacity style={styles.playBtn} onPress={playSelection}>
             <FontAwesome6 name={isPlaying ? "pause" : "play"} size={24} color={theme.buttonPrimaryText} />
             <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-              {isPlaying ? '暂停' : '播放选中'}
+              {isPlaying ? '暂停' : '试听选中'}
             </ThemedText>
           </TouchableOpacity>
           
@@ -656,15 +629,8 @@ export default function TimestampEditorScreen() {
             <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
               确认并下一句
             </ThemedText>
+            <FontAwesome6 name="arrow-right" size={16} color={theme.buttonPrimaryText} />
           </TouchableOpacity>
-        </View>
-
-        {/* 提示 */}
-        <View style={styles.tipBox}>
-          <FontAwesome6 name="lightbulb" size={14} color={theme.accent} />
-          <ThemedText variant="small" color={theme.textSecondary}>
-            拖动两侧把手选择范围，或播放后点击「设为开始/结束」按钮
-          </ThemedText>
         </View>
 
         {/* 句子列表 */}
