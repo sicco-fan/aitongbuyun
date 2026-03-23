@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   TouchableOpacity,
@@ -8,6 +8,7 @@ import {
   Platform,
   StyleSheet,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
 import { Screen } from '@/components/Screen';
@@ -50,24 +51,11 @@ export default function TimestampEditorScreen() {
   
   const [wordTimestamps, setWordTimestamps] = useState<WordTimestamp[]>([]);
   
-  // 选择区域 - 使用 ref 来避免拖拽时的重新渲染
-  const selectionStartRef = useRef(0);
-  const selectionEndRef = useRef(0);
+  // 选择区域
   const [selectionStart, setSelectionStart] = useState(0);
   const [selectionEnd, setSelectionEnd] = useState(0);
   
-  // 波形宽度
-  const waveformWidthRef = useRef(SCREEN_WIDTH - 32);
-  const [waveformWidth, setWaveformWidth] = useState(SCREEN_WIDTH - 32);
-  
-  // 拖拽状态 - 使用 ref 避免重新渲染
-  const isSelectingRef = useRef(false);
-  const selectionOriginRef = useRef(0);
-  
-  // Canvas ref
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const containerRef = useRef<View>(null);
-  
+  const webViewRef = useRef<any>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   
   const [dialog, setDialog] = useState<{ visible: boolean; message: string; onConfirm?: () => void }>({
@@ -76,139 +64,6 @@ export default function TimestampEditorScreen() {
   });
 
   const currentSentence = sentences[currentIndex];
-
-  // 生成稳定的波形数据
-  const waveformDataRef = useRef<number[]>([]);
-  
-  // 生成波形数据（只生成一次）
-  const generateWaveform = useCallback((width: number, dur: number, words: WordTimestamp[]) => {
-    const barCount = Math.floor(width / 1.5); // 更密集的波形
-    const bars: number[] = [];
-    
-    // 使用固定的随机种子，确保波形稳定
-    const seed = 12345;
-    let rand = seed;
-    const seededRandom = () => {
-      rand = (rand * 9301 + 49297) % 233280;
-      return rand / 233280;
-    };
-    
-    for (let i = 0; i < barCount; i++) {
-      const startTime = (i / barCount) * dur;
-      const endTime = ((i + 1) / barCount) * dur;
-      
-      const hasWord = words.some(
-        w => w.start_time < endTime && w.end_time > startTime
-      );
-      
-      // 生成波形高度（0-1）
-      let height: number;
-      if (hasWord) {
-        // 有声音的区域：更高的波形
-        height = 0.4 + seededRandom() * 0.55;
-      } else {
-        // 静音区域：较低的波形
-        height = 0.05 + seededRandom() * 0.15;
-      }
-      
-      bars.push(height);
-    }
-    
-    return bars;
-  }, []);
-
-  // 绘制波形到 Canvas
-  const drawWaveform = useCallback(() => {
-    if (Platform.OS !== 'web' || !canvasRef.current) return;
-    
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    const width = waveformWidthRef.current;
-    const height = canvas.height;
-    const bars = waveformDataRef.current;
-    
-    // 清空画布
-    ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(0, 0, width, height);
-    
-    // 绘制波形
-    const centerY = height / 2;
-    const barWidth = 1;
-    const gap = 0.5;
-    
-    ctx.fillStyle = '#00ff88';
-    
-    for (let i = 0; i < bars.length; i++) {
-      const x = i * (barWidth + gap);
-      const barHeight = bars[i] * centerY * 0.9;
-      
-      // 上半部分
-      ctx.fillRect(x, centerY - barHeight, barWidth, barHeight);
-      // 下半部分
-      ctx.fillRect(x, centerY, barWidth, barHeight);
-    }
-    
-    // 绘制零电平线
-    ctx.strokeStyle = '#ff4444';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, centerY);
-    ctx.lineTo(width, centerY);
-    ctx.stroke();
-  }, []);
-
-  // 绘制选区
-  const drawSelection = useCallback(() => {
-    if (Platform.OS !== 'web' || !canvasRef.current) return;
-    
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    const width = waveformWidthRef.current;
-    const height = canvas.height;
-    const dur = duration;
-    
-    // 重绘波形
-    drawWaveform();
-    
-    // 计算选区位置
-    const startX = (selectionStartRef.current / dur) * width;
-    const endX = (selectionEndRef.current / dur) * width;
-    const leftX = Math.min(startX, endX);
-    const rightX = Math.max(startX, endX);
-    
-    // 绘制未选中区域的遮罩
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    if (leftX > 0) {
-      ctx.fillRect(0, 0, leftX, height);
-    }
-    if (rightX < width) {
-      ctx.fillRect(rightX, 0, width - rightX, height);
-    }
-    
-    // 绘制选区高亮
-    ctx.fillStyle = 'rgba(0, 255, 136, 0.2)';
-    ctx.fillRect(leftX, 0, rightX - leftX, height);
-    
-    // 绘制边界线
-    ctx.strokeStyle = '#00ff88';
-    ctx.lineWidth = 2;
-    
-    // 左边界
-    ctx.beginPath();
-    ctx.moveTo(leftX, 0);
-    ctx.lineTo(leftX, height);
-    ctx.stroke();
-    
-    // 右边界
-    ctx.beginPath();
-    ctx.moveTo(rightX, 0);
-    ctx.lineTo(rightX, height);
-    ctx.stroke();
-  }, [duration, drawWaveform]);
 
   const fetchData = useCallback(async () => {
     if (!materialId) return;
@@ -257,32 +112,364 @@ export default function TimestampEditorScreen() {
     };
   }, [fetchData]);
 
-  // 当数据加载完成后，生成波形并绘制
-  useEffect(() => {
-    if (!loading && duration > 0 && waveformWidth > 0) {
-      waveformDataRef.current = generateWaveform(waveformWidth, duration, wordTimestamps);
-      drawSelection();
-    }
-  }, [loading, duration, waveformWidth, wordTimestamps, generateWaveform, drawSelection]);
-
+  // 当句子切换时，更新选区
   useEffect(() => {
     if (currentSentence && duration > 0) {
+      let start = 0;
+      let end = duration;
+      
       if (currentSentence.start_time > 0 || currentSentence.end_time > 0) {
-        selectionStartRef.current = currentSentence.start_time || 0;
-        selectionEndRef.current = currentSentence.end_time || duration;
-        setSelectionStart(selectionStartRef.current);
-        setSelectionEnd(selectionEndRef.current);
+        start = currentSentence.start_time || 0;
+        end = currentSentence.end_time || duration;
       } else {
         const prevEnd = currentIndex > 0 ? sentences[currentIndex - 1].end_time : 0;
         const estimatedDuration = Math.min(3000, duration - prevEnd);
-        selectionStartRef.current = prevEnd;
-        selectionEndRef.current = Math.min(prevEnd + estimatedDuration, duration);
-        setSelectionStart(selectionStartRef.current);
-        setSelectionEnd(selectionEndRef.current);
+        start = prevEnd;
+        end = Math.min(prevEnd + estimatedDuration, duration);
       }
-      drawSelection();
+      
+      setSelectionStart(start);
+      setSelectionEnd(end);
+      
+      // 通知WebView更新选区
+      if (webViewRef.current) {
+        webViewRef.current.injectJavaScript(`
+          window.setSelection(${start}, ${end});
+          true;
+        `);
+      }
     }
-  }, [currentIndex, currentSentence, duration, sentences, drawSelection]);
+  }, [currentIndex, currentSentence, duration, sentences]);
+
+  // 生成波形HTML
+  const generateWaveformHTML = useCallback((dur: number, words: WordTimestamp[], selStart: number, selEnd: number) => {
+    // 生成波形数据
+    const barCount = 400;
+    const bars: number[] = [];
+    
+    const seed = 12345;
+    let rand = seed;
+    const seededRandom = () => {
+      rand = (rand * 9301 + 49297) % 233280;
+      return rand / 233280;
+    };
+    
+    for (let i = 0; i < barCount; i++) {
+      const startTime = (i / barCount) * dur;
+      const endTime = ((i + 1) / barCount) * dur;
+      
+      const hasWord = words.some(
+        w => w.start_time < endTime && w.end_time > startTime
+      );
+      
+      let height: number;
+      if (hasWord) {
+        height = 0.4 + seededRandom() * 0.55;
+      } else {
+        height = 0.05 + seededRandom() * 0.15;
+      }
+      bars.push(height);
+    }
+    
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      background: #0a0a0a;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+    }
+    .container {
+      position: relative;
+      width: 100%;
+      height: 200px;
+      background: #0a0a0a;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .time-display {
+      position: fixed;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 255, 136, 0.2);
+      color: #00ff88;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 24px;
+      font-weight: bold;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="container">
+    <canvas id="waveform"></canvas>
+  </div>
+  <div class="time-display" id="timeDisplay">0:00.00</div>
+  
+  <script>
+    const canvas = document.getElementById('waveform');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('container');
+    const timeDisplay = document.getElementById('timeDisplay');
+    
+    let width, height;
+    let barHeights = ${JSON.stringify(bars)};
+    let duration = ${dur};
+    let selectionStart = ${selStart};
+    let selectionEnd = ${selEnd};
+    
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartTime = 0;
+    
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = container.getBoundingClientRect();
+      width = rect.width;
+      height = rect.height;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      ctx.scale(dpr, dpr);
+      draw();
+    }
+    
+    function timeToX(time) {
+      return (time / duration) * width;
+    }
+    
+    function xToTime(x) {
+      return Math.max(0, Math.min((x / width) * duration, duration));
+    }
+    
+    function formatTime(ms) {
+      const totalSeconds = ms / 1000;
+      const seconds = Math.floor(totalSeconds);
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = seconds % 60;
+      const decimal = Math.floor((totalSeconds % 1) * 100);
+      return minutes + ':' + remainingSeconds.toString().padStart(2, '0') + '.' + decimal.toString().padStart(2, '0');
+    }
+    
+    function draw() {
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, width, height);
+      
+      const centerY = height / 2;
+      const barWidth = width / barHeights.length;
+      const gap = barWidth * 0.3;
+      const actualBarWidth = barWidth - gap;
+      
+      // 绘制波形
+      ctx.fillStyle = '#00ff88';
+      for (let i = 0; i < barHeights.length; i++) {
+        const x = i * barWidth;
+        const barHeight = barHeights[i] * centerY * 0.85;
+        
+        ctx.fillRect(x, centerY - barHeight, actualBarWidth, barHeight);
+        ctx.fillRect(x, centerY, actualBarWidth, barHeight);
+      }
+      
+      // 绘制零电平线
+      ctx.strokeStyle = '#ff4444';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, centerY);
+      ctx.lineTo(width, centerY);
+      ctx.stroke();
+      
+      // 绘制选区遮罩
+      const startX = timeToX(selectionStart);
+      const endX = timeToX(selectionEnd);
+      const leftX = Math.min(startX, endX);
+      const rightX = Math.max(startX, endX);
+      
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      if (leftX > 0) {
+        ctx.fillRect(0, 0, leftX, height);
+      }
+      if (rightX < width) {
+        ctx.fillRect(rightX, 0, width - rightX, height);
+      }
+      
+      // 绘制选区高亮
+      ctx.fillStyle = 'rgba(0, 255, 136, 0.2)';
+      ctx.fillRect(leftX, 0, rightX - leftX, height);
+      
+      // 绘制边界线
+      ctx.strokeStyle = '#00ff88';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(leftX, 0);
+      ctx.lineTo(leftX, height);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(rightX, 0);
+      ctx.lineTo(rightX, height);
+      ctx.stroke();
+      
+      // 更新时间显示
+      const selDuration = Math.abs(selectionEnd - selectionStart);
+      timeDisplay.textContent = formatTime(selDuration);
+    }
+    
+    // 鼠标事件
+    container.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      isDragging = true;
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      dragStartX = x;
+      dragStartTime = xToTime(x);
+      selectionStart = dragStartTime;
+      selectionEnd = dragStartTime;
+      draw();
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const x = Math.max(0, Math.min(e.clientX - rect.left, width));
+      const time = xToTime(x);
+      
+      if (x < dragStartX) {
+        selectionStart = time;
+        selectionEnd = dragStartTime;
+      } else {
+        selectionStart = dragStartTime;
+        selectionEnd = time;
+      }
+      draw();
+    });
+    
+    document.addEventListener('mouseup', (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+      
+      // 通知React Native
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'selection',
+          start: selectionStart,
+          end: selectionEnd
+        }));
+      }
+    });
+    
+    // 触摸事件
+    container.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      isDragging = true;
+      const rect = container.getBoundingClientRect();
+      const touch = e.touches[0];
+      const x = touch.clientX - rect.left;
+      dragStartX = x;
+      dragStartTime = xToTime(x);
+      selectionStart = dragStartTime;
+      selectionEnd = dragStartTime;
+      draw();
+    }, { passive: false });
+    
+    container.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const touch = e.touches[0];
+      const x = Math.max(0, Math.min(touch.clientX - rect.left, width));
+      const time = xToTime(x);
+      
+      if (x < dragStartX) {
+        selectionStart = time;
+        selectionEnd = dragStartTime;
+      } else {
+        selectionStart = dragStartTime;
+        selectionEnd = time;
+      }
+      draw();
+    }, { passive: false });
+    
+    container.addEventListener('touchend', (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+      
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'selection',
+          start: selectionStart,
+          end: selectionEnd
+        }));
+      }
+    });
+    
+    // 提供给外部调用
+    window.setSelection = function(start, end) {
+      selectionStart = start;
+      selectionEnd = end;
+      draw();
+    };
+    
+    window.getSelectionData = function() {
+      return { start: selectionStart, end: selectionEnd };
+    };
+    
+    window.addEventListener('resize', resize);
+    resize();
+  </script>
+</body>
+</html>
+`;
+  }, []);
+
+  // 处理WebView消息
+  const handleWebViewMessage = useCallback((event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'selection') {
+        setSelectionStart(data.start);
+        setSelectionEnd(data.end);
+      }
+    } catch (e) {
+      console.error('WebView消息解析失败:', e);
+    }
+  }, []);
+
+  // 获取当前选区
+  const getCurrentSelection = useCallback(() => {
+    return new Promise<{ start: number; end: number }>((resolve) => {
+      if (webViewRef.current) {
+        webViewRef.current.injectJavaScript(`
+          (function() {
+            const data = window.getSelectionData();
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'selectionData',
+              start: data.start,
+              end: data.end
+            }));
+          })();
+          true;
+        `);
+        // 由于WebView通信是异步的，这里返回当前state
+        resolve({ start: selectionStart, end: selectionEnd });
+      } else {
+        resolve({ start: selectionStart, end: selectionEnd });
+      }
+    });
+  }, [selectionStart, selectionEnd]);
 
   const loadAudio = async () => {
     if (!audioUrl) return null;
@@ -333,14 +520,14 @@ export default function TimestampEditorScreen() {
     if (!soundRef.current) return;
     
     await stopPlaying();
-    const start = selectionStartRef.current;
-    const end = selectionEndRef.current;
+    const start = Math.min(selectionStart, selectionEnd);
+    const end = Math.max(selectionStart, selectionEnd);
     
-    await soundRef.current.setPositionAsync(Math.min(start, end));
+    await soundRef.current.setPositionAsync(start);
     await soundRef.current.playAsync();
     setIsPlaying(true);
     
-    const playDuration = Math.abs(end - start);
+    const playDuration = end - start;
     setTimeout(async () => {
       if (soundRef.current) {
         await soundRef.current.pauseAsync();
@@ -350,18 +537,21 @@ export default function TimestampEditorScreen() {
   };
 
   const confirmSelection = async () => {
+    const start = Math.min(selectionStart, selectionEnd);
+    const end = Math.max(selectionStart, selectionEnd);
+    
     const newSentences = [...sentences];
     
     newSentences[currentIndex] = {
       ...newSentences[currentIndex],
-      start_time: Math.round(Math.min(selectionStartRef.current, selectionEndRef.current)),
-      end_time: Math.round(Math.max(selectionStartRef.current, selectionEndRef.current)),
+      start_time: Math.round(start),
+      end_time: Math.round(end),
     };
     
     if (currentIndex < sentences.length - 1) {
       newSentences[currentIndex + 1] = {
         ...newSentences[currentIndex + 1],
-        start_time: Math.round(Math.max(selectionStartRef.current, selectionEndRef.current)),
+        start_time: Math.round(end),
       };
     }
     
@@ -417,77 +607,6 @@ export default function TimestampEditorScreen() {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
-  // 鼠标事件处理
-  const handleMouseDown = useCallback((evt: any) => {
-    if (duration === 0) return;
-    
-    const rect = evt.currentTarget?.getBoundingClientRect?.();
-    if (!rect) return;
-    
-    const x = evt.clientX - rect.left;
-    const time = (x / waveformWidthRef.current) * duration;
-    
-    isSelectingRef.current = true;
-    selectionOriginRef.current = time;
-    selectionStartRef.current = time;
-    selectionEndRef.current = time;
-    
-    if (isPlaying) {
-      stopPlaying();
-    }
-    
-    drawSelection();
-    setSelectionStart(time);
-    setSelectionEnd(time);
-  }, [duration, isPlaying, stopPlaying, drawSelection]);
-
-  const handleMouseMove = useCallback((evt: any) => {
-    if (!isSelectingRef.current || duration === 0) return;
-    
-    const rect = evt.currentTarget?.getBoundingClientRect?.();
-    if (!rect) return;
-    
-    const x = evt.clientX - rect.left;
-    const clampedX = Math.max(0, Math.min(x, waveformWidthRef.current));
-    const time = (clampedX / waveformWidthRef.current) * duration;
-    
-    if (time < selectionOriginRef.current) {
-      selectionStartRef.current = time;
-      selectionEndRef.current = selectionOriginRef.current;
-    } else {
-      selectionStartRef.current = selectionOriginRef.current;
-      selectionEndRef.current = time;
-    }
-    
-    drawSelection();
-    setSelectionStart(selectionStartRef.current);
-    setSelectionEnd(selectionEndRef.current);
-  }, [duration, drawSelection]);
-
-  const handleMouseUp = useCallback(() => {
-    if (!isSelectingRef.current) return;
-    
-    isSelectingRef.current = false;
-    
-    // 确保最小选择时长
-    const diff = Math.abs(selectionEndRef.current - selectionStartRef.current);
-    if (diff < 100) {
-      selectionEndRef.current = selectionStartRef.current + 1000;
-      if (selectionEndRef.current > duration) {
-        selectionEndRef.current = duration;
-      }
-      drawSelection();
-      setSelectionStart(selectionStartRef.current);
-      setSelectionEnd(selectionEndRef.current);
-    }
-  }, [duration, drawSelection]);
-
-  const handleLayout = useCallback((e: any) => {
-    const width = e.nativeEvent.layout.width;
-    waveformWidthRef.current = width;
-    setWaveformWidth(width);
-  }, []);
-
   if (loading) {
     return (
       <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
@@ -513,7 +632,7 @@ export default function TimestampEditorScreen() {
     );
   }
 
-  const selectionDuration = Math.abs(selectionEnd - selectionStart);
+  const waveformHTML = generateWaveformHTML(duration, wordTimestamps, selectionStart, selectionEnd);
 
   return (
     <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
@@ -555,73 +674,52 @@ export default function TimestampEditorScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 波形编辑区域 */}
-      <View style={styles.waveformSection}>
-        {/* 时间刻度 */}
-        <View style={styles.timeScale}>
-          {[0, 0.25, 0.5, 0.75, 1].map(ratio => (
-            <Text key={ratio} style={styles.timeTick}>
-              {formatTimeSimple(duration * ratio)}
-            </Text>
-          ))}
+      {/* 时间刻度 */}
+      <View style={styles.timeScale}>
+        {[0, 0.25, 0.5, 0.75, 1].map(ratio => (
+          <Text key={ratio} style={styles.timeTick}>
+            {formatTimeSimple(duration * ratio)}
+          </Text>
+        ))}
+      </View>
+
+      {/* 波形编辑区域 - 使用WebView */}
+      <View style={styles.waveformContainer}>
+        <WebView
+          ref={webViewRef}
+          source={{ html: waveformHTML }}
+          style={styles.webView}
+          onMessage={handleWebViewMessage}
+          originWhitelist={['*']}
+          scrollEnabled={false}
+          bounces={false}
+          overScrollMode="never"
+          containerStyle={{ backgroundColor: '#0a0a0a' }}
+        />
+      </View>
+
+      {/* 选区时间信息 */}
+      <View style={styles.selectionInfo}>
+        <View style={styles.selectionTimeBox}>
+          <Text style={styles.selectionLabel}>开始</Text>
+          <Text style={styles.selectionValue}>{formatTime(Math.min(selectionStart, selectionEnd))}</Text>
         </View>
         
-        {/* 波形容器 */}
-        <View 
-          ref={containerRef}
-          style={styles.waveformContainer}
-          onLayout={handleLayout}
-          // @ts-ignore
-          onMouseDown={handleMouseDown}
-          // @ts-ignore
-          onMouseMove={handleMouseMove}
-          // @ts-ignore
-          onMouseUp={handleMouseUp}
-          // @ts-ignore
-          onMouseLeave={handleMouseUp}
-        >
-          {Platform.OS === 'web' && (
-            <canvas
-              ref={canvasRef}
-              width={waveformWidth}
-              height={200}
-              style={{
-                width: '100%',
-                height: '100%',
-                display: 'block',
-              }}
-            />
-          )}
-          {Platform.OS !== 'web' && (
-            <View style={styles.waveformPlaceholder}>
-              <Text style={styles.placeholderText}>请在Web端操作</Text>
-            </View>
-          )}
+        <View style={styles.selectionDurationBox}>
+          <Text style={styles.selectionDuration}>{formatTime(Math.abs(selectionEnd - selectionStart))}</Text>
+          <Text style={styles.selectionDurationLabel}>选中时长</Text>
         </View>
         
-        {/* 选区时间信息 */}
-        <View style={styles.selectionInfo}>
-          <View style={styles.selectionTimeBox}>
-            <Text style={styles.selectionLabel}>开始</Text>
-            <Text style={styles.selectionValue}>{formatTime(Math.min(selectionStart, selectionEnd))}</Text>
-          </View>
-          
-          <View style={styles.selectionDurationBox}>
-            <Text style={styles.selectionDuration}>{formatTime(selectionDuration)}</Text>
-            <Text style={styles.selectionDurationLabel}>选中时长</Text>
-          </View>
-          
-          <View style={styles.selectionTimeBox}>
-            <Text style={styles.selectionLabel}>结束</Text>
-            <Text style={styles.selectionValue}>{formatTime(Math.max(selectionStart, selectionEnd))}</Text>
-          </View>
+        <View style={styles.selectionTimeBox}>
+          <Text style={styles.selectionLabel}>结束</Text>
+          <Text style={styles.selectionValue}>{formatTime(Math.max(selectionStart, selectionEnd))}</Text>
         </View>
       </View>
 
       {/* 操作提示 */}
       <View style={styles.tipBar}>
         <FontAwesome6 name="hand-pointer" size={14} color="#00ff88" />
-        <Text style={styles.tipText}>在波形上按住鼠标拖动选择音频片段</Text>
+        <Text style={styles.tipText}>在波形上按住拖动选择音频片段</Text>
       </View>
 
       {/* 底部控制栏 */}
@@ -732,11 +830,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   
-  // 波形区域
-  waveformSection: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-  },
+  // 时间刻度
   timeScale: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -748,19 +842,15 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 10,
   },
+  
+  // 波形区域
   waveformContainer: {
+    height: 220,
+    backgroundColor: '#0a0a0a',
+  },
+  webView: {
     flex: 1,
     backgroundColor: '#0a0a0a',
-    minHeight: 200,
-  },
-  waveformPlaceholder: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    color: '#666',
-    fontSize: 14,
   },
   
   // 选区信息
