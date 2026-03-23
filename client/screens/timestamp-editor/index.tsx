@@ -378,10 +378,35 @@ export default function TimestampEditorScreen() {
     }
   };
 
-  // 确认并跳转下一句
+  // 确认并跳转下一句，同时自动调整下一句的开始时间
   const confirmAndNext = () => {
     if (currentIndex < sentences.length - 1) {
-      setCurrentIndex(currentIndex + 1);
+      // 自动调整下一句的开始时间：往前移1-2秒，避免累积误差
+      const nextIndex = currentIndex + 1;
+      const currentEnd = currentSentence?.end_time || 0;
+      const nextStart = sentences[nextIndex].start_time;
+      
+      // 如果下一句的开始时间在当前句子结束之后，需要往前调整
+      // 往前调整的时间 = 当前结束时间 + 100ms 到 下一句开始时间 - 500ms
+      const adjustTime = 1500; // 往前移1.5秒
+      let newNextStart = nextStart - adjustTime;
+      
+      // 确保不会早于当前句子的结束时间
+      if (newNextStart <= currentEnd) {
+        newNextStart = currentEnd + 100; // 当前结束后再加100ms
+      }
+      
+      // 更新下一句的开始时间
+      const newSentences = [...sentences];
+      newSentences[nextIndex] = {
+        ...newSentences[nextIndex],
+        start_time: Math.max(0, newNextStart),
+      };
+      setSentences(newSentences);
+      
+      console.log(`自动调整第 ${nextIndex + 1} 句开始时间: ${nextStart}ms -> ${newNextStart}ms`);
+      
+      setCurrentIndex(nextIndex);
     } else {
       setDialog({ visible: true, message: '已完成所有句子的时间轴设置！' });
     }
@@ -569,21 +594,72 @@ export default function TimestampEditorScreen() {
       {/* 调整时间边界 */}
       {hasValidTime && (
         <View style={styles.adjustSection}>
-          <Text style={styles.sectionTitle}>调整时间边界</Text>
+          <Text style={styles.sectionTitle}>调整时间边界（点击单词调整）</Text>
           
+          {/* 开始时间调整 */}
           <View style={styles.adjustRow}>
             <Text style={styles.adjustLabel}>开始前移:</Text>
             <View style={{ flex: 1 }}>
               <ScrollView horizontal style={styles.adjustWordsList}>
-                {wordsBefore.slice().reverse().map((word, idx) => (
-                  <TouchableOpacity 
-                    key={`before-${idx}`} 
-                    style={styles.adjustWordBtn}
-                    onPress={() => setStartFromWord(word)}
-                  >
-                    <Text style={styles.adjustWordText}>{word.word}</Text>
-                  </TouchableOpacity>
-                ))}
+                {wordsBefore.length > 0 ? (
+                  wordsBefore.slice().reverse().map((word, idx) => (
+                    <TouchableOpacity 
+                      key={`before-${idx}`} 
+                      style={styles.adjustWordBtn}
+                      onPress={() => setStartFromWord(word)}
+                    >
+                      <Text style={styles.adjustWordText}>{word.word}</Text>
+                      <Text style={styles.adjustWordTime}>{formatTime(word.start_time)}</Text>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <Text style={styles.noWordsHint}>没有更早的单词</Text>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+          
+          <View style={styles.adjustRow}>
+            <Text style={styles.adjustLabel}>开始后移:</Text>
+            <View style={{ flex: 1 }}>
+              <ScrollView horizontal style={styles.adjustWordsList}>
+                {wordsAfter.length > 0 ? (
+                  wordsAfter.slice(0, 5).map((word, idx) => (
+                    <TouchableOpacity 
+                      key={`start-after-${idx}`} 
+                      style={[styles.adjustWordBtn, styles.startAfterBtn]}
+                      onPress={() => setStartFromWord(word)}
+                    >
+                      <Text style={styles.adjustWordText}>{word.word}</Text>
+                      <Text style={styles.adjustWordTime}>{formatTime(word.start_time)}</Text>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <Text style={styles.noWordsHint}>没有更晚的单词</Text>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+          
+          {/* 结束时间调整 */}
+          <View style={styles.adjustRow}>
+            <Text style={styles.adjustLabel}>结束前移:</Text>
+            <View style={{ flex: 1 }}>
+              <ScrollView horizontal style={styles.adjustWordsList}>
+                {wordsBefore.length > 0 ? (
+                  wordsBefore.slice(-5).reverse().map((word, idx) => (
+                    <TouchableOpacity 
+                      key={`end-before-${idx}`} 
+                      style={[styles.adjustWordBtn, styles.endBeforeBtn]}
+                      onPress={() => setEndFromWord(word)}
+                    >
+                      <Text style={styles.adjustWordText}>{word.word}</Text>
+                      <Text style={styles.adjustWordTime}>{formatTime(word.end_time)}</Text>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <Text style={styles.noWordsHint}>没有更早的单词</Text>
+                )}
               </ScrollView>
             </View>
           </View>
@@ -592,17 +668,85 @@ export default function TimestampEditorScreen() {
             <Text style={styles.adjustLabel}>结束延后:</Text>
             <View style={{ flex: 1 }}>
               <ScrollView horizontal style={styles.adjustWordsList}>
-                {wordsAfter.map((word, idx) => (
-                  <TouchableOpacity 
-                    key={`after-${idx}`} 
-                    style={styles.adjustWordBtn}
-                    onPress={() => setEndFromWord(word)}
-                  >
-                    <Text style={styles.adjustWordText}>{word.word}</Text>
-                  </TouchableOpacity>
-                ))}
+                {wordsAfter.length > 0 ? (
+                  wordsAfter.map((word, idx) => (
+                    <TouchableOpacity 
+                      key={`after-${idx}`} 
+                      style={styles.adjustWordBtn}
+                      onPress={() => setEndFromWord(word)}
+                    >
+                      <Text style={styles.adjustWordText}>{word.word}</Text>
+                      <Text style={styles.adjustWordTime}>{formatTime(word.end_time)}</Text>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <Text style={styles.noWordsHint}>没有更晚的单词</Text>
+                )}
               </ScrollView>
             </View>
+          </View>
+          
+          {/* 快捷调整按钮 */}
+          <View style={styles.quickAdjustRow}>
+            <TouchableOpacity 
+              style={styles.quickAdjustBtn}
+              onPress={() => {
+                const newSentences = [...sentences];
+                newSentences[currentIndex] = {
+                  ...newSentences[currentIndex],
+                  start_time: Math.max(0, currentSentence.start_time - 500),
+                };
+                setSentences(newSentences);
+              }}
+            >
+              <FontAwesome6 name="backward" size={12} color="#00ff88" />
+              <Text style={styles.quickAdjustText}>-0.5s</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.quickAdjustBtn}
+              onPress={() => {
+                const newSentences = [...sentences];
+                newSentences[currentIndex] = {
+                  ...newSentences[currentIndex],
+                  start_time: currentSentence.start_time + 500,
+                };
+                setSentences(newSentences);
+              }}
+            >
+              <FontAwesome6 name="forward" size={12} color="#00ff88" />
+              <Text style={styles.quickAdjustText}>开始+0.5s</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.quickAdjustBtn}
+              onPress={() => {
+                const newSentences = [...sentences];
+                newSentences[currentIndex] = {
+                  ...newSentences[currentIndex],
+                  end_time: Math.max(currentSentence.start_time + 100, currentSentence.end_time - 500),
+                };
+                setSentences(newSentences);
+              }}
+            >
+              <FontAwesome6 name="backward" size={12} color="#ff8800" />
+              <Text style={styles.quickAdjustText}>结束-0.5s</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.quickAdjustBtn}
+              onPress={() => {
+                const newSentences = [...sentences];
+                newSentences[currentIndex] = {
+                  ...newSentences[currentIndex],
+                  end_time: currentSentence.end_time + 500,
+                };
+                setSentences(newSentences);
+              }}
+            >
+              <FontAwesome6 name="forward" size={12} color="#ff8800" />
+              <Text style={styles.quickAdjustText}>+0.5s</Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -836,31 +980,76 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#333',
     paddingVertical: 12,
+    maxHeight: 280,
   },
   adjustRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   adjustLabel: {
     color: '#666',
-    fontSize: 12,
-    width: 80,
+    fontSize: 11,
+    width: 70,
   },
   adjustWordsList: {
     flex: 1,
   },
   adjustWordBtn: {
     backgroundColor: '#333',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 6,
-    marginRight: 6,
+    marginRight: 4,
+    alignItems: 'center',
+  },
+  startAfterBtn: {
+    backgroundColor: '#1a4d1a',
+    borderColor: '#00ff88',
+    borderWidth: 1,
+  },
+  endBeforeBtn: {
+    backgroundColor: '#4d331a',
+    borderColor: '#ff8800',
+    borderWidth: 1,
   },
   adjustWordText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 11,
+  },
+  adjustWordTime: {
+    color: '#888',
+    fontSize: 9,
+    marginTop: 1,
+  },
+  noWordsHint: {
+    color: '#444',
+    fontSize: 11,
+    fontStyle: 'italic',
+    paddingVertical: 4,
+  },
+  quickAdjustRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 16,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#222',
+  },
+  quickAdjustBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#222',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  quickAdjustText: {
+    color: '#888',
+    fontSize: 11,
   },
   
   controls: {
