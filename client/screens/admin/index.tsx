@@ -14,7 +14,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
-import { Spacing } from '@/constants/theme';
+import { Spacing, BorderRadius } from '@/constants/theme';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 // 后端服务地址 - 直接连接后端服务器，不经过 Metro 代理
@@ -29,6 +29,7 @@ interface Material {
   sentences_count: number;
   completed_count: number;
   full_text?: string;
+  status?: string;
   created_at: string;
 }
 
@@ -113,11 +114,29 @@ export default function AdminScreen() {
     setDeleteDialog({ visible: false, material: null });
   };
 
+  const handleAddMaterial = () => {
+    router.push('/add-material');
+  };
+
   const formatDuration = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  // 获取素材状态描述
+  const getMaterialStatus = (material: Material) => {
+    if (material.status === 'ready') {
+      return { text: '已就绪', color: theme.success, icon: 'circle-check' };
+    }
+    if (!material.full_text) {
+      return { text: '待提取文本', color: theme.textMuted, icon: 'file-circle-plus' };
+    }
+    if (!material.sentences_count || material.sentences_count === 0) {
+      return { text: '待切分', color: theme.accent, icon: 'scissors' };
+    }
+    return { text: '编辑中', color: theme.primary, icon: 'pen-to-square' };
   };
 
   const filteredMaterials = materials.filter(m => 
@@ -144,14 +163,35 @@ export default function AdminScreen() {
               <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
             </TouchableOpacity>
             <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
-              材料管理
+              后台管理
             </ThemedText>
             <View style={{ width: 20 }} />
           </View>
           <ThemedText variant="body" color={theme.textMuted} style={styles.subtitle}>
-            管理学习材料，编辑句子内容
+            上传素材、编辑时间轴、切分音频
           </ThemedText>
         </ThemedView>
+
+        {/* Upload Section */}
+        <TouchableOpacity 
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: theme.primary,
+            padding: Spacing.lg,
+            borderRadius: BorderRadius.lg,
+            marginBottom: Spacing.lg,
+            gap: Spacing.sm,
+          }}
+          onPress={handleAddMaterial}
+          activeOpacity={0.8}
+        >
+          <FontAwesome6 name="plus" size={20} color={theme.buttonPrimaryText} />
+          <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
+            上传新素材
+          </ThemedText>
+        </TouchableOpacity>
 
         {/* Search */}
         <View style={styles.searchSection}>
@@ -173,12 +213,29 @@ export default function AdminScreen() {
             共 {filteredMaterials.length} 个材料
           </ThemedText>
 
-          {filteredMaterials.map((material) => (
+          {filteredMaterials.map((material) => {
+            const status = getMaterialStatus(material);
+            return (
             <View key={material.id} style={styles.materialCard}>
               <View style={styles.materialHeader}>
-                <ThemedText variant="smallMedium" color={theme.textPrimary} style={styles.materialTitle}>
-                  {material.title}
-                </ThemedText>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+                  <ThemedText variant="smallMedium" color={theme.textPrimary} style={styles.materialTitle}>
+                    {material.title}
+                  </ThemedText>
+                  {/* 状态标签 */}
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: status.color + '20',
+                    paddingHorizontal: Spacing.sm,
+                    paddingVertical: 2,
+                    borderRadius: BorderRadius.sm,
+                    gap: 4,
+                  }}>
+                    <FontAwesome6 name={status.icon as any} size={10} color={status.color} />
+                    <ThemedText variant="tiny" color={status.color}>{status.text}</ThemedText>
+                  </View>
+                </View>
                 <ThemedText variant="caption" color={theme.textMuted}>
                   {formatDuration(material.duration)}
                 </ThemedText>
@@ -244,7 +301,7 @@ export default function AdminScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-          ))}
+          )})}
 
           {filteredMaterials.length === 0 && (
             <View style={styles.emptyState}>

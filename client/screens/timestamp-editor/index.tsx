@@ -466,12 +466,52 @@ export default function TimestampEditorScreen() {
         setDialog({ visible: true, message: `部分保存失败：\n${errors.join('\n')}` });
       } else {
         console.log('[保存] 全部保存成功');
-        setDialog({ visible: true, message: '保存成功！', onConfirm: () => router.back() });
+        setDialog({ visible: true, message: '保存成功！' });
       }
     } catch (error) {
       setDialog({ visible: true, message: `保存失败: ${(error as Error).message}` });
     } finally {
       setSaving(false);
+    }
+  };
+
+  // 完成切分：切分音频并标记素材为就绪状态
+  const [finalizing, setFinalizing] = useState(false);
+  
+  const handleFinalize = async () => {
+    // 先检查是否所有句子都有时间戳
+    const invalidSentences = sentences.filter(s => !s.start_time || !s.end_time || s.end_time <= s.start_time);
+    if (invalidSentences.length > 0) {
+      setDialog({ visible: true, message: `有 ${invalidSentences.length} 个句子时间戳无效，请先调整时间轴` });
+      return;
+    }
+    
+    setFinalizing(true);
+    try {
+      console.log('[完成切分] 开始切分音频...');
+      
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        console.log('[完成切分] 成功:', result.message);
+        setDialog({ 
+          visible: true, 
+          message: `音频切分完成！\n成功处理 ${result.processedSentences?.length || 0} 个句子\n\n现在可以在前台学习页面学习这个素材了`,
+          onConfirm: () => router.back()
+        });
+      } else {
+        setDialog({ visible: true, message: result.error || '切分失败' });
+      }
+    } catch (error) {
+      console.error('[完成切分] 失败:', error);
+      setDialog({ visible: true, message: `切分失败: ${(error as Error).message}` });
+    } finally {
+      setFinalizing(false);
     }
   };
 
@@ -830,14 +870,18 @@ export default function TimestampEditorScreen() {
           <Text style={styles.stopBtnText}>停止</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.confirmBtn} onPress={confirmAndNext}>
-          <FontAwesome6 name="check" size={16} color="#000" />
-          <Text style={styles.confirmBtnText}>确认并下一句</Text>
-        </TouchableOpacity>
-        
         <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
           {saving ? <ActivityIndicator size="small" color="#00ff88" /> : <FontAwesome6 name="floppy-disk" size={16} color="#00ff88" />}
           <Text style={styles.saveBtnText}>保存</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.confirmBtn, finalizing && { opacity: 0.5 }]} 
+          onPress={handleFinalize} 
+          disabled={finalizing}
+        >
+          {finalizing ? <ActivityIndicator size="small" color="#000" /> : <FontAwesome6 name="check" size={16} color="#000" />}
+          <Text style={styles.confirmBtnText}>完成切分</Text>
         </TouchableOpacity>
       </View>
 

@@ -2919,4 +2919,208 @@ router.post('/:id/prepare-timestamps', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/v1/materials/:id/finalize
+ * 完成时间轴编辑，切分每个句子的音频片段
+ * 1. 从原始音频中切分每个句子的音频
+ * 2. 上传到对象存储
+ * 3. 更新句子的 audio_url
+ * 4. 更新素材状态为 ready
+ */
+router.post('/:id/finalize', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const materialId = Array.isArray(id) ? id[0] : id;
+    const supabase = getSupabaseClient();
+    
+    console.log(`\n===== 开始切分音频 =====`);
+    console.log('材料 ID:', materialId);
+    
+    // 获取材料
+    const { data: material, error: materialError } = await supabase
+      .from('materials')
+      .select('*')
+      .eq('id', materialId)
+      .single();
+
+    if (materialError || !material) {
+      return res.status(404).json({ error: '材料不存在' });
+    }
+
+    // 获取所有句子
+    const { data: sentences, error: sentencesError } = await supabase
+      .from('sentences')
+      .select('*')
+      .eq('material_id', materialId)
+      .order('sentence_index');
+
+    if (sentencesError || !sentences || sentences.length === 0) {
+      return res.status(400).json({ error: '没有句子数据，请先切分文本' });
+    }
+
+    // 检查是否所有句子都有时间戳
+    const missingTimestamps = sentences.filter(s => !s.start_time || !s.end_time);
+    if (missingTimestamps.length > 0) {
+      return res.status(400).json({ error: '部分句子缺少时间戳，请先编辑时间轴' });
+    }
+
+    // 生成原始音频的签名URL
+    const originalAudioUrl = await storage.generatePresignedUrl({
+      key: material.audio_url,
+      expireTime: 3600,
+    });
+
+    console.log(`原始音频 URL: ${originalAudioUrl.substring(0, 80)}...`);
+
+    const tempDir = '/tmp/audio_slices';
+    await fs.mkdir(tempDir, { recursive: true });
+
+    const processedSentences = [];
+
+    // 处理每个句子
+    for (let i = 0; i < sentences.length; i++) {
+      const sentence = sentences[i];
+      const startTime = sentence.start_time;
+      const endTime = sentence.end_time;
+      const duration = endTime - startTime;
+      
+      console.log(`\n处理句子 ${i + 1}/${sentences.length}: ${sentence.text.substring(0, 30)}...`);
+      console.log(`  时间范围: ${startTime}ms - ${endTime}ms (${duration}ms)`);
+
+      // 输出文件名
+      const outputFileName = `${materialId}_${sentence.id}_${Date.now()}.mp3`;
+      const outputPath = path.join(tempDir, outputFileName);
+
+      try {
+        // 使用 ffmpeg 切分音频
+        // -ss: 开始时间（秒）
+        // -t: 持续时间（秒）
+        // -y: 覆盖输出文件
+        const startSeconds = startTime / 1000;
+        const durationSeconds = duration / 1000;
+        
+        const ffmpegCmd = `ffmpeg -y -ss ${startSeconds} -i "${originalAudioUrl}" -t ${durationSeconds} -acodec libmp3lame -ab 128k "${outputPath}"`;
+        
+        console.log(`  执行: ffmpeg -ss ${startSeconds} -t ${durationSeconds} ...`);
+        
+        const { stdout, stderr } = await execAsync(ffmpegCmd, { timeout: 30000 });
+        
+        // 检查文件是否创建成功
+        const fileStats = await fs.stat(outputPath);
+        console.log(`  切分成功: ${fileStats.size} bytes`);
+
+        // 读取文件并上传到对象存储
+        const fileBuffer = await fs.readFile(outputPath);
+        const storageKey = await storage.uploadFile({
+          fileContent: fileBuffer,
+          fileName: `audio_slices/${materialId}/${sentence.id}.mp3`,
+          contentType: 'audio/mpeg',
+        });
+        
+        console.log(`  上传成功: ${storageKey}`);
+
+        // 更新句子的 audio_url
+        const { error: updateError } = await supabase
+          .from('sentences')
+          .update({ audio_url: storageKey })
+          .eq('id', sentence.id);
+
+        if (updateError) {
+          console.error(`  更新数据库失败:`, updateError);
+        } else {
+          processedSentences.push({
+            id: sentence.id,
+            text: sentence.text,
+            audio_url: storageKey,
+          });
+        }
+
+        // 清理临时文件
+        await fs.unlink(outputPath).catch(() => {});
+
+      } catch (sliceError) {
+        console.error(`  切分失败:`, sliceError);
+        // 继续处理下一个句子
+      }
+    }
+
+    // 更新素材状态为 ready
+    const { error: statusError } = await supabase
+      .from('materials')
+      .update({ status: 'ready' })
+      .eq('id', materialId);
+
+    if (statusError) {
+      console.error('更新素材状态失败:', statusError);
+    }
+
+    console.log(`\n===== 音频切分完成 =====`);
+    console.log(`成功处理 ${processedSentences.length}/${sentences.length} 个句子`);
+
+    res.json({
+      success: true,
+      message: `音频切分完成，成功处理 ${processedSentences.length}/${sentences.length} 个句子`,
+      processedSentences,
+    });
+
+  } catch (error) {
+    console.error('切分音频失败:', error);
+    res.status(500).json({ error: '切分音频失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * GET /api/v1/materials/:id/audio-url
+ * 获取音频签名URL
+ */
+router.get('/:id/audio-url', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { key } = req.query;
+    
+    if (!key || typeof key !== 'string') {
+      return res.status(400).json({ error: '缺少音频key参数' });
+    }
+    
+    const url = await storage.generatePresignedUrl({
+      key: key,
+      expireTime: 3600,
+    });
+    
+    res.json({ url });
+  } catch (error) {
+    console.error('获取音频URL失败:', error);
+    res.status(500).json({ error: '获取音频URL失败' });
+  }
+});
+
+/**
+ * POST /api/v1/materials/:id/sentences/:sentenceId/complete
+ * 标记句子完成
+ */
+router.post('/:id/sentences/:sentenceId/complete', async (req: Request, res: Response) => {
+  try {
+    const { id, sentenceId } = req.params;
+    const supabase = getSupabaseClient();
+    
+    const { error } = await supabase
+      .from('sentences')
+      .update({ 
+        is_completed: true,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', sentenceId)
+      .eq('material_id', id);
+    
+    if (error) {
+      return res.status(500).json({ error: '标记完成失败' });
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('标记完成失败:', error);
+    res.status(500).json({ error: '标记完成失败' });
+  }
+});
+
 export default router;

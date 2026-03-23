@@ -14,8 +14,16 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
-import { Spacing } from '@/constants/theme';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { Spacing, BorderRadius } from '@/constants/theme';
+
+interface Sentence {
+  id: number;
+  text: string;
+  audio_url: string | null;
+  start_time: number;
+  end_time: number;
+  is_completed: boolean;
+}
 
 interface Material {
   id: number;
@@ -25,10 +33,10 @@ interface Material {
   duration: number;
   sentences_count: number;
   completed_count: number;
+  status: string;
   created_at: string;
 }
 
-// 后端服务地址 - 直接连接后端服务器，不经过 Metro 代理
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
 export default function HomeScreen() {
@@ -38,19 +46,6 @@ export default function HomeScreen() {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState({ total: 0, completed: 0, totalSentences: 0 });
-  
-  // 删除确认对话框状态
-  const [deleteDialog, setDeleteDialog] = useState<{
-    visible: boolean;
-    material: Material | null;
-  }>({ visible: false, material: null });
-  
-  // 成功/失败提示对话框
-  const [messageDialog, setMessageDialog] = useState<{ visible: boolean; message: string }>({
-    visible: false,
-    message: '',
-  });
 
   const fetchMaterials = useCallback(async () => {
     try {
@@ -62,16 +57,12 @@ export default function HomeScreen() {
       const data = await response.json();
       
       if (data.materials) {
-        setMaterials(data.materials);
-        // 计算统计数据
-        const total = data.materials.length;
-        const completed = data.materials.filter((m: Material) => 
-          m.completed_count === m.sentences_count && m.sentences_count > 0
-        ).length;
-        const totalSentences = data.materials.reduce((sum: number, m: Material) => 
-          sum + m.sentences_count, 0
-        );
-        setStats({ total, completed, totalSentences });
+        // 只显示已准备好的素材（每个句子都有音频）
+        const readyMaterials = data.materials.filter((m: Material) => {
+          // 检查是否有句子且每个句子都有audio_url
+          return m.sentences_count > 0 && m.status === 'ready';
+        });
+        setMaterials(readyMaterials);
       }
     } catch (error) {
       console.error('获取材料列表失败:', error);
@@ -96,43 +87,8 @@ export default function HomeScreen() {
     router.push('/practice', { materialId: material.id, title: material.title });
   };
 
-  // 点击删除按钮，显示确认对话框
-  const handleDeleteClick = (material: Material) => {
-    setDeleteDialog({ visible: true, material });
-  };
-
-  // 确认删除
-  const handleDeleteConfirm = async () => {
-    const material = deleteDialog.material;
-    if (!material) return;
-    
-    setDeleteDialog({ visible: false, material: null });
-
-    try {
-      const response = await fetch(
-        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${material.id}`,
-        { method: 'DELETE' }
-      );
-
-      if (response.ok) {
-        setMaterials(prev => prev.filter(m => m.id !== material.id));
-        setMessageDialog({ visible: true, message: '材料已删除' });
-      } else {
-        throw new Error('删除失败');
-      }
-    } catch (error) {
-      console.error('删除材料失败:', error);
-      setMessageDialog({ visible: true, message: '删除材料失败，请重试' });
-    }
-  };
-
-  // 取消删除
-  const handleDeleteCancel = () => {
-    setDeleteDialog({ visible: false, material: null });
-  };
-
-  const handleAddMaterial = () => {
-    router.push('/add-material');
+  const handleGoToAdmin = () => {
+    router.push('/admin');
   };
 
   const formatDuration = (ms: number) => {
@@ -170,34 +126,54 @@ export default function HomeScreen() {
             啃句大师
           </ThemedText>
           <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
-            今日学习
+            开始学习
           </ThemedText>
         </ThemedView>
 
-        {/* Stats */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <ThemedText variant="h2" color={theme.textPrimary} style={styles.statValue}>
-              {stats.total}
+        {/* Admin Entry Button */}
+        <TouchableOpacity 
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: theme.backgroundDefault,
+            padding: Spacing.lg,
+            borderRadius: BorderRadius.lg,
+            marginBottom: Spacing.lg,
+            borderWidth: 1,
+            borderColor: theme.border,
+          }}
+          onPress={handleGoToAdmin}
+          activeOpacity={0.7}
+        >
+          <View style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: theme.primary,
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginRight: Spacing.md,
+          }}>
+            <FontAwesome6 name="gear" size={18} color={theme.buttonPrimaryText} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+              后台管理
             </ThemedText>
-            <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
-              学习材料
+            <ThemedText variant="caption" color={theme.textMuted}>
+              上传素材、编辑时间轴、切分音频
             </ThemedText>
           </View>
-          <View style={[styles.statCard, styles.statCardLast]}>
-            <ThemedText variant="h2" color={theme.primary} style={styles.statValue}>
-              {stats.completed}
-            </ThemedText>
-            <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
-              已完成
-            </ThemedText>
-          </View>
-        </View>
+          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+        </TouchableOpacity>
 
         {/* Materials List */}
         <View style={styles.sectionHeader}>
           <ThemedText variant="h4" color={theme.textPrimary}>
             学习材料
+          </ThemedText>
+          <ThemedText variant="caption" color={theme.textMuted}>
+            {materials.length} 个可学习
           </ThemedText>
         </View>
 
@@ -208,97 +184,71 @@ export default function HomeScreen() {
               暂无学习材料
             </ThemedText>
             <ThemedText variant="small" color={theme.textMuted} style={styles.emptySubtext}>
-              点击右下角按钮添加你的第一个音频材料
+              请先进入后台管理添加素材
             </ThemedText>
+            <TouchableOpacity 
+              style={{
+                marginTop: Spacing.lg,
+                paddingHorizontal: Spacing.xl,
+                paddingVertical: Spacing.md,
+                backgroundColor: theme.primary,
+                borderRadius: BorderRadius.md,
+              }}
+              onPress={handleGoToAdmin}
+            >
+              <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
+                进入后台管理
+              </ThemedText>
+            </TouchableOpacity>
           </View>
         ) : (
           materials.map((material) => (
-            <View
+            <TouchableOpacity
               key={material.id}
               style={styles.materialCard}
+              onPress={() => handleMaterialPress(material)}
+              activeOpacity={0.7}
             >
-              <TouchableOpacity 
-                style={{ flex: 1 }}
-                onPress={() => handleMaterialPress(material)}
-                activeOpacity={0.7}
-              >
-                <ThemedText variant="title" color={theme.textPrimary} style={styles.materialTitle}>
-                  {material.title}
+              <ThemedText variant="title" color={theme.textPrimary} style={styles.materialTitle}>
+                {material.title}
+              </ThemedText>
+              {material.description ? (
+                <ThemedText variant="small" color={theme.textMuted} numberOfLines={2}>
+                  {material.description}
                 </ThemedText>
-                {material.description ? (
-                  <ThemedText variant="small" color={theme.textMuted} numberOfLines={2}>
-                    {material.description}
-                  </ThemedText>
-                ) : null}
-                
-                <View style={styles.materialMeta}>
-                  <View style={styles.materialMetaItem}>
-                    <FontAwesome6 name="clock" size={12} color={theme.textMuted} style={styles.materialMetaIcon} />
-                    <ThemedText variant="caption" color={theme.textMuted}>
-                      {formatDuration(material.duration)}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.materialMetaItem}>
-                    <FontAwesome6 name="list" size={12} color={theme.textMuted} style={styles.materialMetaIcon} />
-                    <ThemedText variant="caption" color={theme.textMuted}>
-                      {material.sentences_count} 句
-                    </ThemedText>
-                  </View>
-                </View>
-
-                {material.sentences_count > 0 && (
-                  <View style={styles.progressContainer}>
-                    <View style={styles.progressBar}>
-                      <View 
-                        style={[styles.progressFill, { width: `${getProgress(material)}%` }]} 
-                      />
-                    </View>
-                    <ThemedText variant="tiny" color={theme.textMuted} style={styles.progressText}>
-                      {material.completed_count}/{material.sentences_count} 已完成 ({Math.round(getProgress(material))}%)
-                    </ThemedText>
-                  </View>
-                )}
-              </TouchableOpacity>
+              ) : null}
               
-              {/* 删除按钮 */}
-              <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={() => handleDeleteClick(material)}
-                activeOpacity={0.7}
-              >
-                <FontAwesome6 name="trash" size={18} color={theme.error} />
-              </TouchableOpacity>
-            </View>
+              <View style={styles.materialMeta}>
+                <View style={styles.materialMetaItem}>
+                  <FontAwesome6 name="clock" size={12} color={theme.textMuted} style={styles.materialMetaIcon} />
+                  <ThemedText variant="caption" color={theme.textMuted}>
+                    {formatDuration(material.duration)}
+                  </ThemedText>
+                </View>
+                <View style={styles.materialMetaItem}>
+                  <FontAwesome6 name="list" size={12} color={theme.textMuted} style={styles.materialMetaIcon} />
+                  <ThemedText variant="caption" color={theme.textMuted}>
+                    {material.sentences_count} 句
+                  </ThemedText>
+                </View>
+              </View>
+
+              {material.sentences_count > 0 && (
+                <View style={styles.progressContainer}>
+                  <View style={styles.progressBar}>
+                    <View 
+                      style={[styles.progressFill, { width: `${getProgress(material)}%` }]} 
+                    />
+                  </View>
+                  <ThemedText variant="tiny" color={theme.textMuted} style={styles.progressText}>
+                    {material.completed_count}/{material.sentences_count} 已完成 ({Math.round(getProgress(material))}%)
+                  </ThemedText>
+                </View>
+              )}
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>
-
-      {/* Add Button */}
-      <TouchableOpacity style={styles.addButton} onPress={handleAddMaterial} activeOpacity={0.8}>
-        <FontAwesome6 name="plus" size={24} color={theme.buttonPrimaryText} />
-      </TouchableOpacity>
-      
-      {/* 删除确认对话框 */}
-      <ConfirmDialog
-        visible={deleteDialog.visible}
-        title="删除材料"
-        message={`确定要删除「${deleteDialog.material?.title}」吗？\n此操作将删除该材料及其所有句子数据，且不可恢复。`}
-        confirmText="删除"
-        cancelText="取消"
-        confirmStyle="destructive"
-        onConfirm={handleDeleteConfirm}
-        onCancel={handleDeleteCancel}
-      />
-      
-      {/* 提示对话框 */}
-      <ConfirmDialog
-        visible={messageDialog.visible}
-        title="提示"
-        message={messageDialog.message}
-        confirmText="确定"
-        onConfirm={() => setMessageDialog({ visible: false, message: '' })}
-        onCancel={() => setMessageDialog({ visible: false, message: '' })}
-      />
     </Screen>
   );
 }

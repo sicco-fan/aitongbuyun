@@ -8,179 +8,91 @@ export const createStyles = (theme: Theme) => {
     },
     scrollContent: {
       flexGrow: 1,
-      paddingHorizontal: Spacing['2xl'],
-      paddingTop: Spacing['2xl'],
-      paddingBottom: Spacing['5xl'],
+      paddingHorizontal: Spacing.lg,
+      paddingTop: Spacing.lg,
+      paddingBottom: Spacing['3xl'],
     },
+    
+    // Header
     header: {
-      marginBottom: Spacing['2xl'],
-    },
-    headerTop: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: Spacing.md,
+      justifyContent: 'space-between',
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.md,
+      backgroundColor: theme.backgroundDefault,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
     },
-    backButton: {
-      flexDirection: 'row',
+    backBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.backgroundTertiary,
+      justifyContent: 'center',
       alignItems: 'center',
+    },
+    headerInfo: {
+      alignItems: 'center',
+    },
+    
+    // Progress
+    progressContainer: {
+      paddingHorizontal: Spacing.lg,
       paddingVertical: Spacing.sm,
-      paddingHorizontal: Spacing.md,
-      borderRadius: BorderRadius.md,
-      backgroundColor: theme.backgroundTertiary,
-    },
-    progressHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: Spacing.md,
-    },
-    progressBadge: {
-      backgroundColor: theme.primary,
-      paddingHorizontal: Spacing.md,
-      paddingVertical: Spacing.xs,
-      borderRadius: BorderRadius.full,
-      marginRight: Spacing.md,
-    },
-    headerNav: {
-      flexDirection: 'row',
-      marginLeft: Spacing.lg,
-      gap: Spacing.sm,
-    },
-    headerNavBtn: {
-      width: 32,
-      height: 32,
-      borderRadius: BorderRadius.full,
-      backgroundColor: theme.backgroundTertiary,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    
-    // 音频控制区
-    audioSection: {
-      alignItems: 'center',
-      marginBottom: Spacing.lg,
-      padding: Spacing.md,
       backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.lg,
-      borderWidth: 1,
-      borderColor: theme.border,
     },
-    playButton: {
-      width: 48,
-      height: 48,
+    progressBar: {
+      height: 4,
+      backgroundColor: theme.border,
       borderRadius: BorderRadius.full,
+      overflow: 'hidden',
+    },
+    progressFill: {
+      height: '100%',
       backgroundColor: theme.primary,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    playButtonDisabled: {
-      backgroundColor: theme.textMuted,
-    },
-    playCount: {},
-    
-    // 翻译显示区
-    translationBox: {
-      backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.lg,
-      borderWidth: 1,
-      borderColor: theme.primary,
-      padding: Spacing.md,
-      marginBottom: Spacing.lg,
-      alignItems: 'flex-end',
-    },
-    translationText: {
-      textAlign: 'right',
-      marginTop: Spacing.xs,
+      borderRadius: BorderRadius.full,
     },
     
-    // 句子显示区
+    // Sentence Section
     sentenceSection: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.xl,
+      padding: Spacing.xl,
+      marginTop: Spacing.lg,
+      marginBottom: Spacing.lg,
+      minHeight: 150,
       borderWidth: 1,
       borderColor: theme.border,
-      padding: Spacing.xl,
-      marginBottom: Spacing['2xl'],
-      minHeight: 120,
     },
-    sentenceLabel: {
-      marginBottom: Spacing.md,
-    },
-    sentenceHeader: {
-      marginBottom: Spacing.md,
-    },
-    wordsContainer: {
+    wordContainer: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: Spacing.sm,
+      gap: Spacing.xs,
+      alignItems: 'flex-end',
     },
-    wordSlot: {
-      minWidth: 60,
-      paddingVertical: Spacing.sm,
-      paddingHorizontal: Spacing.md,
-      borderRadius: BorderRadius.md,
-      borderWidth: 1,
-      borderColor: theme.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: 36,
+    wordWrapper: {
+      marginBottom: Spacing.sm,
     },
-    wordCorrect: {
-      backgroundColor: '#10B98120',
-      borderColor: theme.success,
+    wordBox: {
+      flexDirection: 'row',
     },
-    wordHidden: {
-      borderColor: theme.borderLight,
-      backgroundColor: theme.backgroundTertiary,
+    char: {
+      fontSize: 28,
+      fontWeight: '600',
     },
-    wordError: {
-      backgroundColor: '#EF444420',
-      borderColor: theme.error,
-    },
-    wordHint: {
-      backgroundColor: '#F59E0B20',
-      borderColor: '#F59E0B',
-    },
-    wordWithTranslation: {
-      alignItems: 'center',
-    },
-    wordTranslationText: {
-      fontSize: 10,
-      color: theme.textMuted,
-      textAlign: 'center',
-      marginTop: 2,
-    },
-    sentenceTranslationBox: {
-      marginTop: Spacing.lg,
-      paddingTop: Spacing.md,
-      borderTopWidth: 1,
-      borderTopColor: theme.borderLight,
-      alignItems: 'center',
-    },
-    wordText: {},
-    wordTextCorrect: {},
-    wordTextHint: {
-      color: '#F59E0B',
-    },
-    wordTextHidden: {
-      color: theme.textMuted,
-    },
-    wordIndex: {
-      fontSize: 10,
-      color: theme.textMuted,
+    hiddenChar: {
+      opacity: 0.5,
     },
     
-    // 输入区
+    // Input Section
     inputSection: {
-      marginBottom: Spacing.xl,
-    },
-    inputLabel: {
-      marginBottom: Spacing.md,
-    },
-    inputRow: {
       flexDirection: 'row',
+      alignItems: 'center',
       gap: Spacing.md,
+      marginBottom: Spacing.lg,
     },
-    textInput: {
+    input: {
       flex: 1,
       backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.lg,
@@ -191,178 +103,33 @@ export const createStyles = (theme: Theme) => {
       fontSize: 18,
       color: theme.textPrimary,
     },
-    voiceButton: {
+    voiceBtn: {
       width: 56,
       height: 56,
       borderRadius: BorderRadius.lg,
-      backgroundColor: theme.accent,
+      backgroundColor: theme.primary + '20',
       justifyContent: 'center',
       alignItems: 'center',
-    },
-    voiceButtonActive: {
-      backgroundColor: theme.error,
-    },
-    
-    // 反馈区
-    feedbackSection: {
-      marginBottom: Spacing.xl,
-      minHeight: 50,
-    },
-    feedbackCorrect: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: '#10B98120',
-      borderRadius: BorderRadius.lg,
-      padding: Spacing.md,
       borderWidth: 1,
-      borderColor: theme.success,
+      borderColor: theme.primary,
     },
-    feedbackCorrectText: {
-      marginLeft: Spacing.sm,
-      color: theme.success,
-    },
-    feedbackIncorrect: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: '#EF444420',
-      borderRadius: BorderRadius.lg,
-      padding: Spacing.md,
-      borderWidth: 1,
+    voiceBtnActive: {
+      backgroundColor: theme.error + '20',
       borderColor: theme.error,
     },
-    feedbackIncorrectText: {
-      marginLeft: Spacing.sm,
-      color: theme.error,
-    },
     
-    // 提示区
-    hintSection: {
-      marginBottom: Spacing.xl,
-    },
-    hintButton: {
+    // Controls
+    controlsSection: {
       flexDirection: 'row',
+      justifyContent: 'space-between',
       alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#F59E0B20',
-      borderRadius: BorderRadius.lg,
-      padding: Spacing.md,
-      borderWidth: 1,
-      borderColor: '#F59E0B',
-    },
-    hintButtonText: {
-      marginLeft: Spacing.sm,
-      color: '#F59E0B',
-    },
-    hintContent: {
-      marginTop: Spacing.md,
-      padding: Spacing.lg,
-      backgroundColor: '#F59E0B10',
-      borderRadius: BorderRadius.lg,
-      borderWidth: 1,
-      borderColor: '#F59E0B',
-    },
-    
-    // 按钮区
-    buttonRow: {
-      flexDirection: 'row',
-      gap: Spacing.md,
-      marginTop: Spacing.lg,
-    },
-    button: {
-      flex: 1,
-      borderRadius: BorderRadius.lg,
-      paddingVertical: Spacing.lg,
-      alignItems: 'center',
-    },
-    primaryButton: {
-      backgroundColor: theme.primary,
-    },
-    secondaryButton: {
-      backgroundColor: theme.backgroundTertiary,
-      borderWidth: 1,
-      borderColor: theme.border,
-    },
-    buttonDisabled: {
-      opacity: 0.5,
-    },
-    
-    // 导航按钮区（句子切换）
-    navButtonRow: {
-      flexDirection: 'row',
-      gap: Spacing.md,
-      marginTop: Spacing.xl,
-      marginBottom: Spacing.lg,
-    },
-    navButton: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: BorderRadius.xl,
-      paddingVertical: Spacing.lg,
-      paddingHorizontal: Spacing.xl,
-    },
-    navButtonPrev: {
-      backgroundColor: theme.backgroundTertiary,
-      borderWidth: 2,
-      borderColor: theme.border,
-    },
-    navButtonNext: {
-      backgroundColor: theme.primary,
-    },
-    
-    // 完成界面
-    completedContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingVertical: Spacing['6xl'],
-    },
-    completedIcon: {
-      marginBottom: Spacing['2xl'],
-    },
-    completedTitle: {
-      marginBottom: Spacing.md,
-    },
-    completedSubtitle: {
-      textAlign: 'center',
-      marginBottom: Spacing['2xl'],
-      paddingHorizontal: Spacing.lg,
-    },
-    statsRow: {
-      flexDirection: 'row',
-      marginBottom: Spacing['2xl'],
-    },
-    statItem: {
-      alignItems: 'center',
-      marginHorizontal: Spacing['2xl'],
-    },
-    statValue: {
-      marginBottom: Spacing.xs,
-    },
-    completedButton: {
-      width: 200,
-      borderRadius: BorderRadius.lg,
-      paddingVertical: Spacing.lg,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    
-    // 统计信息
-    statsBar: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
       paddingVertical: Spacing.md,
-      borderTopWidth: 1,
-      borderTopColor: theme.border,
-      marginTop: Spacing.lg,
     },
-    statBarItem: {
+    skipBtn: {
+      flexDirection: 'row',
       alignItems: 'center',
+      gap: Spacing.xs,
+      padding: Spacing.sm,
     },
-    statBarValue: {
-      marginBottom: Spacing.xs,
-    },
-    statBarLabel: {},
   });
 };
