@@ -344,9 +344,14 @@ export default function PracticeScreen() {
 
   // 实时检查输入并更新字母显示
   const checkInputRealtime = useCallback((input: string) => {
-    if (!input) return { matched: false, correctLength: input.length, hasError: false };
+    if (!input) {
+      console.log('[checkInputRealtime] 输入为空，跳过');
+      return { matched: false, correctLength: input.length, hasError: false };
+    }
     
     const inputLower = input.toLowerCase();
+    console.log('[checkInputRealtime] 输入:', inputLower);
+    
     let matchedAny = false;
     let hasError = false;
     let correctLength = input.length;
@@ -360,6 +365,7 @@ export default function PracticeScreen() {
         if (ws.isPunctuation || ws.revealed) continue;
         
         const wordLower = ws.word.toLowerCase();
+        console.log('[checkInputRealtime] 尝试匹配单词:', wordLower, '输入:', inputLower);
         
         // 计算匹配长度
         let matchLen = 0;
@@ -371,9 +377,12 @@ export default function PracticeScreen() {
           }
         }
         
+        console.log('[checkInputRealtime] 匹配长度:', matchLen);
+        
         // 完全匹配当前输入
         if (matchLen === inputLower.length && matchLen <= wordLower.length) {
           matchedAny = true;
+          console.log('[checkInputRealtime] 匹配成功! 单词:', wordLower, '匹配长度:', matchLen);
           
           // 更新已显示的字母
           const newRevealedChars = [...ws.revealedChars];
@@ -393,6 +402,7 @@ export default function PracticeScreen() {
         if (inputLower.length > 0 && inputLower[0] === wordLower[0]) {
           hasError = true;
           correctLength = matchLen;
+          console.log('[checkInputRealtime] 部分匹配但有错误');
           
           // 更新正确部分的字母
           const newRevealedChars = [...ws.revealedChars];
@@ -409,6 +419,9 @@ export default function PracticeScreen() {
           };
           break;
         }
+        
+        // 不匹配，继续检查下一个单词
+        console.log('[checkInputRealtime] 不匹配，继续检查下一个单词');
       }
       
       return newStatuses;
@@ -688,25 +701,35 @@ export default function PracticeScreen() {
       
       const data = await response.json();
       
+      console.log('[语音识别] 返回结果:', JSON.stringify(data));
+      
       if (data.success) {
         // 后端返回识别结果和类型（字母或单词）
         if (data.letters && data.letters.length > 0) {
           // 字母模式：逐个填入字母
+          console.log('[语音识别] 字母模式，字母:', data.letters);
           for (const letter of data.letters) {
+            console.log('[语音识别] 处理字母:', letter);
             checkInputRealtime(letter);
           }
         } else if (data.matchedWords && data.matchedWords.length > 0) {
           // 单词模式：填入匹配的单词
+          console.log('[语音识别] 单词模式，匹配单词:', data.matchedWords);
           for (const word of data.matchedWords) {
+            console.log('[语音识别] 处理单词:', word);
             checkInputRealtime(word);
           }
         } else if (data.text) {
           // 原始识别结果
+          console.log('[语音识别] 原始文本:', data.text);
           const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
           for (const word of words) {
+            console.log('[语音识别] 处理原始单词:', word);
             checkInputRealtime(word);
           }
         }
+      } else {
+        console.log('[语音识别] 识别失败:', data.message);
       }
     } catch (error) {
       console.error('识别失败:', error);

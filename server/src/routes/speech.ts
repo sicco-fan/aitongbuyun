@@ -9,6 +9,9 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB
 });
 
+// 26个字母（不区分大小写）
+const LETTERS = 'abcdefghijklmnopqrstuvwxyz';
+
 // 计算两个字符串的相似度（Levenshtein距离）
 function levenshteinDistance(str1: string, str2: string): number {
   const m = str1.length;
@@ -42,6 +45,49 @@ function similarity(str1: string, str2: string): number {
   return 1 - distance / maxLen;
 }
 
+// 从识别文本中提取字母
+function extractLetters(text: string): string[] {
+  const letters: string[] = [];
+  const lowerText = text.toLowerCase();
+  
+  // 遍历每个字符，提取a-z字母
+  for (const char of lowerText) {
+    if (LETTERS.includes(char)) {
+      letters.push(char);
+    }
+  }
+  
+  return letters;
+}
+
+// 判断识别结果是否主要是字母模式
+// 字母模式的特征：用户说的是单个字母，如 "A", "B", "C" 等
+// 或者用户连续说了多个字母，如 "A B C"
+function isLetterMode(text: string): boolean {
+  const cleanText = text.toLowerCase().replace(/[^a-z]/g, '');
+  if (cleanText.length === 0) return false;
+  
+  // 如果只有一个字符，肯定是单个字母
+  if (cleanText.length === 1) return true;
+  
+  // 如果识别结果是多个字符，需要判断是单词还是字母序列
+  // 关键判断：字母之间是否有空格或分隔符
+  // 如果原文是 "a b c" 或 "A, B, C"，说明是字母序列
+  const words = text.trim().split(/[\s,，]+/).filter(w => w.length > 0);
+  
+  // 如果分割后有多个部分，且每个部分都是单个字母，说明是字母模式
+  if (words.length > 1) {
+    const allSingleLetters = words.every(word => {
+      const clean = word.toLowerCase().replace(/[^a-z]/g, '');
+      return clean.length === 1;
+    });
+    if (allSingleLetters) return true;
+  }
+  
+  // 其他情况（如 "apple", "hello"）都不是字母模式
+  return false;
+}
+
 /**
  * POST /api/v1/speech-recognize
  * 语音识别接口
@@ -69,11 +115,38 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     });
 
     const recognizedText = result.text.trim();
+    console.log('[ASR] 识别结果:', recognizedText);
     
-    // 如果提供了目标单词列表，进行模糊匹配
-    if (targetWords && recognizedText) {
+    if (!recognizedText) {
+      return res.json({ 
+        success: false,
+        text: '',
+        message: '未识别到语音内容',
+      });
+    }
+    
+    // 自动检测是否是字母模式
+    if (isLetterMode(recognizedText)) {
+      const letters = extractLetters(recognizedText);
+      console.log('[ASR] 字母模式，提取字母:', letters);
+      
+      if (letters.length > 0) {
+        return res.json({ 
+          success: true,
+          text: recognizedText,
+          letters,
+          mode: 'letter',
+        });
+      }
+    }
+    
+    // 单词模式：进行模糊匹配
+    if (targetWords) {
       const targetList = targetWords.toLowerCase().split(',').map((w: string) => w.trim()).filter((w: string) => w);
       const recognizedWords = recognizedText.split(/\s+/).filter((w: string) => w.length > 0);
+      
+      console.log('[ASR] 单词模式，目标单词:', targetList.slice(0, 5), '...');
+      console.log('[ASR] 识别到的词:', recognizedWords);
       
       // 匹配结果
       const matchedWords: string[] = [];
@@ -115,18 +188,23 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
         }
       }
       
-      res.json({ 
+      console.log('[ASR] 匹配结果:', matchedWords);
+      
+      return res.json({ 
         success: true,
         text: recognizedText,
         matchedWords,
         originalWords: recognizedWords,
-      });
-    } else {
-      res.json({ 
-        success: true,
-        text: recognizedText,
+        mode: 'word',
       });
     }
+    
+    // 没有目标单词，直接返回识别结果
+    return res.json({ 
+      success: true,
+      text: recognizedText,
+      mode: 'raw',
+    });
   } catch (error) {
     console.error('语音识别失败:', error);
     res.status(500).json({ error: '语音识别失败', message: (error as Error).message });
