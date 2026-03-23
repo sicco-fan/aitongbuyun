@@ -631,17 +631,42 @@ router.post('/:id/match-sentence', async (req: Request, res: Response) => {
       return res.status(404).json({ error: '材料不存在' });
     }
 
+    // 获取音频 URL
+    const audioUrl = await storage.generatePresignedUrl({
+      key: material.audio_url,
+      expireTime: 86400,
+    });
+
     // 获取单词列表（优先使用传入的，否则重新获取）
     let words = providedWords;
     let audioDuration = material.duration || 0;
     let fullText = '';
     
+    // 首先尝试用 ffmpeg 获取真实的音频时长
+    try {
+      const ffprobeResult = await execAsync(
+        `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioUrl}"`,
+        { timeout: 10000 }
+      );
+      const probedDuration = parseFloat(ffprobeResult.stdout.trim());
+      if (probedDuration > 0) {
+        audioDuration = Math.round(probedDuration * 1000);
+        console.log(`FFprobe 获取到的实际时长: ${audioDuration}ms`);
+        
+        // 如果数据库中的时长与实际差异超过 10%，更新数据库
+        if (material.duration && Math.abs(material.duration - audioDuration) > audioDuration * 0.1) {
+          console.log(`更新数据库中的 duration: ${material.duration}ms -> ${audioDuration}ms`);
+          await supabase
+            .from('materials')
+            .update({ duration: audioDuration })
+            .eq('id', id);
+        }
+      }
+    } catch (e) {
+      console.log('FFprobe 获取时长失败，使用数据库值:', (e as Error).message);
+    }
+    
     if (!words || words.length === 0) {
-      const audioUrl = await storage.generatePresignedUrl({
-        key: material.audio_url,
-        expireTime: 86400,
-      });
-
       const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
       const asrClient = new ASRClient(new Config(), customHeaders);
       
@@ -654,7 +679,7 @@ router.post('/:id/match-sentence', async (req: Request, res: Response) => {
         words = extractWordsWithTimestamps(asrResult);
         fullText = asrResult.text || asrResult.rawData?.result?.text || '';
         
-        // 更新音频时长
+        // 如果 ASR 返回了时长，优先使用
         if (asrResult.duration) {
           audioDuration = asrResult.duration * 1000;
         }
