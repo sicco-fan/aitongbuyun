@@ -399,8 +399,13 @@ export default function PracticeScreen() {
           
           // 如果已完成，立即停止
           if (completedRef.current) {
-            if (soundRef.current) {
-              soundRef.current.stopAsync().catch((e) => console.log('停止播放失败:', e));
+            const currentSound = soundRef.current;
+            if (currentSound) {
+              currentSound.getStatusAsync().then(status => {
+                if (status.isLoaded) {
+                  currentSound.stopAsync().catch(() => { /* ignore */ });
+                }
+              }).catch(() => { /* ignore */ });
             }
             return;
           }
@@ -426,23 +431,34 @@ export default function PracticeScreen() {
       console.log('[startSentenceLoopPlayback] 音频创建成功');
       soundRef.current = sound;
       
-      // 使用 setStatusAsync 同时设置位置和播放状态
-      // 在 Web 环境下，需要使用这种方式来绕过自动播放限制
-      const setStatus = await sound.setStatusAsync({
-        positionMillis: start,
-        shouldPlay: true,
-      });
-      console.log('[startSentenceLoopPlayback] setStatusAsync 返回:', {
-        isLoaded: setStatus.isLoaded,
-        positionMillis: setStatus.isLoaded ? setStatus.positionMillis : 'N/A',
-        isPlaying: setStatus.isLoaded ? setStatus.isPlaying : 'N/A',
-      });
-      
-      if (setStatus.isLoaded && setStatus.isPlaying) {
-        setIsPlaying(true);
-        console.log('[startSentenceLoopPlayback] 播放已启动');
-      } else {
-        console.log('[startSentenceLoopPlayback] 播放可能被浏览器阻止，需要用户交互');
+      // Web 环境下需要分步操作：先设置位置，再播放
+      // 直接使用 setStatusAsync 同时设置 positionMillis 和 shouldPlay 在 Web 上可能不生效
+      try {
+        // 第一步：设置播放位置
+        console.log('[startSentenceLoopPlayback] 设置播放位置:', start, 'ms');
+        const positionStatus = await sound.setPositionAsync(start);
+        console.log('[startSentenceLoopPlayback] setPositionAsync 返回:', {
+          isLoaded: positionStatus.isLoaded,
+          positionMillis: positionStatus.isLoaded ? positionStatus.positionMillis : 'N/A',
+        });
+        
+        // 第二步：开始播放
+        console.log('[startSentenceLoopPlayback] 开始播放');
+        const playStatus = await sound.playAsync();
+        console.log('[startSentenceLoopPlayback] playAsync 返回:', {
+          isLoaded: playStatus.isLoaded,
+          isPlaying: playStatus.isLoaded ? playStatus.isPlaying : 'N/A',
+          positionMillis: playStatus.isLoaded ? playStatus.positionMillis : 'N/A',
+        });
+        
+        if (playStatus.isLoaded && playStatus.isPlaying) {
+          setIsPlaying(true);
+          console.log('[startSentenceLoopPlayback] 播放已启动');
+        } else {
+          console.log('[startSentenceLoopPlayback] 播放可能被浏览器阻止，需要用户交互');
+        }
+      } catch (playError) {
+        console.error('[startSentenceLoopPlayback] 播放操作失败:', playError);
       }
       
     } catch (error) {
@@ -459,15 +475,19 @@ export default function PracticeScreen() {
     isLoopingRef.current = false;
     completedRef.current = true;
     
-    if (soundRef.current) {
+    const sound = soundRef.current;
+    if (sound) {
       try {
-        // 先暂停，然后卸载
-        await soundRef.current.pauseAsync();
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
+        // 检查音频是否已加载
+        const status = await sound.getStatusAsync();
+        if (status.isLoaded) {
+          await sound.stopAsync();
+          await sound.unloadAsync();
+        }
         soundRef.current = null;
       } catch (e) {
-        // 忽略错误
+        // 忽略错误，音频可能已经被卸载
+        soundRef.current = null;
       }
     }
     setIsPlaying(false);
