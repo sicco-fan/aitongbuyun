@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -13,19 +13,14 @@ interface TimeDialProps {
   onChange: (delta: number) => void; // 变化量回调
   label: string; // 标签（如"开始"）
   color?: string;
-  audioDuration?: number; // 音频总时长，用于限制范围
 }
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export function TimeDial({
   value,
   onChange,
   label,
   color = '#00ff88',
-  audioDuration = 0,
 }: TimeDialProps) {
-  const rotation = useSharedValue(0);
   const lastAngle = useSharedValue(0);
   const accumulatedDelta = useSharedValue(0);
 
@@ -42,17 +37,9 @@ export function TimeDial({
     onChange(delta);
   }, [onChange]);
 
-  // 手动调整按钮
-  const adjustTime = (delta: number) => {
-    onChange(delta);
-  };
-
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
-      // 使用水平滑动来调整时间，更直观
       const deltaX = e.translationX - lastAngle.value;
-      
-      // 每1像素对应1毫秒
       const timeDelta = Math.round(deltaX);
       
       if (Math.abs(timeDelta) >= 1) {
@@ -66,63 +53,60 @@ export function TimeDial({
       accumulatedDelta.value = 0;
     });
 
-  const animatedStyle = useAnimatedStyle(() => {
-    // 轻微的视觉反馈
-    return {
-      transform: [{ translateX: accumulatedDelta.value * 0.3 }],
-    };
-  });
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: accumulatedDelta.value * 0.3 }],
+  }));
 
   return (
     <View style={styles.container}>
+      {/* 标签 */}
       <Text style={[styles.label, { color }]}>{label}</Text>
       
+      {/* 时间显示区域 - 可滑动 */}
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.dialArea, animatedStyle]}>
-          {/* 时间显示 - 大号 */}
+        <Animated.View style={[styles.dialArea, { borderColor: color }, animatedStyle]}>
           <Text style={[styles.timeValue, { color }]}>
             {formatTime(value)}
           </Text>
-          
-          {/* 滑动提示 */}
           <Text style={styles.hint}>← 滑动调整 →</Text>
         </Animated.View>
       </GestureDetector>
       
-      {/* 微调按钮 */}
+      {/* 微调按钮 - 紧凑布局 */}
       <View style={styles.buttonRow}>
         <TouchableOpacity 
           style={[styles.adjustBtn, { borderColor: color }]}
-          onPress={() => adjustTime(-100)}
+          onPress={() => onChange(-100)}
         >
-          <FontAwesome6 name="backward-fast" size={14} color={color} />
-          <Text style={[styles.btnText, { color }]}>-100ms</Text>
+          <FontAwesome6 name="angles-left" size={12} color={color} />
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={[styles.adjustBtn, { borderColor: color }]}
-          onPress={() => adjustTime(-10)}
+          onPress={() => onChange(-10)}
         >
-          <FontAwesome6 name="backward" size={14} color={color} />
-          <Text style={[styles.btnText, { color }]}>-10ms</Text>
+          <FontAwesome6 name="angle-left" size={12} color={color} />
+        </TouchableOpacity>
+        
+        <View style={styles.divider} />
+        
+        <TouchableOpacity 
+          style={[styles.adjustBtn, { borderColor: color }]}
+          onPress={() => onChange(10)}
+        >
+          <FontAwesome6 name="angle-right" size={12} color={color} />
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={[styles.adjustBtn, { borderColor: color }]}
-          onPress={() => adjustTime(10)}
+          onPress={() => onChange(100)}
         >
-          <FontAwesome6 name="forward" size={14} color={color} />
-          <Text style={[styles.btnText, { color }]}>+10ms</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.adjustBtn, { borderColor: color }]}
-          onPress={() => adjustTime(100)}
-        >
-          <FontAwesome6 name="forward-fast" size={14} color={color} />
-          <Text style={[styles.btnText, { color }]}>+100ms</Text>
+          <FontAwesome6 name="angles-right" size={12} color={color} />
         </TouchableOpacity>
       </View>
+      
+      {/* 步长说明 */}
+      <Text style={styles.stepHint}>±10ms / ±100ms</Text>
     </View>
   );
 }
@@ -130,58 +114,56 @@ export function TimeDial({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 16,
-    padding: 16,
-    marginHorizontal: 8,
     flex: 1,
   },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: 8,
     textTransform: 'uppercase',
-    letterSpacing: 2,
+    letterSpacing: 1,
   },
   dialArea: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    backgroundColor: '#222',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: '#1a1a1a',
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#333',
-    minWidth: 140,
+    minWidth: 120,
   },
   timeValue: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
-    letterSpacing: 1,
   },
   hint: {
-    color: '#555',
-    fontSize: 10,
-    marginTop: 8,
+    color: '#444',
+    fontSize: 9,
+    marginTop: 4,
   },
   buttonRow: {
     flexDirection: 'row',
-    marginTop: 12,
-    gap: 6,
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 4,
   },
   adjustBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 6,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     backgroundColor: '#222',
     borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  btnText: {
-    fontSize: 10,
-    fontWeight: '500',
+  divider: {
+    width: 8,
+  },
+  stepHint: {
+    color: '#444',
+    fontSize: 9,
+    marginTop: 4,
   },
 });

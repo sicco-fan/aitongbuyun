@@ -545,7 +545,6 @@ export default function TimestampEditorScreen() {
           }}
           label="开始时间"
           color="#00ff88"
-          audioDuration={duration}
         />
         
         <View style={styles.durationColumn}>
@@ -568,7 +567,6 @@ export default function TimestampEditorScreen() {
           }}
           label="结束时间"
           color="#ff8800"
-          audioDuration={duration}
         />
       </View>
 
@@ -809,27 +807,29 @@ const styles = StyleSheet.create({
   // 时间调整区域 - 核心交互区
   dialSection: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 16,
+    alignItems: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 14,
     backgroundColor: '#111',
     borderBottomWidth: 1,
     borderBottomColor: '#333',
+    gap: 8,
   },
   durationColumn: {
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    minWidth: 60,
   },
   durationValue: {
     color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
     fontVariant: ['tabular-nums'],
   },
   durationLabel: {
-    color: '#666',
-    fontSize: 10,
-    marginTop: 4,
+    color: '#555',
+    fontSize: 9,
+    marginTop: 2,
   },
   
   wordsSection: {
