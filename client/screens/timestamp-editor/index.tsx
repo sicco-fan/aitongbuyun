@@ -14,6 +14,7 @@ import { Screen } from '@/components/Screen';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { TimeDial } from '@/components/TimeDial';
 import { Audio } from 'expo-av';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
@@ -686,67 +687,34 @@ export default function TimestampEditorScreen() {
             </View>
           </View>
           
-          {/* 快捷调整按钮 */}
-          <View style={styles.quickAdjustRow}>
-            <TouchableOpacity 
-              style={styles.quickAdjustBtn}
-              onPress={() => {
+          {/* 时间调整转盘 */}
+          <View style={styles.dialContainer}>
+            <TimeDial
+              value={currentSentence.start_time}
+              onChange={(delta) => {
                 const newSentences = [...sentences];
                 newSentences[currentIndex] = {
                   ...newSentences[currentIndex],
-                  start_time: Math.max(0, currentSentence.start_time - 10),
+                  start_time: Math.max(0, currentSentence.start_time + delta),
                 };
                 setSentences(newSentences);
               }}
-            >
-              <FontAwesome6 name="backward" size={12} color="#00ff88" />
-              <Text style={styles.quickAdjustText}>-0.01s</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.quickAdjustBtn}
-              onPress={() => {
+              label="开始时间"
+              color="#00ff88"
+            />
+            <TimeDial
+              value={currentSentence.end_time}
+              onChange={(delta) => {
                 const newSentences = [...sentences];
                 newSentences[currentIndex] = {
                   ...newSentences[currentIndex],
-                  start_time: currentSentence.start_time + 10,
+                  end_time: Math.max(currentSentence.start_time + 10, currentSentence.end_time + delta),
                 };
                 setSentences(newSentences);
               }}
-            >
-              <FontAwesome6 name="forward" size={12} color="#00ff88" />
-              <Text style={styles.quickAdjustText}>开始+0.01s</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.quickAdjustBtn}
-              onPress={() => {
-                const newSentences = [...sentences];
-                newSentences[currentIndex] = {
-                  ...newSentences[currentIndex],
-                  end_time: Math.max(currentSentence.start_time + 10, currentSentence.end_time - 10),
-                };
-                setSentences(newSentences);
-              }}
-            >
-              <FontAwesome6 name="backward" size={12} color="#ff8800" />
-              <Text style={styles.quickAdjustText}>结束-0.01s</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.quickAdjustBtn}
-              onPress={() => {
-                const newSentences = [...sentences];
-                newSentences[currentIndex] = {
-                  ...newSentences[currentIndex],
-                  end_time: currentSentence.end_time + 10,
-                };
-                setSentences(newSentences);
-              }}
-            >
-              <FontAwesome6 name="forward" size={12} color="#ff8800" />
-              <Text style={styles.quickAdjustText}>+0.01s</Text>
-            </TouchableOpacity>
+              label="结束时间"
+              color="#ff8800"
+            />
           </View>
         </View>
       )}
@@ -1029,27 +997,14 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     paddingVertical: 4,
   },
-  quickAdjustRow: {
+  dialContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingHorizontal: 16,
-    marginTop: 8,
-    paddingTop: 8,
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: '#222',
-  },
-  quickAdjustBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#222',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  quickAdjustText: {
-    color: '#888',
-    fontSize: 11,
   },
   
   controls: {
