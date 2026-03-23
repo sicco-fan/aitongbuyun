@@ -213,7 +213,7 @@ router.post('/download', async (req: Request, res: Response) => {
         title: videoTitle || title || '未命名材料',
         description: `来源: ${platform?.name || url}`,
         audio_url: fileKey,
-        duration: duration,
+        duration: Math.round(duration),
         full_text: '',
       })
       .select()
@@ -471,7 +471,7 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
         title,
         description: description || '',
         audio_url: fileKey,
-        duration: duration || 0,
+        duration: Math.round(duration || 0),
         full_text: '',
       })
       .select()
@@ -652,10 +652,11 @@ async function processMediaAsync(
     // 处理句子
     const sentences = await processASRResultWithSilence(asrResult, audioUrl);
     
-    // 计算时长
-    const asrDuration = asrResult.duration || asrResult.rawData?.duration;
+    // 计算时长（ASR 返回的是秒，需要转换为毫秒）
+    const asrDurationRaw = asrResult.duration || asrResult.rawData?.duration || 0;
+    const asrDurationMs = Math.round(asrDurationRaw * 1000);
     const lastEndTime = sentences.length > 0 ? sentences[sentences.length - 1].end_time : 0;
-    const totalDuration = asrDuration || lastEndTime || sentences.length * 2000;
+    const totalDuration = Math.round(asrDurationMs || lastEndTime || sentences.length * 2000);
 
     // 插入句子
     if (sentences.length > 0) {
@@ -840,11 +841,13 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     const sentences = await processASRResultWithSilence(asrResult, audioUrl);
     
     // 计算总时长：优先使用从视频获取的时长，然后是 ASR 返回的时长，最后使用估算
-    const asrDuration = asrResult.duration || asrResult.rawData?.duration;
+    // 注意：ASR 返回的 duration 是秒，需要转换为毫秒
+    const asrDurationRaw = asrResult.duration || asrResult.rawData?.duration || 0;
+    const asrDurationMs = asrDurationRaw ? Math.round(asrDurationRaw * 1000) : 0;
     const lastSentenceEndTime = sentences.length > 0 ? sentences[sentences.length - 1].end_time : 0;
-    const totalDuration = duration || asrDuration || lastSentenceEndTime || sentences.length * 2000;
+    const totalDuration = Math.round(duration || asrDurationMs || lastSentenceEndTime || sentences.length * 2000);
     
-    console.log(`\n时长计算: ASR=${asrDuration}, 最后句结束=${lastSentenceEndTime}, 最终=${totalDuration}`);
+    console.log(`\n时长计算: ASR原始=${asrDurationRaw}s, ASR毫秒=${asrDurationMs}, 最后句结束=${lastSentenceEndTime}, 最终=${totalDuration}`);
     console.log(`生成 ${sentences.length} 个句子，示例:`, sentences.slice(0, 3));
     
     // 存储到数据库
@@ -1083,9 +1086,9 @@ router.post('/:id/extract-text', async (req: Request, res: Response) => {
     let rawDuration = asrResult.duration || asrResult.rawData?.audio_info?.duration || 0;
     let durationMs: number;
     if (rawDuration > 1000) {
-      durationMs = rawDuration;
+      durationMs = Math.round(rawDuration);
     } else {
-      durationMs = rawDuration * 1000;
+      durationMs = Math.round(rawDuration * 1000);
     }
 
     console.log(`ASR 完成: 文本长度=${fullText.length}, 时长=${durationMs}ms (${durationMs / 1000}s)`);
@@ -1921,7 +1924,7 @@ async function processASRResultWithSilenceAsync(
                         asrResult.rawData?.audio_info?.duration || 
                         asrResult.rawData?.duration || 
                         0;
-  const totalDurationMs = totalDuration * 1000; // 转换为毫秒
+  const totalDurationMs = Math.round(totalDuration * 1000); // 转换为毫秒并取整
   console.log('总时长 (ms):', totalDurationMs);
 
   // 步骤3：按文字内容分割句子
@@ -2736,9 +2739,9 @@ router.post('/:id/prepare-timestamps', async (req: Request, res: Response) => {
       // ASR 返回的可能是秒或毫秒
       let rawDuration = asrResult.duration || asrResult.rawData?.audio_info?.duration || 0;
       if (rawDuration > 1000) {
-        duration = rawDuration;
+        duration = Math.round(rawDuration);
       } else {
-        duration = rawDuration * 1000;
+        duration = Math.round(rawDuration * 1000);
       }
 
       console.log(`ASR 完成: 文本长度=${fullText.length}, 时长=${duration}ms (${duration / 1000}s)`);

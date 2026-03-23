@@ -376,7 +376,7 @@ router.post('/', async (req: Request, res: Response) => {
         title: videoTitle || title || '未命名材料',
         description: `来源: ${platform?.name || url}`,
         audio_url: fileKey,
-        duration: duration,
+        duration: Math.round(duration),
         full_text: '',
       })
       .select()
