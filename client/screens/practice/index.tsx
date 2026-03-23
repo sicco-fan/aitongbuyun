@@ -466,28 +466,29 @@ export default function PracticeScreen() {
       return;
     }
     
-    setCurrentInput(text);
-    
     // 实时检查输入
     if (text.length > 0) {
       const result = checkInputRealtime(text);
       
-      // 如果有错误，短暂显示红色后自动清除错误部分
+      // 如果有错误，立即清除输入框中的错误字母
       if (result.hasError && result.correctLength < text.length) {
-        // 延迟一下让用户看到红色错误提示
+        // 立即只保留正确的部分
+        const correctPart = text.substring(0, result.correctLength);
+        setCurrentInput(correctPart);
+        
+        // 错误标记会短暂显示红色，然后自动清除
         setTimeout(() => {
-          // 清除输入框中的错误字母
-          const correctPart = text.substring(0, result.correctLength);
-          setCurrentInput(correctPart);
-          
-          // 清除错误标记
           setWordStatuses(prev => 
             prev.map(ws => 
               ws.errorCharIndex >= 0 ? { ...ws, errorCharIndex: -1 } : ws
             )
           );
-        }, 400); // 400ms后清除
+        }, 300); // 300ms后清除红色标记
+      } else {
+        setCurrentInput(text);
       }
+    } else {
+      setCurrentInput(text);
     }
   };
 
