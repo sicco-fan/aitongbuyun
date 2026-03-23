@@ -73,7 +73,8 @@ export default function PracticeScreen() {
   const [hintWordIndex, setHintWordIndex] = useState<number | null>(null); // 当前显示提示的单词索引
   
   // 翻译显示
-  const [wordTranslations, setWordTranslations] = useState<Record<number, string>>({}); // 每个单词的翻译
+  const [recentCompletedWordIndex, setRecentCompletedWordIndex] = useState<number | null>(null); // 最近完成的单词索引
+  const [recentWordTranslation, setRecentWordTranslation] = useState<string | null>(null); // 最近完成单词的翻译
   const [sentenceTranslation, setSentenceTranslation] = useState<string | null>(null); // 句子完成后的翻译
   
   // 音频控制状态
@@ -158,7 +159,8 @@ export default function PracticeScreen() {
       setFeedback(null);
       setHintWordIndex(null);
       setPlayCount(0);
-      setWordTranslations({}); // 清除单词翻译
+      setRecentCompletedWordIndex(null); // 清除最近完成单词
+      setRecentWordTranslation(null); // 清除最近单词翻译
       setSentenceTranslation(null); // 清除句子翻译
       currentSentenceIdRef.current = currentSentence.id; // 更新当前句子ID
       
@@ -510,7 +512,8 @@ export default function PracticeScreen() {
       setFeedback('correct');
       setTimeout(() => setFeedback(null), 300);
       
-      // 获取单词翻译并存储
+      // 设置最近完成的单词索引，并获取翻译
+      setRecentCompletedWordIndex(wordIndex);
       fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -518,16 +521,13 @@ export default function PracticeScreen() {
       })
         .then(res => res.json())
         .then(data => {
-          if (data.translation) {
-            setWordTranslations(prev => ({
-              ...prev,
-              [wordIndex]: data.translation
-            }));
+          if (data.translation && currentSentenceIdRef.current === currentSentence?.id) {
+            setRecentWordTranslation(data.translation);
           }
         })
         .catch(err => console.error('翻译失败:', err));
     }
-  }, [wordStatuses, currentInput]);
+  }, [wordStatuses, currentInput, currentSentence]);
 
   // 处理键盘提交
   const handleSubmit = () => {
@@ -741,22 +741,19 @@ export default function PracticeScreen() {
   const renderWordDisplay = (ws: WordStatus, idx: number) => {
     if (ws.isPunctuation) {
       return (
-        <View key={idx} style={styles.wordWithTranslation}>
-          <Text 
-            style={{ color: theme.textSecondary, marginHorizontal: 2, fontSize: 16 }}
-          >
-            {ws.displayText}
-          </Text>
-          {/* 预留翻译空间，保持布局稳定 */}
-          <View style={styles.translationPlaceholder} />
-        </View>
+        <Text 
+          key={idx}
+          style={{ color: theme.textSecondary, marginHorizontal: 2, fontSize: 16 }}
+        >
+          {ws.displayText}
+        </Text>
       );
     }
     
-    // 获取该单词的翻译
-    const translation = wordTranslations[idx];
+    // 判断是否是最近完成的单词（需要显示翻译）
+    const isRecentCompleted = recentCompletedWordIndex === idx && recentWordTranslation;
     
-    // 如果单词已完成，显示完整单词和翻译
+    // 如果单词已完成，显示完整单词
     if (ws.revealed) {
       return (
         <View key={idx} style={styles.wordWithTranslation}>
@@ -768,33 +765,28 @@ export default function PracticeScreen() {
               {ws.displayText}
             </Text>
           </TouchableOpacity>
-          {/* 始终渲染翻译区域，保持布局稳定 */}
-          <View style={styles.translationPlaceholder}>
-            {translation && (
-              <Text style={styles.wordTranslationText} numberOfLines={1}>
-                {translation}
-              </Text>
-            )}
-          </View>
+          {/* 只显示最近完成单词的翻译 */}
+          {isRecentCompleted && (
+            <Text style={styles.wordTranslationText} numberOfLines={1}>
+              {recentWordTranslation}
+            </Text>
+          )}
         </View>
       );
     }
     
     if (hintWordIndex === idx) {
       return (
-        <View key={idx} style={styles.wordWithTranslation}>
-          <TouchableOpacity 
-            style={[styles.wordSlot, styles.wordHint]}
-            onPress={() => showHintForWord(idx)}
-            activeOpacity={0.7}
-          >
-            <Text style={{ color: '#F59E0B', fontWeight: '600', fontSize: 16 }}>
-              {ws.displayText}
-            </Text>
-          </TouchableOpacity>
-          {/* 预留翻译空间 */}
-          <View style={styles.translationPlaceholder} />
-        </View>
+        <TouchableOpacity 
+          key={idx} 
+          style={[styles.wordSlot, styles.wordHint]}
+          onPress={() => showHintForWord(idx)}
+          activeOpacity={0.7}
+        >
+          <Text style={{ color: '#F59E0B', fontWeight: '600', fontSize: 16 }}>
+            {ws.displayText}
+          </Text>
+        </TouchableOpacity>
       );
     }
     
@@ -802,53 +794,50 @@ export default function PracticeScreen() {
     const chars = ws.word.split('');
     
     return (
-      <View key={idx} style={styles.wordWithTranslation}>
-        <TouchableOpacity 
-          style={[styles.wordSlot, styles.wordHidden, ws.errorCharIndex >= 0 && styles.wordError]}
-          onPress={() => showHintForWord(idx)}
-          activeOpacity={0.7}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {chars.map((char, charIdx) => {
-              // 错误字母显示红色
-              if (charIdx === ws.errorCharIndex) {
-                return (
-                  <Text 
-                    key={charIdx}
-                    style={{
-                      color: theme.error,
-                      fontWeight: '700',
-                      fontSize: 16,
-                      minWidth: 10,
-                      textAlign: 'center',
-                    }}
-                  >
-                    {char}
-                  </Text>
-                );
-              }
-              
-              // 正确字母显示绿色，未输入显示下划线
+      <TouchableOpacity 
+        key={idx} 
+        style={[styles.wordSlot, styles.wordHidden, ws.errorCharIndex >= 0 && styles.wordError]}
+        onPress={() => showHintForWord(idx)}
+        activeOpacity={0.7}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {chars.map((char, charIdx) => {
+            // 错误字母显示红色
+            if (charIdx === ws.errorCharIndex) {
               return (
                 <Text 
                   key={charIdx}
                   style={{
-                    color: ws.revealedChars[charIdx] ? theme.success : theme.textMuted,
-                    fontWeight: ws.revealedChars[charIdx] ? '600' : '400',
+                    color: theme.error,
+                    fontWeight: '700',
                     fontSize: 16,
                     minWidth: 10,
                     textAlign: 'center',
                   }}
                 >
-                  {ws.revealedChars[charIdx] ? char : '_'}
+                  {char}
                 </Text>
               );
-            })}
-          </View>
-        </TouchableOpacity>
-        {/* 预留翻译空间 */}
-        <View style={styles.translationPlaceholder} />
-      </View>
+            }
+            
+            // 正确字母显示绿色，未输入显示下划线
+            return (
+              <Text 
+                key={charIdx}
+                style={{
+                  color: ws.revealedChars[charIdx] ? theme.success : theme.textMuted,
+                  fontWeight: ws.revealedChars[charIdx] ? '600' : '400',
+                  fontSize: 16,
+                  minWidth: 10,
+                  textAlign: 'center',
+                }}
+              >
+                {ws.revealedChars[charIdx] ? char : '_'}
+              </Text>
+            );
+          })}
+        </View>
+      </TouchableOpacity>
     );
   };
 
