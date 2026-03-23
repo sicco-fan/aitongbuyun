@@ -40,8 +40,6 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.full,
       marginRight: Spacing.md,
     },
-    progressBadgeText: {},
-    sentenceCounter: {},
     
     // 音频控制区
     audioSection: {
@@ -78,6 +76,9 @@ export const createStyles = (theme: Theme) => {
       minHeight: 120,
     },
     sentenceLabel: {
+      marginBottom: Spacing.md,
+    },
+    sentenceHeader: {
       marginBottom: Spacing.md,
     },
     wordsContainer: {
@@ -119,6 +120,42 @@ export const createStyles = (theme: Theme) => {
     wordIndex: {
       fontSize: 10,
       color: theme.textMuted,
+    },
+    
+    // 句子导航区域（显眼）
+    sentenceNavSection: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.xl,
+      borderWidth: 2,
+      borderColor: theme.border,
+      padding: Spacing.lg,
+      marginBottom: Spacing.xl,
+    },
+    sentenceNavBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      paddingVertical: Spacing.md,
+      paddingHorizontal: Spacing.xl,
+      borderRadius: BorderRadius.lg,
+      minWidth: 100,
+      justifyContent: 'center',
+    },
+    sentenceNavPrev: {
+      backgroundColor: theme.backgroundTertiary,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    sentenceNavNext: {
+      backgroundColor: theme.primary,
+    },
+    sentenceCounter: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      gap: Spacing.xs,
     },
     
     // 输入区

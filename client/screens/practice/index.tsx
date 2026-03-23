@@ -395,7 +395,6 @@ export default function PracticeScreen() {
 
   // 处理输入变化 - 实时匹配
   const handleInputChange = (text: string) => {
-    const prevInput = currentInput;
     setCurrentInput(text);
     
     // 检测到空格时自动清空并继续
@@ -406,24 +405,30 @@ export default function PracticeScreen() {
     
     // 实时检查输入
     if (text.length > 0) {
-      const matched = checkInputRealtime(text);
-      
-      // 如果输入了一个完整单词（匹配到了），且输入长度等于单词长度，清空输入
-      setWordStatuses(prev => {
-        const matchedWord = prev.find(w => !w.isPunctuation && !w.revealed && 
-          w.word.toLowerCase().startsWith(text.toLowerCase()) &&
-          w.word.length === text.length);
-        if (matchedWord) {
-          // 找到了完整匹配的单词，清空输入
-          setTimeout(() => setCurrentInput(''), 50);
-          setFeedbackWord(text);
-          setFeedback('correct');
-          setTimeout(() => setFeedback(null), 300);
-        }
-        return prev;
-      });
+      checkInputRealtime(text);
     }
   };
+
+  // 监听单词完成，自动清空输入框
+  useEffect(() => {
+    if (!currentInput) return;
+    
+    // 检查当前输入是否匹配了某个完整单词
+    const inputLower = currentInput.toLowerCase();
+    const matchedWord = wordStatuses.find(w => 
+      !w.isPunctuation && 
+      w.revealed && 
+      w.word.toLowerCase() === inputLower
+    );
+    
+    if (matchedWord) {
+      // 找到了完整匹配的单词，清空输入
+      setCurrentInput('');
+      setFeedbackWord(currentInput);
+      setFeedback('correct');
+      setTimeout(() => setFeedback(null), 300);
+    }
+  }, [wordStatuses, currentInput]);
 
   // 处理键盘提交
   const handleSubmit = () => {
@@ -846,15 +851,52 @@ export default function PracticeScreen() {
 
         {/* Sentence Display */}
         <View style={styles.sentenceSection}>
-          <ThemedText variant="caption" color={theme.textMuted} style={styles.sentenceLabel}>
-            句子进度：{completedChars}/{totalChars} 字母 ({sentenceProgress}%)
-          </ThemedText>
+          <View style={styles.sentenceHeader}>
+            <ThemedText variant="caption" color={theme.textMuted}>
+              句子进度：{completedChars}/{totalChars} 字母 ({sentenceProgress}%)
+            </ThemedText>
+          </View>
           <View style={styles.wordsContainer}>
             {wordStatuses.map((ws, idx) => renderWordDisplay(ws, idx))}
           </View>
           <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 8, textAlign: 'center' }}>
             点击未答出的单词可以查看提示
           </ThemedText>
+        </View>
+
+        {/* Sentence Navigation - 显眼的导航按钮 */}
+        <View style={styles.sentenceNavSection}>
+          <TouchableOpacity
+            style={[styles.sentenceNavBtn, styles.sentenceNavPrev, currentIndex === 0 && styles.buttonDisabled]}
+            onPress={goToPrevSentence}
+            disabled={currentIndex === 0}
+          >
+            <FontAwesome6 name="chevron-left" size={20} color={currentIndex === 0 ? theme.textMuted : theme.textPrimary} />
+            <ThemedText variant="smallMedium" color={currentIndex === 0 ? theme.textMuted : theme.textPrimary}>
+              上一句
+            </ThemedText>
+          </TouchableOpacity>
+          
+          <View style={styles.sentenceCounter}>
+            <ThemedText variant="h4" color={theme.textPrimary}>
+              {currentIndex + 1}
+            </ThemedText>
+            <ThemedText variant="body" color={theme.textMuted}>
+              / {sentences.length}
+            </ThemedText>
+          </View>
+          
+          <TouchableOpacity
+            style={[styles.sentenceNavBtn, styles.sentenceNavNext]}
+            onPress={goToNextSentence}
+          >
+            <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
+              {currentIndex === sentences.length - 1 ? '完成' : '下一句'}
+            </ThemedText>
+            {currentIndex < sentences.length - 1 && (
+              <FontAwesome6 name="chevron-right" size={20} color={theme.buttonPrimaryText} />
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Input Section */}
@@ -904,31 +946,6 @@ export default function PracticeScreen() {
               </ThemedText>
             </View>
           )}
-        </View>
-
-        {/* Navigation Buttons */}
-        <View style={styles.navButtonRow}>
-          <TouchableOpacity
-            style={[styles.navButton, styles.navButtonPrev, currentIndex === 0 && styles.buttonDisabled]}
-            onPress={goToPrevSentence}
-            disabled={currentIndex === 0}
-          >
-            <FontAwesome6 name="chevron-left" size={16} color={currentIndex === 0 ? theme.textMuted : theme.textPrimary} />
-            <ThemedText variant="smallMedium" color={currentIndex === 0 ? theme.textMuted : theme.textPrimary} style={{ marginLeft: 6 }}>
-              上一句
-            </ThemedText>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.navButton, styles.navButtonNext]}
-            onPress={goToNextSentence}
-          >
-            <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
-              {currentIndex === sentences.length - 1 ? '完成' : '下一句'}
-            </ThemedText>
-            {currentIndex < sentences.length - 1 && (
-              <FontAwesome6 name="chevron-right" size={16} color={theme.buttonPrimaryText} style={{ marginLeft: 6 }} />
-            )}
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </Screen>
