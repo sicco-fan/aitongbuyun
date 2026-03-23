@@ -6,6 +6,7 @@ import {
   Text,
   Dimensions,
   Platform,
+  StyleSheet,
 } from 'react-native';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -13,7 +14,6 @@ import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { createStyles } from './styles';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Audio } from 'expo-av';
 import { ScrollView } from 'react-native';
@@ -36,7 +36,6 @@ interface WordTimestamp {
 
 export default function TimestampEditorScreen() {
   const { theme, isDark } = useTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
   const params = useSafeSearchParams<{ materialId: number; title: string }>();
   
@@ -52,25 +51,26 @@ export default function TimestampEditorScreen() {
   const [position, setPosition] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   
-  // 单词级时间戳
   const [wordTimestamps, setWordTimestamps] = useState<WordTimestamp[]>([]);
   
-  // 选择区域（毫秒）
+  // 选择区域
   const [selectionStart, setSelectionStart] = useState(0);
   const [selectionEnd, setSelectionEnd] = useState(0);
   
-  // 波形容器宽度
-  const [waveformWidth, setWaveformWidth] = useState(SCREEN_WIDTH - 48);
+  // 波形宽度
+  const [waveformWidth, setWaveformWidth] = useState(SCREEN_WIDTH - 32);
   
-  // 拖拽选择状态
+  // 拖拽状态
   const [isSelecting, setIsSelecting] = useState(false);
-  const [selectionOrigin, setSelectionOrigin] = useState(0); // 开始选择时的位置
-  const [dragCurrentTime, setDragCurrentTime] = useState(0); // 当前拖动位置
+  const [selectionOrigin, setSelectionOrigin] = useState(0);
+  
+  // 缩放（可选）
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [scrollOffset, setScrollOffset] = useState(0);
   
   const soundRef = useRef<Audio.Sound | null>(null);
   const waveformRef = useRef<View>(null);
   
-  // 提示对话框
   const [dialog, setDialog] = useState<{ visible: boolean; message: string; onConfirm?: () => void }>({
     visible: false,
     message: '',
@@ -78,7 +78,9 @@ export default function TimestampEditorScreen() {
 
   const currentSentence = sentences[currentIndex];
 
-  // 获取材料详情
+  // 样式 - 黑色背景专业风格
+  const styles = useMemo(() => createWaveformStyles(theme), [theme]);
+
   const fetchData = useCallback(async () => {
     if (!materialId) return;
     
@@ -126,7 +128,6 @@ export default function TimestampEditorScreen() {
     };
   }, [fetchData]);
 
-  // 当切换句子时，初始化选择区域
   useEffect(() => {
     if (currentSentence && duration > 0) {
       if (currentSentence.start_time > 0 || currentSentence.end_time > 0) {
@@ -141,7 +142,6 @@ export default function TimestampEditorScreen() {
     }
   }, [currentIndex, currentSentence, duration, sentences]);
 
-  // 加载音频
   const loadAudio = async () => {
     if (!audioUrl) return null;
     
@@ -208,6 +208,19 @@ export default function TimestampEditorScreen() {
     }, playDuration);
   };
 
+  const playFromStart = async () => {
+    if (!soundRef.current) {
+      await loadAudio();
+    }
+    
+    if (!soundRef.current) return;
+    
+    await stopPlaying();
+    await soundRef.current.setPositionAsync(0);
+    await soundRef.current.playAsync();
+    setIsPlaying(true);
+  };
+
   const confirmSelection = async () => {
     const newSentences = [...sentences];
     
@@ -261,11 +274,19 @@ export default function TimestampEditorScreen() {
   };
 
   const formatTime = (ms: number) => {
+    const totalSeconds = ms / 1000;
+    const seconds = Math.floor(totalSeconds);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    const decimal = Math.floor((totalSeconds % 1) * 100);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}.${decimal.toString().padStart(2, '0')}`;
+  };
+
+  const formatTimeSimple = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
-    const remainingMs = Math.floor((ms % 1000) / 10);
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}.${remainingMs.toString().padStart(2, '0')}`;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
   const timeToPixel = (time: number) => {
@@ -278,9 +299,9 @@ export default function TimestampEditorScreen() {
   };
 
   // 生成波形数据
-  const generateWaveformData = useMemo(() => {
-    const barCount = Math.floor(waveformWidth / 4);
-    const bars: { height: number; hasWord: boolean }[] = [];
+  const waveformData = useMemo(() => {
+    const barCount = Math.floor(waveformWidth / 2);
+    const bars: number[] = [];
     
     for (let i = 0; i < barCount; i++) {
       const startTime = (i / barCount) * duration;
@@ -290,61 +311,51 @@ export default function TimestampEditorScreen() {
         w => w.start_time < endTime && w.end_time > startTime
       );
       
-      const height = hasWord ? 0.6 + Math.random() * 0.4 : 0.2 + Math.random() * 0.3;
+      // 生成上下两部分（模拟立体声波形）
+      const upperHeight = hasWord ? 0.5 + Math.random() * 0.4 : 0.15 + Math.random() * 0.2;
+      const lowerHeight = hasWord ? 0.4 + Math.random() * 0.35 : 0.1 + Math.random() * 0.15;
       
-      bars.push({ height, hasWord });
+      bars.push(upperHeight, lowerHeight);
     }
     
     return bars;
   }, [waveformWidth, duration, wordTimestamps]);
 
-  // ========== 鼠标拖拽选择 ==========
-  
   // 获取相对于波形容器的X坐标
   const getRelativeX = (evt: any): number => {
     if (Platform.OS === 'web') {
-      // Web端：获取相对于元素的位置
       const rect = evt.currentTarget?.getBoundingClientRect?.();
       if (rect) {
         return evt.clientX - rect.left;
       }
       return evt.nativeEvent?.offsetX || 0;
     }
-    // 移动端
     const touch = evt.nativeEvent?.touches?.[0];
-    if (touch && waveformRef.current) {
-      return touch.locationX || 0;
-    }
-    return evt.nativeEvent?.locationX || 0;
+    return touch?.locationX || evt.nativeEvent?.locationX || 0;
   };
 
-  // 开始选择（鼠标按下）
+  // 开始选择
   const handleSelectionStart = (evt: any) => {
     const x = getRelativeX(evt);
     const time = pixelToTime(x);
     
     setIsSelecting(true);
     setSelectionOrigin(time);
-    setDragCurrentTime(time);
     setSelectionStart(time);
     setSelectionEnd(time);
     
-    // 停止播放
     if (isPlaying) {
       stopPlaying();
     }
   };
 
-  // 选择中（鼠标移动）
+  // 选择中
   const handleSelectionMove = (evt: any) => {
     if (!isSelecting) return;
     
     const x = getRelativeX(evt);
     const time = pixelToTime(x);
     
-    setDragCurrentTime(time);
-    
-    // 根据拖动方向确定开始和结束
     if (time < selectionOrigin) {
       setSelectionStart(time);
       setSelectionEnd(selectionOrigin);
@@ -354,41 +365,19 @@ export default function TimestampEditorScreen() {
     }
   };
 
-  // 结束选择（鼠标松开）
+  // 结束选择
   const handleSelectionEnd = () => {
     if (!isSelecting) return;
     
     setIsSelecting(false);
     
-    // 确保结束时间比开始时间大至少100ms
+    // 确保最小选择时长
     if (selectionEnd - selectionStart < 100) {
-      setSelectionEnd(selectionStart + 1000); // 默认1秒
+      setSelectionEnd(selectionStart + 1000);
     }
   };
 
-  // 点击波形播放
-  const handleWaveformClick = (evt: any) => {
-    if (isSelecting) return;
-    
-    const x = getRelativeX(evt);
-    const time = pixelToTime(x);
-    
-    if (soundRef.current) {
-      soundRef.current.setPositionAsync(time);
-      setPosition(time);
-    }
-  };
-
-  // 上一句/下一句
-  const goToPrev = () => {
-    if (currentIndex > 0) setCurrentIndex(currentIndex - 1);
-  };
-
-  const goToNext = () => {
-    if (currentIndex < sentences.length - 1) setCurrentIndex(currentIndex + 1);
-  };
-
-  // 计算选择区域的样式
+  // 计算选择区域
   const selectionStyle = useMemo(() => {
     const left = timeToPixel(Math.min(selectionStart, selectionEnd));
     const width = timeToPixel(Math.abs(selectionEnd - selectionStart));
@@ -397,12 +386,10 @@ export default function TimestampEditorScreen() {
 
   if (loading) {
     return (
-      <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
-        <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={theme.primary} />
-          <ThemedText variant="body" color={theme.textMuted} style={{ marginTop: 16 }}>
-            正在加载音频...
-          </ThemedText>
+      <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
+        <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a' }}>
+          <ActivityIndicator size="large" color="#00ff88" />
+          <Text style={{ color: '#888', marginTop: 16 }}>正在加载音频...</Text>
         </ThemedView>
       </Screen>
     );
@@ -410,272 +397,183 @@ export default function TimestampEditorScreen() {
 
   if (sentences.length === 0) {
     return (
-      <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
-        <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <FontAwesome6 name="file-lines" size={48} color={theme.textMuted} />
-          <ThemedText variant="body" color={theme.textMuted} style={{ marginTop: 16 }}>
-            没有句子，请先切分文本
-          </ThemedText>
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-            <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>返回</ThemedText>
+      <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
+        <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a' }}>
+          <FontAwesome6 name="file-lines" size={48} color="#666" />
+          <Text style={{ color: '#888', marginTop: 16 }}>没有句子，请先切分文本</Text>
+          <TouchableOpacity style={{ marginTop: 24, padding: 16, backgroundColor: '#00ff88', borderRadius: 8 }} onPress={() => router.back()}>
+            <Text style={{ color: '#000', fontWeight: '600' }}>返回</Text>
           </TouchableOpacity>
         </ThemedView>
       </Screen>
     );
   }
 
+  const selectionDuration = Math.abs(selectionEnd - selectionStart);
+
   return (
-    <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
-      {/* 头部 */}
-      <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <ThemedText variant="h3" color={theme.textPrimary}>
-              音频分配
-            </ThemedText>
-            <ThemedText variant="caption" color={theme.textMuted}>
-              {currentIndex + 1}/{sentences.length} · 总时长 {formatTime(duration)}
-            </ThemedText>
-          </View>
-          <TouchableOpacity onPress={handleSave} disabled={saving}>
-            {saving ? (
-              <ActivityIndicator size="small" color={theme.primary} />
-            ) : (
-              <FontAwesome6 name="check" size={20} color={theme.primary} />
-            )}
+    <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
+      {/* 顶部状态栏 */}
+      <View style={styles.statusBar}>
+        <View style={styles.statusLeft}>
+          <Text style={styles.statusText}>句子 {currentIndex + 1}/{sentences.length}</Text>
+          <Text style={styles.statusInfo}>总时长: {formatTimeSimple(duration)}</Text>
+        </View>
+        <View style={styles.statusRight}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+            <FontAwesome6 name="xmark" size={20} color="#888" />
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* 当前句子 */}
-        <View style={styles.sentenceSection}>
-          <View style={styles.sentenceHeader}>
-            <TouchableOpacity 
-              style={[styles.sentenceNavBtn, currentIndex === 0 && styles.sentenceNavBtnDisabled]}
-              onPress={goToPrev}
-              disabled={currentIndex === 0}
-            >
-              <FontAwesome6 name="chevron-left" size={16} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
-            </TouchableOpacity>
-            
-            <View style={styles.sentenceNumber}>
-              <ThemedText variant="h4" color={theme.primary}>{currentIndex + 1}</ThemedText>
-            </View>
-            
-            <TouchableOpacity 
-              style={[styles.sentenceNavBtn, currentIndex === sentences.length - 1 && styles.sentenceNavBtnDisabled]}
-              onPress={goToNext}
-              disabled={currentIndex === sentences.length - 1}
-            >
-              <FontAwesome6 name="chevron-right" size={16} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.sentenceCard}>
-            <ThemedText variant="h4" color={theme.textPrimary} style={styles.sentenceText}>
-              {currentSentence?.text}
-            </ThemedText>
-          </View>
+      {/* 当前句子 */}
+      <View style={styles.sentenceBar}>
+        <TouchableOpacity 
+          style={styles.navBtn}
+          onPress={() => currentIndex > 0 && setCurrentIndex(currentIndex - 1)}
+          disabled={currentIndex === 0}
+        >
+          <FontAwesome6 name="chevron-left" size={16} color={currentIndex === 0 ? '#444' : '#00ff88'} />
+        </TouchableOpacity>
+        
+        <View style={styles.sentenceContent}>
+          <Text style={styles.sentenceText} numberOfLines={2}>
+            {currentSentence?.text}
+          </Text>
         </View>
+        
+        <TouchableOpacity 
+          style={styles.navBtn}
+          onPress={() => currentIndex < sentences.length - 1 && setCurrentIndex(currentIndex + 1)}
+          disabled={currentIndex === sentences.length - 1}
+        >
+          <FontAwesome6 name="chevron-right" size={16} color={currentIndex === sentences.length - 1 ? '#444' : '#00ff88'} />
+        </TouchableOpacity>
+      </View>
 
-        {/* 波形选择器 */}
-        <View style={styles.waveformSection}>
-          {/* 时间显示 */}
-          <View style={styles.timeDisplay}>
-            <View style={styles.timeBox}>
-              <ThemedText variant="caption" color={theme.textMuted}>开始</ThemedText>
-              <ThemedText variant="h4" color={theme.primary}>{formatTime(Math.min(selectionStart, selectionEnd))}</ThemedText>
-            </View>
-            <View style={styles.durationBox}>
-              <FontAwesome6 name="arrows-left-right" size={12} color={theme.textMuted} />
-              <ThemedText variant="bodyMedium" color={theme.textSecondary}>
-                {formatTime(Math.abs(selectionEnd - selectionStart))}
-              </ThemedText>
-            </View>
-            <View style={styles.timeBox}>
-              <ThemedText variant="caption" color={theme.textMuted}>结束</ThemedText>
-              <ThemedText variant="h4" color={theme.success}>{formatTime(Math.max(selectionStart, selectionEnd))}</ThemedText>
-            </View>
-          </View>
-          
-          {/* 波形容器 */}
-          <View 
-            ref={waveformRef}
-            style={styles.waveformContainer}
-            onLayout={(e) => setWaveformWidth(e.nativeEvent.layout.width)}
-            // @ts-ignore - Web端鼠标事件
-            onMouseDown={handleSelectionStart}
-            // @ts-ignore - Web端鼠标事件
-            onMouseMove={handleSelectionMove}
-            // @ts-ignore - Web端鼠标事件
-            onMouseUp={handleSelectionEnd}
-            // @ts-ignore - Web端鼠标事件
-            onMouseLeave={handleSelectionEnd}
-            // 移动端触摸事件
-            onTouchStart={handleSelectionStart}
-            onTouchMove={handleSelectionMove}
-            onTouchEnd={handleSelectionEnd}
-          >
-            {/* 波形背景 */}
-            <View style={styles.waveformTrack} pointerEvents="none">
-              {generateWaveformData.map((bar, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.waveformBar,
-                    {
-                      height: `${bar.height * 100}%`,
-                      backgroundColor: bar.hasWord ? theme.primary : theme.textMuted,
-                      opacity: bar.hasWord ? 0.8 : 0.3,
-                    },
-                  ]}
-                />
-              ))}
-            </View>
-            
-            {/* 未选中区域遮罩 - 左侧 */}
-            <View
-              style={[
-                styles.maskOverlay,
-                { left: 0, width: selectionStyle.left },
-              ]}
-              pointerEvents="none"
-            />
-            
-            {/* 未选中区域遮罩 - 右侧 */}
-            <View
-              style={[
-                styles.maskOverlay,
-                { left: selectionStyle.left + selectionStyle.width, right: 0 },
-              ]}
-              pointerEvents="none"
-            />
-            
-            {/* 选中区域高亮 */}
-            <View
-              style={[
-                styles.selectionHighlight,
-                { 
-                  left: selectionStyle.left, 
-                  width: selectionStyle.width,
-                },
-              ]}
-              pointerEvents="none"
-            />
-            
-            {/* 选择边界线 */}
-            <View
-              style={[
-                styles.selectionEdge,
-                { left: selectionStyle.left, backgroundColor: theme.primary },
-              ]}
-              pointerEvents="none"
-            />
-            <View
-              style={[
-                styles.selectionEdge,
-                { left: selectionStyle.left + selectionStyle.width - 2, backgroundColor: theme.success },
-              ]}
-              pointerEvents="none"
-            />
-            
-            {/* 播放位置指示器 */}
-            {!isSelecting && (
-              <View
-                style={[
-                  styles.playhead,
-                  { left: timeToPixel(position) },
-                ]}
-                pointerEvents="none"
-              />
-            )}
-          </View>
-          
-          {/* 时间刻度 */}
-          <View style={styles.timeLabels}>
-            <Text style={[styles.timeLabel, { color: theme.textMuted }]}>0:00</Text>
-            <Text style={[styles.timeLabel, { color: theme.textMuted }]}>
-              {formatTime(duration / 2)}
+      {/* 波形编辑区域 */}
+      <View style={styles.waveformSection}>
+        {/* 时间刻度 */}
+        <View style={styles.timeScale}>
+          {[0, 0.25, 0.5, 0.75, 1].map(ratio => (
+            <Text key={ratio} style={styles.timeTick}>
+              {formatTimeSimple(duration * ratio)}
             </Text>
-            <Text style={[styles.timeLabel, { color: theme.textMuted }]}>
-              {formatTime(duration)}
-            </Text>
-          </View>
-        </View>
-
-        {/* 提示 */}
-        <View style={styles.tipBox}>
-          <FontAwesome6 name="hand-pointer" size={14} color={theme.accent} />
-          <ThemedText variant="small" color={theme.textSecondary}>
-            在波形上按住鼠标拖动来选择音频范围，松开后点击确认
-          </ThemedText>
-        </View>
-
-        {/* 操作按钮 */}
-        <View style={styles.actionSection}>
-          <TouchableOpacity style={styles.playBtn} onPress={playSelection}>
-            <FontAwesome6 name={isPlaying ? "pause" : "play"} size={24} color={theme.buttonPrimaryText} />
-            <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-              {isPlaying ? '暂停' : '试听选中'}
-            </ThemedText>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.confirmBtn} onPress={confirmSelection}>
-            <FontAwesome6 name="check" size={20} color={theme.buttonPrimaryText} />
-            <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-              确认并下一句
-            </ThemedText>
-            <FontAwesome6 name="arrow-right" size={16} color={theme.buttonPrimaryText} />
-          </TouchableOpacity>
-        </View>
-
-        {/* 句子列表 */}
-        <View style={styles.listSection}>
-          <ThemedText variant="smallMedium" color={theme.textSecondary}>
-            所有句子
-          </ThemedText>
-          {sentences.map((sentence, index) => (
-            <TouchableOpacity
-              key={sentence.id}
-              style={[
-                styles.listItem,
-                index === currentIndex && styles.listItemActive,
-              ]}
-              onPress={() => setCurrentIndex(index)}
-            >
-              <View style={[
-                styles.listItemNumber,
-                index === currentIndex && { backgroundColor: theme.primary },
-              ]}>
-                <ThemedText variant="caption" color={index === currentIndex ? theme.buttonPrimaryText : theme.textMuted}>
-                  {index + 1}
-                </ThemedText>
-              </View>
-              <View style={styles.listItemContent}>
-                <ThemedText
-                  variant="small"
-                  color={index === currentIndex ? theme.textPrimary : theme.textSecondary}
-                  numberOfLines={2}
-                >
-                  {sentence.text}
-                </ThemedText>
-                <ThemedText variant="caption" color={theme.textMuted}>
-                  {sentence.start_time > 0 ? `${formatTime(sentence.start_time)} → ${formatTime(sentence.end_time)}` : '未分配'}
-                </ThemedText>
-              </View>
-              {index === currentIndex && (
-                <FontAwesome6 name="volume-high" size={12} color={theme.primary} />
-              )}
-            </TouchableOpacity>
           ))}
         </View>
-      </ScrollView>
+        
+        {/* 波形容器 */}
+        <View 
+          ref={waveformRef}
+          style={styles.waveformContainer}
+          onLayout={(e) => setWaveformWidth(e.nativeEvent.layout.width)}
+          // @ts-ignore
+          onMouseDown={handleSelectionStart}
+          // @ts-ignore
+          onMouseMove={handleSelectionMove}
+          // @ts-ignore
+          onMouseUp={handleSelectionEnd}
+          // @ts-ignore
+          onMouseLeave={handleSelectionEnd}
+          onTouchStart={handleSelectionStart}
+          onTouchMove={handleSelectionMove}
+          onTouchEnd={handleSelectionEnd}
+        >
+          {/* 波形 */}
+          <View style={styles.waveformTrack}>
+            {Array.from({ length: waveformData.length / 2 }).map((_, i) => (
+              <View key={i} style={styles.barContainer}>
+                {/* 上半部分波形 */}
+                <View style={[styles.barUpper, { height: `${waveformData[i * 2] * 50}%` }]} />
+                {/* 下半部分波形 */}
+                <View style={[styles.barLower, { height: `${waveformData[i * 2 + 1] * 50}%` }]} />
+              </View>
+            ))}
+          </View>
+          
+          {/* 零电平线 */}
+          <View style={styles.zeroLine} />
+          
+          {/* 未选中遮罩 - 左 */}
+          <View style={[styles.mask, { left: 0, width: selectionStyle.left }]} />
+          
+          {/* 未选中遮罩 - 右 */}
+          <View style={[styles.mask, { left: selectionStyle.left + selectionStyle.width, right: 0 }]} />
+          
+          {/* 选中区域 */}
+          <View style={[styles.selection, { left: selectionStyle.left, width: selectionStyle.width }]} />
+          
+          {/* 左边界标记 */}
+          <View style={[styles.marker, styles.markerStart, { left: selectionStyle.left - 1 }]} />
+          
+          {/* 右边界标记 */}
+          <View style={[styles.marker, styles.markerEnd, { left: selectionStyle.left + selectionStyle.width - 1 }]} />
+          
+          {/* 播放位置 */}
+          {!isSelecting && position > 0 && (
+            <View style={[styles.playhead, { left: timeToPixel(position) }]} />
+          )}
+        </View>
+        
+        {/* 选区时间信息 */}
+        <View style={styles.selectionInfo}>
+          <View style={styles.selectionTimeBox}>
+            <Text style={styles.selectionLabel}>开始</Text>
+            <Text style={styles.selectionValue}>{formatTime(Math.min(selectionStart, selectionEnd))}</Text>
+          </View>
+          
+          <View style={styles.selectionDurationBox}>
+            <Text style={styles.selectionDuration}>{formatTime(selectionDuration)}</Text>
+            <Text style={styles.selectionDurationLabel}>选中时长</Text>
+          </View>
+          
+          <View style={styles.selectionTimeBox}>
+            <Text style={styles.selectionLabel}>结束</Text>
+            <Text style={styles.selectionValue}>{formatTime(Math.max(selectionStart, selectionEnd))}</Text>
+          </View>
+        </View>
+      </View>
 
-      {/* 提示对话框 */}
+      {/* 操作提示 */}
+      <View style={styles.tipBar}>
+        <FontAwesome6 name="hand-pointer" size={14} color="#00ff88" />
+        <Text style={styles.tipText}>在波形上拖动鼠标选择音频片段</Text>
+      </View>
+
+      {/* 底部控制栏 */}
+      <View style={styles.controls}>
+        {/* 播放控制 */}
+        <View style={styles.playControls}>
+          <TouchableOpacity style={styles.controlBtn} onPress={playFromStart}>
+            <FontAwesome6 name="backward" size={18} color="#888" />
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.playBtn} onPress={playSelection}>
+            <FontAwesome6 name={isPlaying ? "pause" : "play"} size={24} color="#000" />
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.controlBtn} onPress={stopPlaying}>
+            <FontAwesome6 name="stop" size={18} color="#888" />
+          </TouchableOpacity>
+        </View>
+        
+        {/* 确认按钮 */}
+        <TouchableOpacity style={styles.confirmBtn} onPress={confirmSelection}>
+          <FontAwesome6 name="check" size={18} color="#000" />
+          <Text style={styles.confirmBtnText}>确认并下一句</Text>
+          <FontAwesome6 name="arrow-right" size={14} color="#000" />
+        </TouchableOpacity>
+        
+        {/* 保存按钮 */}
+        <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
+          {saving ? (
+            <ActivityIndicator size="small" color="#00ff88" />
+          ) : (
+            <FontAwesome6 name="floppy-disk" size={18} color="#00ff88" />
+          )}
+        </TouchableOpacity>
+      </View>
+
       <ConfirmDialog
         visible={dialog.visible}
         title="提示"
@@ -690,3 +588,279 @@ export default function TimestampEditorScreen() {
     </Screen>
   );
 }
+
+// 专业波形编辑器样式
+const createWaveformStyles = (theme: any) => StyleSheet.create({
+  statusBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#222',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  statusLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  statusText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  statusInfo: {
+    color: '#888',
+    fontSize: 12,
+  },
+  statusRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  closeBtn: {
+    padding: 8,
+  },
+  
+  // 句子栏
+  sentenceBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#1a1a1a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  navBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sentenceContent: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  sentenceText: {
+    color: '#fff',
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  
+  // 波形区域
+  waveformSection: {
+    flex: 1,
+    backgroundColor: '#0a0a0a',
+  },
+  timeScale: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#111',
+  },
+  timeTick: {
+    color: '#666',
+    fontSize: 10,
+  },
+  waveformContainer: {
+    flex: 1,
+    backgroundColor: '#0a0a0a',
+    position: 'relative',
+    marginHorizontal: 8,
+  },
+  waveformTrack: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  barContainer: {
+    width: 2,
+    height: '100%',
+    marginHorizontal: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  barUpper: {
+    width: 1.5,
+    backgroundColor: '#00ff88',
+    borderBottomLeftRadius: 1,
+    borderBottomRightRadius: 1,
+  },
+  barLower: {
+    width: 1.5,
+    backgroundColor: '#00ff88',
+    borderTopLeftRadius: 1,
+    borderTopRightRadius: 1,
+  },
+  zeroLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '50%',
+    height: 1,
+    backgroundColor: '#ff4444',
+  },
+  mask: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+  },
+  selection: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,255,136,0.15)',
+    borderWidth: 0,
+  },
+  marker: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 2,
+    zIndex: 10,
+  },
+  markerStart: {
+    backgroundColor: '#00ff88',
+  },
+  markerEnd: {
+    backgroundColor: '#00ff88',
+  },
+  playhead: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 2,
+    backgroundColor: '#ff0',
+    zIndex: 5,
+  },
+  
+  // 选区信息
+  selectionInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: '#111',
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+  },
+  selectionTimeBox: {
+    alignItems: 'center',
+  },
+  selectionLabel: {
+    color: '#666',
+    fontSize: 10,
+    marginBottom: 4,
+  },
+  selectionValue: {
+    color: '#00ff88',
+    fontSize: 16,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  selectionDurationBox: {
+    alignItems: 'center',
+    backgroundColor: '#00ff8820',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  selectionDuration: {
+    color: '#00ff88',
+    fontSize: 24,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  selectionDurationLabel: {
+    color: '#00ff88',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  
+  // 提示栏
+  tipBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    backgroundColor: '#111',
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+  },
+  tipText: {
+    color: '#888',
+    fontSize: 12,
+  },
+  
+  // 底部控制
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#222',
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+  },
+  playControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  controlBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#00ff88',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#00ff88',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+  },
+  confirmBtnText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  saveBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#00ff88',
+  },
+});
