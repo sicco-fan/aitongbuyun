@@ -11,8 +11,7 @@ import { FontAwesome6 } from '@expo/vector-icons';
 interface TimeControlProps {
   value: number; // 当前时间值（毫秒）
   onChange: (delta: number) => void; // 变化量回调
-  onPlayStart?: () => void; // 按下开始播放
-  onPlayStop?: () => void; // 松开停止播放
+  onPlay?: () => void; // 播放回调
   label: string; // 标签（如"开始"）
   color?: string;
 }
@@ -20,8 +19,7 @@ interface TimeControlProps {
 export function TimeControl({
   value,
   onChange,
-  onPlayStart,
-  onPlayStop,
+  onPlay,
   label,
   color = '#00ff88',
 }: TimeControlProps) {
@@ -41,13 +39,10 @@ export function TimeControl({
     onChange(delta);
   }, [onChange]);
 
-  const handlePressIn = useCallback(() => {
-    onPlayStart?.();
-  }, [onPlayStart]);
-
-  const handlePressOut = useCallback(() => {
-    onPlayStop?.();
-  }, [onPlayStop]);
+  const handlePlay = useCallback(() => {
+    console.log(`[TimeControl] 点击播放: ${label}, 时间: ${value}ms`);
+    onPlay?.();
+  }, [onPlay, label, value]);
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
@@ -71,26 +66,26 @@ export function TimeControl({
 
   return (
     <View style={styles.container}>
-      {/* 时间显示行 - 可点击播放，也可滑动微调 */}
-      <TouchableOpacity 
-        style={[styles.timeRow, { borderColor: color }]}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={0.8}
-      >
-        {/* 左侧：标签 + 播放图标 */}
-        <View style={styles.leftSection}>
-          <Text style={[styles.label, { color }]}>{label}</Text>
-          <View style={[styles.playHint, { backgroundColor: color + '20' }]}>
-            <FontAwesome6 name="play" size={10} color={color} />
-            <Text style={[styles.hintText, { color }]}>点击试听</Text>
+      {/* 时间显示行 - 可滑动微调 */}
+      <GestureDetector gesture={panGesture}>
+        <Animated.View style={animatedStyle}>
+          <View style={[styles.timeRow, { borderColor: color }]}>
+            <Text style={[styles.label, { color }]}>{label}</Text>
+            <Text style={[styles.timeValue, { color }]}>
+              {formatTime(value)}
+            </Text>
           </View>
-        </View>
-        
-        {/* 右侧：时间值 */}
-        <Text style={[styles.timeValue, { color }]}>
-          {formatTime(value)}
-        </Text>
+        </Animated.View>
+      </GestureDetector>
+      
+      {/* 播放按钮 */}
+      <TouchableOpacity 
+        style={[styles.playButton, { backgroundColor: color }]}
+        onPress={handlePlay}
+        activeOpacity={0.7}
+      >
+        <FontAwesome6 name="play" size={18} color="#000" />
+        <Text style={styles.playButtonText}>播放试听</Text>
       </TouchableOpacity>
       
       {/* 调整按钮行 */}
@@ -142,17 +137,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 16,
     borderWidth: 2,
     backgroundColor: '#1a1a1a',
     minWidth: 280,
-  },
-  leftSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
   },
   label: {
     fontSize: 16,
@@ -160,22 +150,24 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  playHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  hintText: {
-    fontSize: 10,
-    fontWeight: '500',
-  },
   timeValue: {
     fontSize: 28,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+  },
+  playButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 24,
+    marginTop: 12,
+  },
+  playButtonText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '700',
   },
   buttonRow: {
     flexDirection: 'row',

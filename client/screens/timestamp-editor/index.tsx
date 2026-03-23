@@ -212,40 +212,66 @@ export default function TimestampEditorScreen() {
     }
   }, []);
 
-  // 播放完整句子（按住播放按钮时触发）
+  // 播放完整句子（点击播放按钮时触发）
   const playFullSentence = async () => {
+    console.log('[playFullSentence] 开始执行');
+    console.log('[playFullSentence] currentSentence:', currentSentence?.text);
+    console.log('[playFullSentence] start_time:', currentSentence?.start_time);
+    console.log('[playFullSentence] end_time:', currentSentence?.end_time);
+    console.log('[playFullSentence] audioUrl:', audioUrl);
+    
     // 加载音频
     if (!soundRef.current) {
+      console.log('[playFullSentence] 音频未加载，开始加载...');
       const loadedDuration = await loadAudio();
       if (!loadedDuration) {
-        console.log('音频加载失败');
+        console.log('[playFullSentence] 音频加载失败');
         return;
       }
+      console.log('[playFullSentence] 音频加载成功，时长:', loadedDuration);
     }
     
-    if (!soundRef.current || !currentSentence) return;
+    if (!soundRef.current || !currentSentence) {
+      console.log('[playFullSentence] 检查失败: soundRef=', !!soundRef.current, 'currentSentence=', !!currentSentence);
+      return;
+    }
+    
+    // 先停止之前的播放
+    await handleStopPlaying();
     
     const status = await soundRef.current.getStatusAsync();
-    if (!status.isLoaded) return;
+    if (!status.isLoaded) {
+      console.log('[playFullSentence] 音频状态检查失败: 未加载');
+      return;
+    }
     
     const actualDuration = status.durationMillis || 0;
     let start = currentSentence.start_time;
     let end = currentSentence.end_time;
+    
+    console.log('[playFullSentence] 音频实际时长:', actualDuration, 'ms');
+    console.log('[playFullSentence] 句子时间范围:', start, '-', end, 'ms');
     
     // 确保时间戳在有效范围内
     start = Math.max(0, Math.min(start, actualDuration - 100));
     end = Math.max(start + 100, Math.min(end, actualDuration));
     
     if (end <= start) {
-      console.log('时间戳无效');
+      console.log('[playFullSentence] 时间戳无效: end <= start');
       return;
     }
     
-    console.log('播放完整句子:', start, '-', end, '时长:', end - start, 'ms');
+    console.log('[playFullSentence] 开始播放: start=', start, 'end=', end, '时长=', end - start, 'ms');
     
-    await soundRef.current.setPositionAsync(start);
-    await soundRef.current.playAsync();
-    setIsPlaying(true);
+    try {
+      await soundRef.current.setPositionAsync(start);
+      await soundRef.current.playAsync();
+      setIsPlaying(true);
+      console.log('[playFullSentence] 播放已启动');
+    } catch (e) {
+      console.error('[playFullSentence] 播放失败:', e);
+      return;
+    }
     
     const checkInterval = setInterval(async () => {
       if (!soundRef.current) {
@@ -257,6 +283,7 @@ export default function TimestampEditorScreen() {
         await soundRef.current.pauseAsync();
         setIsPlaying(false);
         clearInterval(checkInterval);
+        console.log('[playFullSentence] 播放结束');
       }
     }, 50);
   };
@@ -516,8 +543,7 @@ export default function TimestampEditorScreen() {
             };
             setSentences(newSentences);
           }}
-          onPlayStart={playFullSentence}
-          onPlayStop={handleStopPlaying}
+          onPlay={playFullSentence}
           label="开始"
           color="#00ff88"
         />
@@ -546,8 +572,7 @@ export default function TimestampEditorScreen() {
             };
             setSentences(newSentences);
           }}
-          onPlayStart={playFullSentence}
-          onPlayStop={handleStopPlaying}
+          onPlay={playFullSentence}
           label="结束"
           color="#ff8800"
         />
