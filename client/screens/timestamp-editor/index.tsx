@@ -56,6 +56,12 @@ export default function TimestampEditorScreen() {
     visible: false,
     message: '',
   });
+  
+  // 删除确认对话框状态
+  const [deleteConfirm, setDeleteConfirm] = useState<{ visible: boolean; sentenceId: number | null }>({
+    visible: false,
+    sentenceId: null,
+  });
 
   const currentSentence = sentences[currentIndex];
 
@@ -456,47 +462,65 @@ export default function TimestampEditorScreen() {
   };
 
   // 删除当前句子
-  const handleDeleteSentence = useCallback(async () => {
-    if (!currentSentence || !materialId) return;
+  const handleDeleteSentence = useCallback(() => {
+    console.log('[handleDeleteSentence] 开始执行');
+    console.log('[handleDeleteSentence] currentSentence:', currentSentence);
+    console.log('[handleDeleteSentence] materialId:', materialId);
     
-    Alert.alert(
-      '确认删除',
-      `确定要删除这句话吗？\n\n"${currentSentence.text.substring(0, 50)}${currentSentence.text.length > 50 ? '...' : ''}"`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const res = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/sentences/${currentSentence.id}`, {
-                method: 'DELETE',
-              });
-              
-              const data = await res.json();
-              
-              if (data.success) {
-                // 从本地列表中移除
-                const newSentences = sentences.filter((_, idx) => idx !== currentIndex);
-                setSentences(newSentences);
-                
-                // 调整当前索引
-                if (currentIndex >= newSentences.length) {
-                  setCurrentIndex(Math.max(0, newSentences.length - 1));
-                }
-                
-                Alert.alert('成功', '句子已删除');
-              } else {
-                Alert.alert('错误', '删除失败');
-              }
-            } catch (e) {
-              Alert.alert('错误', `删除失败: ${(e as Error).message}`);
-            }
-          },
-        },
-      ]
-    );
-  }, [currentSentence, materialId, sentences, currentIndex]);
+    if (!currentSentence) {
+      setDialog({ visible: true, message: '没有选中要删除的句子' });
+      return;
+    }
+    
+    if (!materialId) {
+      setDialog({ visible: true, message: '材料ID不存在' });
+      return;
+    }
+    
+    // 显示删除确认对话框
+    setDeleteConfirm({ visible: true, sentenceId: currentSentence.id });
+  }, [currentSentence, materialId]);
+  
+  // 执行删除操作
+  const executeDelete = useCallback(async () => {
+    if (!deleteConfirm.sentenceId || !materialId) return;
+    
+    console.log('[删除] 开始删除句子, ID:', deleteConfirm.sentenceId);
+    
+    try {
+      const url = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/sentences/${deleteConfirm.sentenceId}`;
+      console.log('[删除] 请求URL:', url);
+      
+      const res = await fetch(url, {
+        method: 'DELETE',
+      });
+      
+      console.log('[删除] 响应状态:', res.status);
+      const data = await res.json();
+      console.log('[删除] 响应数据:', data);
+      
+      if (res.ok && data.success) {
+        // 从本地列表中移除
+        const newSentences = sentences.filter((_, idx) => idx !== currentIndex);
+        setSentences(newSentences);
+        
+        // 调整当前索引
+        if (currentIndex >= newSentences.length) {
+          setCurrentIndex(Math.max(0, newSentences.length - 1));
+        }
+        
+        setDialog({ visible: true, message: '句子已删除' });
+      } else {
+        setDialog({ visible: true, message: data.error || '删除失败' });
+      }
+    } catch (e) {
+      console.error('[删除] 异常:', e);
+      setDialog({ visible: true, message: `删除失败: ${(e as Error).message}` });
+    }
+    
+    // 关闭确认对话框
+    setDeleteConfirm({ visible: false, sentenceId: null });
+  }, [deleteConfirm.sentenceId, materialId, sentences, currentIndex]);
 
   // 获取当前句子范围内的单词
   const getSentenceWords = useCallback(() => {
@@ -803,6 +827,17 @@ export default function TimestampEditorScreen() {
         confirmText="确定"
         onConfirm={() => { setDialog({ visible: false, message: '' }); dialog.onConfirm?.(); }}
         onCancel={() => setDialog({ visible: false, message: '' })}
+      />
+      
+      {/* 删除确认对话框 */}
+      <ConfirmDialog
+        visible={deleteConfirm.visible}
+        title="确认删除"
+        message={`确定要删除这句话吗？\n\n"${currentSentence?.text.substring(0, 50)}${(currentSentence?.text.length || 0) > 50 ? '...' : ''}"`}
+        confirmText="删除"
+        confirmStyle="destructive"
+        onConfirm={executeDelete}
+        onCancel={() => setDeleteConfirm({ visible: false, sentenceId: null })}
       />
     </Screen>
   );
