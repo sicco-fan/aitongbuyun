@@ -313,11 +313,12 @@ export default function PracticeScreen() {
 
   // 实时检查输入并更新字母显示
   const checkInputRealtime = useCallback((input: string) => {
-    if (!input) return { matched: false, errorIndex: -1 };
+    if (!input) return { matched: false, correctLength: input.length, hasError: false };
     
     const inputLower = input.toLowerCase();
     let matchedAny = false;
-    let errorIndex = -1;
+    let hasError = false;
+    let correctLength = input.length;
     
     setWordStatuses(prev => {
       const newStatuses = [...prev];
@@ -329,61 +330,60 @@ export default function PracticeScreen() {
         
         const wordLower = ws.word.toLowerCase();
         
-        // 检查输入是否能匹配到这个单词的开头
-        if (wordLower.startsWith(inputLower)) {
+        // 计算匹配长度
+        let matchLen = 0;
+        for (let i = 0; i < inputLower.length && i < wordLower.length; i++) {
+          if (inputLower[i] === wordLower[i]) {
+            matchLen++;
+          } else {
+            break;
+          }
+        }
+        
+        // 完全匹配当前输入
+        if (matchLen === inputLower.length && matchLen <= wordLower.length) {
           matchedAny = true;
           
-          // 清除错误标记
+          // 更新已显示的字母
           const newRevealedChars = [...ws.revealedChars];
-          for (let i = 0; i < inputLower.length && i < wordLower.length; i++) {
+          for (let i = 0; i < matchLen; i++) {
             newRevealedChars[i] = true;
           }
           newStatuses[wordIdx] = { ...ws, revealedChars: newRevealedChars, errorCharIndex: -1 };
           
           // 如果整个单词都输入了，标记为完成
-          if (inputLower.length >= wordLower.length) {
+          if (matchLen >= wordLower.length) {
             newStatuses[wordIdx] = { ...newStatuses[wordIdx], revealed: true };
           }
-          break; // 只匹配第一个符合条件的单词
-        } else {
-          // 检查是否部分匹配（前面正确，最后一个字母错误）
-          let partialMatch = true;
-          let firstErrorIdx = -1;
+          break;
+        }
+        
+        // 部分匹配但有错误（第一个字母匹配才处理）
+        if (inputLower.length > 0 && inputLower[0] === wordLower[0]) {
+          hasError = true;
+          correctLength = matchLen;
           
-          for (let i = 0; i < inputLower.length; i++) {
-            if (i >= wordLower.length || inputLower[i] !== wordLower[i]) {
-              firstErrorIdx = i;
-              partialMatch = false;
-              break;
-            }
+          // 更新正确部分的字母
+          const newRevealedChars = [...ws.revealedChars];
+          for (let i = 0; i < matchLen; i++) {
+            newRevealedChars[i] = true;
           }
           
-          // 如果前面部分匹配（至少第一个字母匹配）
-          if (inputLower.length > 0 && inputLower[0] === wordLower[0]) {
-            // 更新正确部分的字母
-            const newRevealedChars = [...ws.revealedChars];
-            for (let i = 0; i < inputLower.length - 1 && i < wordLower.length; i++) {
-              newRevealedChars[i] = true;
-            }
-            
-            // 标记错误字母
-            newStatuses[wordIdx] = { 
-              ...ws, 
-              revealedChars: newRevealedChars, 
-              errorCharIndex: firstErrorIdx >= 0 ? firstErrorIdx : inputLower.length - 1 
-            };
-            
-            matchedAny = false;
-            errorIndex = firstErrorIdx >= 0 ? firstErrorIdx : inputLower.length - 1;
-            break;
-          }
+          // 标记错误字母位置
+          const errorIdx = matchLen; // 错误位置就是匹配结束的位置
+          newStatuses[wordIdx] = { 
+            ...ws, 
+            revealedChars: newRevealedChars, 
+            errorCharIndex: errorIdx
+          };
+          break;
         }
       }
       
       return newStatuses;
     });
     
-    return { matched: matchedAny, errorIndex };
+    return { matched: matchedAny, correctLength, hasError };
   }, []);
 
   // 监听单词状态变化，自动跳转到下一句
@@ -443,10 +443,11 @@ export default function PracticeScreen() {
       const result = checkInputRealtime(text);
       
       // 如果有错误，短暂显示红色后自动清除错误部分
-      if (result.errorIndex >= 0) {
+      if (result.hasError && result.correctLength < text.length) {
+        // 延迟一下让用户看到红色错误提示
         setTimeout(() => {
-          // 清除输入框到错误位置之前
-          const correctPart = text.substring(0, result.errorIndex);
+          // 清除输入框中的错误字母
+          const correctPart = text.substring(0, result.correctLength);
           setCurrentInput(correctPart);
           
           // 清除错误标记
@@ -455,7 +456,7 @@ export default function PracticeScreen() {
               ws.errorCharIndex >= 0 ? { ...ws, errorCharIndex: -1 } : ws
             )
           );
-        }, 300); // 300ms后清除
+        }, 400); // 400ms后清除
       }
     }
   };
