@@ -794,8 +794,25 @@ export default function PracticeScreen() {
               </ThemedText>
             </View>
             <ThemedText variant="body" color={theme.textMuted}>
-              {Math.round(progress)}% 完成
+              {Math.round(progress)}%
             </ThemedText>
+            
+            {/* 句子导航按钮 */}
+            <View style={styles.headerNav}>
+              <TouchableOpacity
+                style={[styles.headerNavBtn, currentIndex === 0 && styles.buttonDisabled]}
+                onPress={goToPrevSentence}
+                disabled={currentIndex === 0}
+              >
+                <FontAwesome6 name="chevron-left" size={14} color={currentIndex === 0 ? theme.textMuted : theme.textPrimary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.headerNavBtn}
+                onPress={goToNextSentence}
+              >
+                <FontAwesome6 name="chevron-right" size={14} color={theme.textPrimary} />
+              </TouchableOpacity>
+            </View>
           </View>
           <ThemedText variant="h4" color={theme.textPrimary}>
             {title || material?.title}
@@ -862,41 +879,6 @@ export default function PracticeScreen() {
           <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 8, textAlign: 'center' }}>
             点击未答出的单词可以查看提示
           </ThemedText>
-        </View>
-
-        {/* Sentence Navigation - 显眼的导航按钮 */}
-        <View style={styles.sentenceNavSection}>
-          <TouchableOpacity
-            style={[styles.sentenceNavBtn, styles.sentenceNavPrev, currentIndex === 0 && styles.buttonDisabled]}
-            onPress={goToPrevSentence}
-            disabled={currentIndex === 0}
-          >
-            <FontAwesome6 name="chevron-left" size={20} color={currentIndex === 0 ? theme.textMuted : theme.textPrimary} />
-            <ThemedText variant="smallMedium" color={currentIndex === 0 ? theme.textMuted : theme.textPrimary}>
-              上一句
-            </ThemedText>
-          </TouchableOpacity>
-          
-          <View style={styles.sentenceCounter}>
-            <ThemedText variant="h4" color={theme.textPrimary}>
-              {currentIndex + 1}
-            </ThemedText>
-            <ThemedText variant="body" color={theme.textMuted}>
-              / {sentences.length}
-            </ThemedText>
-          </View>
-          
-          <TouchableOpacity
-            style={[styles.sentenceNavBtn, styles.sentenceNavNext]}
-            onPress={goToNextSentence}
-          >
-            <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
-              {currentIndex === sentences.length - 1 ? '完成' : '下一句'}
-            </ThemedText>
-            {currentIndex < sentences.length - 1 && (
-              <FontAwesome6 name="chevron-right" size={20} color={theme.buttonPrimaryText} />
-            )}
-          </TouchableOpacity>
         </View>
 
         {/* Input Section */}
