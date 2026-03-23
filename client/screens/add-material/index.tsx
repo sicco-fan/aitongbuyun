@@ -221,22 +221,38 @@ export default function AddMaterialScreen() {
         
         console.log('文件名:', fileName, 'MIME类型:', mimeType);
         
-        // 对于 ph:// 格式的 URI（iOS 相册），需要特殊处理
+        // 对于 ph:// 格式的 URI（iOS 相册），需要复制到缓存目录
         let fileUri = asset.uri;
         let fileSize = asset.fileSize;
         
         if (Platform.OS === 'ios' && asset.uri.startsWith('ph://')) {
           console.log('iOS 相册视频，URI:', asset.uri);
           
-          // 尝试获取文件信息
+          // 必须复制到缓存目录才能被 FileSystem.uploadAsync 读取
           try {
-            const fileInfo = await (FileSystem as any).getInfoAsync(asset.uri, { size: true });
-            console.log('文件信息:', fileInfo);
+            const cacheDir = (FileSystem as any).cacheDirectory;
+            const localUri = `${cacheDir}${fileName}`;
+            
+            console.log('正在复制到缓存目录:', localUri);
+            
+            await (FileSystem as any).copyAsync({
+              from: asset.uri,
+              to: localUri,
+            });
+            
+            fileUri = localUri;
+            console.log('复制完成');
+            
+            // 获取文件大小
+            const fileInfo = await (FileSystem as any).getInfoAsync(fileUri, { size: true });
             if (fileInfo.exists) {
               fileSize = (fileInfo as any).size;
+              console.log('文件大小:', fileSize);
             }
           } catch (e) {
-            console.log('获取文件信息失败，使用 asset 信息:', e);
+            console.error('复制失败:', e);
+            setErrorDialog({ visible: true, message: `无法读取相册视频：${(e as Error).message}` });
+            return;
           }
         } else if (asset.uri.startsWith('content://')) {
           // Android 相册视频
@@ -375,59 +391,61 @@ export default function AddMaterialScreen() {
     setUploadProgress(0);
 
     try {
-      const baseUrl = EXPO_PUBLIC_BACKEND_BASE_URL || '';
+      // 使用绝对路径直接连接后端，绕过 Metro 代理
+      const baseUrl = 'http://127.0.0.1:9091';
       
-      console.log('文件信息:', { name: file.name, uri: file.uri, size: file.size, mimeType: file.mimeType });
-
-      // 使用 createFormDataFile 创建跨平台兼容的文件对象
-      const formDataFile = await createFormDataFile(
-        file.uri,
-        file.name,
-        file.mimeType || 'video/mp4'
-      );
-      
-      // 构建 FormData
-      const formData = new FormData();
-      formData.append('file', formDataFile as any);
-      formData.append('title', title);
-      if (description) {
-        formData.append('description', description);
-      }
+      console.log('开始上传文件:', { name: file.name, uri: file.uri, size: file.size, mimeType: file.mimeType });
+      console.log('后端地址:', baseUrl);
 
       setUploadStatus('上传中...');
 
-      /**
-       * 服务端文件：server/src/routes/materials.ts
-       * 接口：POST /api/v1/materials
-       * FormData 参数：file: File, title: string, description?: string
-       */
-      const response = await fetch(`${baseUrl}/api/v1/materials`, {
-        method: 'POST',
-        body: formData,
-        // 不设置 Content-Type，让浏览器/RN 自动处理
-      });
+      // 使用 FileSystem.uploadAsync 直接上传，绕过 Metro 代理
+      // 这个方法直接发送 HTTP 请求，不会经过 Metro 代理
+      const uploadResult = await (FileSystem as any).uploadAsync(
+        `${baseUrl}/api/v1/materials`,
+        file.uri,
+        {
+          httpMethod: 'POST',
+          uploadType: (FileSystem as any).FileSystemUploadType.MULTIPART,
+          fieldName: 'file',
+          parameters: {
+            title: title,
+            ...(description ? { description } : {}),
+          },
+          headers: {
+            'Accept': 'application/json',
+          },
+        }
+      );
 
-      const responseText = await response.text();
-      console.log('上传响应:', responseText.substring(0, 500));
-      
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch {
-        throw new Error(`服务器返回格式错误: ${responseText.substring(0, 200)}`);
-      }
-      
-      if (response.ok && data.success && data.material) {
-        setUploadProgress(100);
-        setUploadStatus('上传成功！');
-        setUploadSuccess(true);
-        setSuccessDialog({
-          visible: true,
-          materialId: data.material.id,
-          title: data.material.title || title,
-        });
+      console.log('上传结果状态:', uploadResult.status);
+      console.log('上传响应:', uploadResult.body?.substring(0, 500));
+
+      if (uploadResult.status === 200 || uploadResult.status === 201) {
+        const data = JSON.parse(uploadResult.body);
+        
+        if (data.success && data.material) {
+          setUploadProgress(100);
+          setUploadStatus('上传成功！');
+          setUploadSuccess(true);
+          setSuccessDialog({
+            visible: true,
+            materialId: data.material.id,
+            title: data.material.title || title,
+          });
+        } else {
+          throw new Error(data.error || '上传失败');
+        }
       } else {
-        throw new Error(data.error || '上传失败');
+        // 解析错误响应
+        let errorMsg = `上传失败 (${uploadResult.status})`;
+        try {
+          const errorData = JSON.parse(uploadResult.body);
+          errorMsg = errorData.error || errorData.message || errorMsg;
+        } catch {
+          errorMsg = uploadResult.body?.substring(0, 200) || errorMsg;
+        }
+        throw new Error(errorMsg);
       }
     } catch (error) {
       console.error('上传失败:', error);
