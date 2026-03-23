@@ -4,8 +4,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Text,
-  PanResponder,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -61,9 +61,12 @@ export default function TimestampEditorScreen() {
   
   // 波形容器宽度
   const [waveformWidth, setWaveformWidth] = useState(SCREEN_WIDTH - 48);
+  const waveformRef = useRef<View>(null);
   
   // 拖拽状态
-  const [dragging, setDragging] = useState<'start' | 'end' | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragType, setDragType] = useState<'selection' | 'start' | 'end' | null>(null);
+  const dragStartRef = useRef({ x: 0, start: 0, end: 0 });
   
   const soundRef = useRef<Audio.Sound | null>(null);
   
@@ -81,7 +84,6 @@ export default function TimestampEditorScreen() {
     
     setLoading(true);
     try {
-      // 获取材料详情
       const materialRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}`);
       const materialData = await materialRes.json();
       
@@ -94,7 +96,6 @@ export default function TimestampEditorScreen() {
         setSentences(materialData.sentences);
       }
       
-      // 获取单词时间戳用于波形参考
       try {
         const wordsRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/word-timestamps`, {
           method: 'POST',
@@ -107,7 +108,7 @@ export default function TimestampEditorScreen() {
           }
         }
       } catch (e) {
-        console.log('未获取到单词时间戳，将使用简单波形');
+        console.log('未获取到单词时间戳');
       }
     } catch (error) {
       console.error('获取数据失败:', error);
@@ -128,14 +129,12 @@ export default function TimestampEditorScreen() {
   // 当切换句子时，初始化选择区域
   useEffect(() => {
     if (currentSentence && duration > 0) {
-      // 如果已有时间戳，使用它；否则估算一个初始位置
       if (currentSentence.start_time > 0 || currentSentence.end_time > 0) {
         setSelectionStart(currentSentence.start_time || 0);
         setSelectionEnd(currentSentence.end_time || duration);
       } else {
-        // 根据上一句的结束时间初始化
         const prevEnd = currentIndex > 0 ? sentences[currentIndex - 1].end_time : 0;
-        const estimatedDuration = Math.min(3000, duration - prevEnd); // 默认3秒
+        const estimatedDuration = Math.min(3000, duration - prevEnd);
         setSelectionStart(prevEnd);
         setSelectionEnd(Math.min(prevEnd + estimatedDuration, duration));
       }
@@ -171,7 +170,6 @@ export default function TimestampEditorScreen() {
     }
   };
 
-  // 播放状态更新
   const onPlaybackStatusUpdate = (status: any) => {
     if (status.isLoaded) {
       setPosition(status.positionMillis);
@@ -181,7 +179,6 @@ export default function TimestampEditorScreen() {
     }
   };
 
-  // 停止播放
   const stopPlaying = async () => {
     if (soundRef.current) {
       await soundRef.current.pauseAsync();
@@ -189,7 +186,6 @@ export default function TimestampEditorScreen() {
     }
   };
 
-  // 播放选中的区域
   const playSelection = async () => {
     if (!soundRef.current) {
       await loadAudio();
@@ -197,15 +193,11 @@ export default function TimestampEditorScreen() {
     
     if (!soundRef.current) return;
     
-    // 先停止当前播放
     await stopPlaying();
-    
-    // 跳转到选择开始位置
     await soundRef.current.setPositionAsync(selectionStart);
     await soundRef.current.playAsync();
     setIsPlaying(true);
     
-    // 设置定时器在选择结束位置停止
     const playDuration = selectionEnd - selectionStart;
     setTimeout(async () => {
       if (soundRef.current) {
@@ -216,26 +208,15 @@ export default function TimestampEditorScreen() {
     }, playDuration);
   };
 
-  // 跳转到选择开始位置
-  const seekToStart = async () => {
-    if (soundRef.current) {
-      await soundRef.current.setPositionAsync(selectionStart);
-      setPosition(selectionStart);
-    }
-  };
-
-  // 确认当前选择，保存并跳转下一句
   const confirmSelection = async () => {
     const newSentences = [...sentences];
     
-    // 更新当前句
     newSentences[currentIndex] = {
       ...newSentences[currentIndex],
       start_time: Math.round(selectionStart),
       end_time: Math.round(selectionEnd),
     };
     
-    // 自动设置下一句的开始时间
     if (currentIndex < sentences.length - 1) {
       newSentences[currentIndex + 1] = {
         ...newSentences[currentIndex + 1],
@@ -245,7 +226,6 @@ export default function TimestampEditorScreen() {
     
     setSentences(newSentences);
     
-    // 跳转下一句或完成
     if (currentIndex < sentences.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
@@ -253,7 +233,6 @@ export default function TimestampEditorScreen() {
     }
   };
 
-  // 保存所有时间戳
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -281,7 +260,6 @@ export default function TimestampEditorScreen() {
     }
   };
 
-  // 格式化时间
   const formatTime = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
@@ -290,32 +268,28 @@ export default function TimestampEditorScreen() {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}.${remainingMs.toString().padStart(2, '0')}`;
   };
 
-  // 时间转像素位置
   const timeToPixel = (time: number) => {
     if (duration === 0) return 0;
     return (time / duration) * waveformWidth;
   };
 
-  // 像素转时间
   const pixelToTime = (pixel: number) => {
     return (pixel / waveformWidth) * duration;
   };
 
   // 生成波形数据
   const generateWaveformData = useMemo(() => {
-    const barCount = Math.floor(waveformWidth / 4); // 每4像素一个柱子
+    const barCount = Math.floor(waveformWidth / 4);
     const bars: { height: number; hasWord: boolean }[] = [];
     
     for (let i = 0; i < barCount; i++) {
       const startTime = (i / barCount) * duration;
       const endTime = ((i + 1) / barCount) * duration;
       
-      // 检查这个时间段是否有单词
       const hasWord = wordTimestamps.some(
         w => w.start_time < endTime && w.end_time > startTime
       );
       
-      // 如果有单词时间戳，根据单词位置设置高度；否则随机
       const height = hasWord ? 0.6 + Math.random() * 0.4 : 0.2 + Math.random() * 0.3;
       
       bars.push({ height, hasWord });
@@ -324,63 +298,111 @@ export default function TimestampEditorScreen() {
     return bars;
   }, [waveformWidth, duration, wordTimestamps]);
 
-  // 开始拖拽手势
-  const createPanResponder = (type: 'start' | 'end') => {
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        setDragging(type);
-      },
-      onPanResponderMove: (evt) => {
-        const x = evt.nativeEvent.locationX;
-        const time = pixelToTime(Math.max(0, Math.min(x, waveformWidth)));
-        
-        if (type === 'start') {
-          // 开始位置不能超过结束位置
-          if (time < selectionEnd - 100) {
-            setSelectionStart(Math.max(0, time));
-          }
-        } else {
-          // 结束位置不能小于开始位置
-          if (time > selectionStart + 100) {
-            setSelectionEnd(Math.min(duration, time));
-          }
-        }
-      },
-      onPanResponderRelease: () => {
-        setDragging(null);
-      },
-    });
+  // ========== 鼠标/触摸事件处理 ==========
+  
+  // 获取事件位置相对于波形容器的x坐标
+  const getEventX = (evt: any): number => {
+    // 对于Web端的鼠标事件
+    if (Platform.OS === 'web' && evt.nativeEvent.offsetX !== undefined) {
+      return evt.nativeEvent.offsetX;
+    }
+    // 对于触摸事件
+    if (evt.nativeEvent.locationX !== undefined) {
+      return evt.nativeEvent.locationX;
+    }
+    // 对于Web触摸事件
+    const touch = evt.nativeEvent.touches?.[0];
+    if (touch) {
+      return touch.clientX - (evt.currentTarget?.offsetLeft || 0);
+    }
+    return 0;
   };
 
-  const startPanResponder = useMemo(() => createPanResponder('start'), [selectionEnd, duration]);
-  const endPanResponder = useMemo(() => createPanResponder('end'), [selectionStart, duration]);
+  // 开始拖拽选择
+  const handleDragStart = (evt: any, type: 'selection' | 'start' | 'end') => {
+    const x = getEventX(evt);
+    setIsDragging(true);
+    setDragType(type);
+    dragStartRef.current = {
+      x,
+      start: selectionStart,
+      end: selectionEnd,
+    };
+  };
 
-  // 点击波形跳转
-  const handleWaveformPress = (evt: any) => {
-    if (dragging) return;
-    const x = evt.nativeEvent.locationX;
+  // 拖拽移动
+  const handleDragMove = (evt: any) => {
+    if (!isDragging || !dragType) return;
+    
+    const x = getEventX(evt);
+    const deltaX = x - dragStartRef.current.x;
+    const deltaTime = pixelToTime(deltaX);
+    
+    if (dragType === 'start') {
+      // 移动开始位置
+      const newStart = Math.max(0, Math.min(dragStartRef.current.start + deltaTime, selectionEnd - 100));
+      setSelectionStart(newStart);
+    } else if (dragType === 'end') {
+      // 移动结束位置
+      const newEnd = Math.max(selectionStart + 100, Math.min(dragStartRef.current.end + deltaTime, duration));
+      setSelectionEnd(newEnd);
+    } else if (dragType === 'selection') {
+      // 移动整个选择区域
+      const selectionDuration = dragStartRef.current.end - dragStartRef.current.start;
+      let newStart = dragStartRef.current.start + deltaTime;
+      let newEnd = newStart + selectionDuration;
+      
+      // 边界检查
+      if (newStart < 0) {
+        newStart = 0;
+        newEnd = selectionDuration;
+      }
+      if (newEnd > duration) {
+        newEnd = duration;
+        newStart = duration - selectionDuration;
+      }
+      
+      setSelectionStart(newStart);
+      setSelectionEnd(newEnd);
+    }
+  };
+
+  // 结束拖拽
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    setDragType(null);
+  };
+
+  // 点击波形设置播放位置或开始新选择
+  const handleWaveformClick = (evt: any) => {
+    if (isDragging) return;
+    
+    const x = getEventX(evt);
     const time = pixelToTime(Math.max(0, Math.min(x, waveformWidth)));
     
-    // 跳转到点击位置
+    // 跳转到点击位置播放
     if (soundRef.current) {
       soundRef.current.setPositionAsync(time);
       setPosition(time);
     }
   };
 
+  // 双击设置开始/结束位置
+  const handleSetStart = () => {
+    setSelectionStart(Math.max(0, position));
+  };
+
+  const handleSetEnd = () => {
+    setSelectionEnd(Math.min(duration, Math.max(selectionStart + 100, position)));
+  };
+
   // 上一句/下一句
   const goToPrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-    }
+    if (currentIndex > 0) setCurrentIndex(currentIndex - 1);
   };
 
   const goToNext = () => {
-    if (currentIndex < sentences.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-    }
+    if (currentIndex < sentences.length - 1) setCurrentIndex(currentIndex + 1);
   };
 
   if (loading) {
@@ -472,10 +494,6 @@ export default function TimestampEditorScreen() {
 
         {/* 波形选择器 */}
         <View style={styles.waveformSection}>
-          <ThemedText variant="smallMedium" color={theme.textSecondary}>
-            拖动两侧把手选择音频片段
-          </ThemedText>
-          
           {/* 时间显示 */}
           <View style={styles.timeDisplay}>
             <View style={styles.timeBox}>
@@ -496,12 +514,19 @@ export default function TimestampEditorScreen() {
           
           {/* 波形容器 */}
           <View 
+            ref={waveformRef}
             style={styles.waveformContainer}
             onLayout={(e) => setWaveformWidth(e.nativeEvent.layout.width)}
+            // @ts-ignore - Web端鼠标事件
+            onMouseMove={isDragging ? handleDragMove : undefined}
+            // @ts-ignore - Web端鼠标事件
+            onMouseUp={handleDragEnd}
+            // @ts-ignore - Web端鼠标事件
+            onMouseLeave={handleDragEnd}
+            onClick={handleWaveformClick}
           >
             {/* 波形背景 */}
-            <View style={styles.waveformTrack}>
-              {/* 波形柱子 */}
+            <View style={styles.waveformTrack} pointerEvents="none">
               {generateWaveformData.map((bar, index) => (
                 <View
                   key={index}
@@ -517,29 +542,22 @@ export default function TimestampEditorScreen() {
               ))}
             </View>
             
-            {/* 选中区域高亮 */}
-            <View
-              style={[
-                styles.selectionOverlay,
-                {
-                  left: timeToPixel(selectionStart),
-                  width: timeToPixel(selectionEnd) - timeToPixel(selectionStart),
-                },
-              ]}
-            />
-            
-            {/* 未选中区域遮罩 */}
+            {/* 未选中区域遮罩 - 左侧 */}
             <View
               style={[
                 styles.maskOverlay,
                 { left: 0, width: timeToPixel(selectionStart) },
               ]}
+              pointerEvents="none"
             />
+            
+            {/* 未选中区域遮罩 - 右侧 */}
             <View
               style={[
                 styles.maskOverlay,
                 { left: timeToPixel(selectionEnd), right: 0 },
               ]}
+              pointerEvents="none"
             />
             
             {/* 播放位置指示器 */}
@@ -548,37 +566,49 @@ export default function TimestampEditorScreen() {
                 styles.playhead,
                 { left: timeToPixel(position) },
               ]}
+              pointerEvents="none"
             />
             
-            {/* 左侧把手 */}
+            {/* 左侧把手 - 开始位置 */}
             <View
               style={[
                 styles.handle,
-                styles.handleStart,
-                { left: timeToPixel(selectionStart) - 12 },
+                { left: timeToPixel(selectionStart) - 16 },
               ]}
-              {...startPanResponder.panHandlers}
+              // @ts-ignore - Web端需要
+              onMouseDown={(e: any) => {
+                e.stopPropagation();
+                handleDragStart(e, 'start');
+              }}
+              // 移动端触摸事件
+              onTouchStart={(e: any) => handleDragStart(e, 'start')}
+              onTouchMove={handleDragMove}
+              onTouchEnd={handleDragEnd}
             >
               <View style={[styles.handleBar, { backgroundColor: theme.primary }]} />
+              <View style={[styles.handleTriangle, { borderTopColor: theme.primary }]} />
             </View>
             
-            {/* 右侧把手 */}
+            {/* 右侧把手 - 结束位置 */}
             <View
               style={[
                 styles.handle,
                 styles.handleEnd,
-                { left: timeToPixel(selectionEnd) - 12 },
+                { left: timeToPixel(selectionEnd) - 16 },
               ]}
-              {...endPanResponder.panHandlers}
+              // @ts-ignore - Web端需要
+              onMouseDown={(e: any) => {
+                e.stopPropagation();
+                handleDragStart(e, 'end');
+              }}
+              // 移动端触摸事件
+              onTouchStart={(e: any) => handleDragStart(e, 'end')}
+              onTouchMove={handleDragMove}
+              onTouchEnd={handleDragEnd}
             >
               <View style={[styles.handleBar, { backgroundColor: theme.success }]} />
+              <View style={[styles.handleTriangle, { borderTopColor: theme.success }]} />
             </View>
-            
-            {/* 点击层 */}
-            <View
-              style={styles.waveformTouchLayer}
-              onTouchEnd={handleWaveformPress}
-            />
           </View>
           
           {/* 时间刻度 */}
@@ -590,6 +620,25 @@ export default function TimestampEditorScreen() {
             <Text style={[styles.timeLabel, { color: theme.textMuted }]}>
               {formatTime(duration)}
             </Text>
+          </View>
+          
+          {/* 快捷按钮 */}
+          <View style={styles.quickButtons}>
+            <TouchableOpacity 
+              style={[styles.quickBtn, { backgroundColor: theme.primary + '20' }]}
+              onPress={handleSetStart}
+            >
+              <FontAwesome6 name="play" size={12} color={theme.primary} />
+              <ThemedText variant="small" color={theme.primary}>设为开始</ThemedText>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.quickBtn, { backgroundColor: theme.success + '20' }]}
+              onPress={handleSetEnd}
+            >
+              <FontAwesome6 name="stop" size={12} color={theme.success} />
+              <ThemedText variant="small" color={theme.success}>设为结束</ThemedText>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -614,7 +663,7 @@ export default function TimestampEditorScreen() {
         <View style={styles.tipBox}>
           <FontAwesome6 name="lightbulb" size={14} color={theme.accent} />
           <ThemedText variant="small" color={theme.textSecondary}>
-            拖动波形两侧的把手来选择音频范围，点击「播放选中」试听效果
+            拖动两侧把手选择范围，或播放后点击「设为开始/结束」按钮
           </ThemedText>
         </View>
 

@@ -75,7 +75,7 @@ export const createStyles = (theme: Theme) => {
     
     // 波形区域
     waveformSection: {
-      marginBottom: Spacing.xl,
+      marginBottom: Spacing.lg,
     },
     timeDisplay: {
       flexDirection: 'row',
@@ -92,7 +92,7 @@ export const createStyles = (theme: Theme) => {
       gap: Spacing.sm,
     },
     waveformContainer: {
-      height: 120,
+      height: 140,
       backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.lg,
       position: 'relative',
@@ -113,17 +113,11 @@ export const createStyles = (theme: Theme) => {
       marginHorizontal: 1,
       borderRadius: 2,
     },
-    selectionOverlay: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      backgroundColor: theme.primary + '30',
-    },
     maskOverlay: {
       position: 'absolute',
       top: 0,
       bottom: 0,
-      backgroundColor: theme.backgroundRoot + 'aa',
+      backgroundColor: theme.backgroundRoot + 'cc',
     },
     playhead: {
       position: 'absolute',
@@ -131,25 +125,34 @@ export const createStyles = (theme: Theme) => {
       bottom: 0,
       width: 2,
       backgroundColor: theme.error,
+      zIndex: 5,
     },
     handle: {
       position: 'absolute',
       top: 0,
       bottom: 0,
-      width: 24,
-      justifyContent: 'center',
+      width: 32,
+      justifyContent: 'flex-start',
       alignItems: 'center',
-    },
-    handleStart: {
-      backgroundColor: theme.primary + '20',
+      zIndex: 10,
     },
     handleEnd: {
-      backgroundColor: theme.success + '20',
+      // 右侧把手样式相同
     },
     handleBar: {
       width: 4,
-      height: '60%',
+      height: '80%',
       borderRadius: 2,
+      marginTop: 8,
+    },
+    handleTriangle: {
+      width: 0,
+      height: 0,
+      borderLeftWidth: 8,
+      borderRightWidth: 8,
+      borderTopWidth: 8,
+      borderLeftColor: 'transparent',
+      borderRightColor: 'transparent',
     },
     waveformTouchLayer: {
       position: 'absolute',
@@ -157,6 +160,7 @@ export const createStyles = (theme: Theme) => {
       left: 0,
       right: 0,
       bottom: 0,
+      zIndex: 1,
     },
     timeLabels: {
       flexDirection: 'row',
@@ -165,6 +169,22 @@ export const createStyles = (theme: Theme) => {
     },
     timeLabel: {
       fontSize: 11,
+    },
+    
+    // 快捷按钮
+    quickButtons: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: Spacing.md,
+      marginTop: Spacing.md,
+    },
+    quickBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.md,
+      borderRadius: BorderRadius.md,
+      gap: Spacing.xs,
     },
     
     // 操作按钮
