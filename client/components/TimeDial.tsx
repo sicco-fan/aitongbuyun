@@ -1,121 +1,128 @@
-import React, { useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   runOnJS,
 } from 'react-native-reanimated';
+import { FontAwesome6 } from '@expo/vector-icons';
 
 interface TimeDialProps {
   value: number; // 当前时间值（毫秒）
   onChange: (delta: number) => void; // 变化量回调
-  label: string; // 标签（如"开始时间"）
-  min?: number;
-  max?: number;
+  label: string; // 标签（如"开始"）
   color?: string;
+  audioDuration?: number; // 音频总时长，用于限制范围
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const DIAL_SIZE = Math.min(SCREEN_WIDTH * 0.35, 140);
 
 export function TimeDial({
   value,
   onChange,
   label,
-  min = 0,
-  max = 999999,
   color = '#00ff88',
+  audioDuration = 0,
 }: TimeDialProps) {
   const rotation = useSharedValue(0);
-  const lastRotation = useSharedValue(0);
   const lastAngle = useSharedValue(0);
-  
+  const accumulatedDelta = useSharedValue(0);
+
   // 格式化时间显示
   const formatTime = (ms: number) => {
     const totalSeconds = ms / 1000;
     const seconds = Math.floor(totalSeconds);
     const minutes = Math.floor(seconds / 60);
     const millis = Math.floor(ms % 1000);
-    return `${minutes}:${(seconds % 60).toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
+    return `${minutes}:${(seconds % 60).toString().padStart(2, '0')}.${millis.toString().padStart(3, '0').substring(0, 2)}`;
   };
 
   const handleChange = useCallback((delta: number) => {
     onChange(delta);
   }, [onChange]);
 
+  // 手动调整按钮
+  const adjustTime = (delta: number) => {
+    onChange(delta);
+  };
+
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
-      // 计算当前触摸点相对于中心的角度
-      const centerX = DIAL_SIZE / 2;
-      const centerY = DIAL_SIZE / 2;
-      const x = e.x - centerX;
-      const y = e.y - centerY;
-      const angle = Math.atan2(y, x) * (180 / Math.PI);
+      // 使用水平滑动来调整时间，更直观
+      const deltaX = e.translationX - lastAngle.value;
       
-      // 计算角度变化
-      let deltaAngle = angle - lastAngle.value;
+      // 每1像素对应1毫秒
+      const timeDelta = Math.round(deltaX);
       
-      // 处理跨越 -180/180 边界的情况
-      if (deltaAngle > 180) deltaAngle -= 360;
-      if (deltaAngle < -180) deltaAngle += 360;
-      
-      // 更新旋转值
-      rotation.value = lastRotation.value + deltaAngle;
-      
-      // 计算时间变化量：每度对应 1ms（最小单位）
-      const timeDelta = Math.round(deltaAngle);
       if (Math.abs(timeDelta) >= 1) {
+        accumulatedDelta.value += timeDelta;
         runOnJS(handleChange)(timeDelta);
-        lastAngle.value = angle;
-        lastRotation.value = rotation.value;
+        lastAngle.value = e.translationX;
       }
     })
     .onEnd(() => {
-      // 弹性回弹效果
-      lastRotation.value = rotation.value;
+      lastAngle.value = 0;
+      accumulatedDelta.value = 0;
     });
 
   const animatedStyle = useAnimatedStyle(() => {
+    // 轻微的视觉反馈
     return {
-      transform: [{ rotate: `${rotation.value}deg` }],
+      transform: [{ translateX: accumulatedDelta.value * 0.3 }],
     };
   });
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, { color }]}>{label}</Text>
       
       <GestureDetector gesture={panGesture}>
-        <View style={styles.dialWrapper}>
-          {/* 外圈刻度 */}
-          <View style={styles.dialOuter}>
-            {[...Array(12)].map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.tick,
-                  { transform: [{ rotate: `${i * 30}deg` }] },
-                ]}
-              />
-            ))}
-          </View>
+        <Animated.View style={[styles.dialArea, animatedStyle]}>
+          {/* 时间显示 - 大号 */}
+          <Text style={[styles.timeValue, { color }]}>
+            {formatTime(value)}
+          </Text>
           
-          {/* 可旋转的内圈 */}
-          <Animated.View style={[styles.dialInner, animatedStyle, { borderColor: color }]}>
-            {/* 指示线 */}
-            <View style={[styles.indicator, { backgroundColor: color }]} />
-          </Animated.View>
-          
-          {/* 中心显示 */}
-          <View style={styles.centerDisplay}>
-            <Text style={[styles.timeValue, { color }]}>{formatTime(value)}</Text>
-          </View>
-        </View>
+          {/* 滑动提示 */}
+          <Text style={styles.hint}>← 滑动调整 →</Text>
+        </Animated.View>
       </GestureDetector>
       
-      <Text style={styles.hint}>← 逆时针减少 | 顺时针增加 →</Text>
+      {/* 微调按钮 */}
+      <View style={styles.buttonRow}>
+        <TouchableOpacity 
+          style={[styles.adjustBtn, { borderColor: color }]}
+          onPress={() => adjustTime(-100)}
+        >
+          <FontAwesome6 name="backward-fast" size={14} color={color} />
+          <Text style={[styles.btnText, { color }]}>-100ms</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.adjustBtn, { borderColor: color }]}
+          onPress={() => adjustTime(-10)}
+        >
+          <FontAwesome6 name="backward" size={14} color={color} />
+          <Text style={[styles.btnText, { color }]}>-10ms</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.adjustBtn, { borderColor: color }]}
+          onPress={() => adjustTime(10)}
+        >
+          <FontAwesome6 name="forward" size={14} color={color} />
+          <Text style={[styles.btnText, { color }]}>+10ms</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.adjustBtn, { borderColor: color }]}
+          onPress={() => adjustTime(100)}
+        >
+          <FontAwesome6 name="forward-fast" size={14} color={color} />
+          <Text style={[styles.btnText, { color }]}>+100ms</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -123,67 +130,58 @@ export function TimeDial({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    marginVertical: 8,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 8,
+    flex: 1,
   },
   label: {
-    color: '#888',
-    fontSize: 12,
-    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 12,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 2,
   },
-  dialWrapper: {
-    width: DIAL_SIZE,
-    height: DIAL_SIZE,
-    justifyContent: 'center',
+  dialArea: {
     alignItems: 'center',
-  },
-  dialOuter: {
-    position: 'absolute',
-    width: DIAL_SIZE,
-    height: DIAL_SIZE,
-    borderRadius: DIAL_SIZE / 2,
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    backgroundColor: '#222',
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: '#333',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tick: {
-    position: 'absolute',
-    width: 2,
-    height: 8,
-    backgroundColor: '#444',
-    top: 2,
-    transformOrigin: 'center',
-  },
-  dialInner: {
-    width: DIAL_SIZE - 20,
-    height: DIAL_SIZE - 20,
-    borderRadius: (DIAL_SIZE - 20) / 2,
-    borderWidth: 3,
-    backgroundColor: '#1a1a1a',
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    paddingTop: 8,
-  },
-  indicator: {
-    width: 3,
-    height: 16,
-    borderRadius: 1.5,
-  },
-  centerDisplay: {
-    position: 'absolute',
-    justifyContent: 'center',
-    alignItems: 'center',
+    minWidth: 140,
   },
   timeValue: {
-    fontSize: 14,
+    fontSize: 28,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+    letterSpacing: 1,
   },
   hint: {
     color: '#555',
     fontSize: 10,
-    marginTop: 6,
+    marginTop: 8,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    marginTop: 12,
+    gap: 6,
+  },
+  adjustBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#222',
+    borderWidth: 1,
+  },
+  btnText: {
+    fontSize: 10,
+    fontWeight: '500',
   },
 });
