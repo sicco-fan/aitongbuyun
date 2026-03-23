@@ -570,28 +570,28 @@ export default function TimestampEditorScreen() {
         />
       </View>
 
-      {/* 单词列表 - 当前句子范围内 */}
-      <View style={styles.wordsSection}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>句子中的单词</Text>
-          {hasValidTime && (
-            <TouchableOpacity onPress={rematchCurrentSentence}>
-              <Text style={styles.rematchBtn}>重新匹配</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        
-        {!hasValidTime ? (
-          <View style={styles.emptyState}>
-            <FontAwesome6 name="clock" size={32} color="#444" />
-            <Text style={styles.emptyText}>该句子尚未匹配时间戳</Text>
-            <TouchableOpacity style={styles.matchBtn} onPress={rematchCurrentSentence}>
-              <FontAwesome6 name="wand-magic-sparkles" size={16} color="#000" />
-              <Text style={styles.matchBtnText}>自动匹配</Text>
-            </TouchableOpacity>
+      {/* 单词列表 - 仅在有单词时间戳数据时显示 */}
+      {wordTimestamps.length > 0 && (
+        <View style={styles.wordsSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>句子中的单词（点击试听）</Text>
+            {hasValidTime && (
+              <TouchableOpacity onPress={rematchCurrentSentence}>
+                <Text style={styles.rematchBtn}>重新匹配</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        ) : sentenceWords.length > 0 ? (
-          <View style={{ flex: 1 }}>
+          
+          {!hasValidTime ? (
+            <View style={styles.emptyState}>
+              <FontAwesome6 name="clock" size={32} color="#444" />
+              <Text style={styles.emptyText}>该句子尚未匹配时间戳</Text>
+              <TouchableOpacity style={styles.matchBtn} onPress={rematchCurrentSentence}>
+                <FontAwesome6 name="wand-magic-sparkles" size={16} color="#000" />
+                <Text style={styles.matchBtnText}>自动匹配</Text>
+              </TouchableOpacity>
+            </View>
+          ) : sentenceWords.length > 0 ? (
             <ScrollView horizontal style={styles.wordsList} contentContainerStyle={styles.wordsContent}>
               {sentenceWords.map((word, idx) => (
                 <TouchableOpacity 
@@ -604,14 +604,14 @@ export default function TimestampEditorScreen() {
                 </TouchableOpacity>
               ))}
             </ScrollView>
-          </View>
-        ) : (
-          <Text style={styles.noWords}>该时间范围内没有识别到单词</Text>
-        )}
-      </View>
+          ) : (
+            <Text style={styles.noWords}>当前时间范围内没有单词，请调整时间</Text>
+          )}
+        </View>
+      )}
 
-      {/* 调整时间边界 */}
-      {hasValidTime && (
+      {/* 调整时间边界 - 仅在有单词时间戳数据时显示 */}
+      {hasValidTime && wordTimestamps.length > 0 && (
         <View style={styles.adjustSection}>
           <Text style={styles.sectionTitle}>调整时间边界（点击单词调整）</Text>
           
