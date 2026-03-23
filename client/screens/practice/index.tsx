@@ -6,7 +6,6 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Platform,
   Animated,
 } from 'react-native';
 import { Audio } from 'expo-av';
@@ -66,7 +65,6 @@ export default function PracticeScreen() {
   // 单词状态
   const [wordStatuses, setWordStatuses] = useState<WordStatus[]>([]);
   const [currentInput, setCurrentInput] = useState('');
-  const [completedWordCount, setCompletedWordCount] = useState(0); // 已完成的单词数
   
   // 翻译显示
   const [showTranslation, setShowTranslation] = useState(false);
@@ -86,7 +84,6 @@ export default function PracticeScreen() {
   
   // 错误闪烁动画
   const errorAnimRef = useRef<Animated.Value>(new Animated.Value(0));
-  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // 语音输入
   const [isRecording, setIsRecording] = useState(false);
@@ -291,14 +288,6 @@ export default function PracticeScreen() {
     }
   }, [isPlaying, playAudio, pauseAudio]);
 
-  // 切换循环模式
-  const toggleLoop = useCallback(() => {
-    setIsLooping(prev => {
-      isLoopingRef.current = !prev;
-      return !prev;
-    });
-  }, []);
-
   // 初始化当前句子
   useEffect(() => {
     if (!currentSentence) return;
@@ -331,20 +320,8 @@ export default function PracticeScreen() {
     };
   }, [currentSentence?.id]);
 
-  // 自动计算完成的单词数
-  useEffect(() => {
-    const completed = wordStatuses.filter(w => !w.isPunctuation && w.revealed).length;
-    setCompletedWordCount(completed);
-  }, [wordStatuses]);
-
   // 显示错误闪烁效果
   const showErrorFlash = useCallback(() => {
-    // 清除之前的定时器
-    if (errorTimeoutRef.current) {
-      clearTimeout(errorTimeoutRef.current);
-    }
-    
-    // 动画：快速闪红
     Animated.sequence([
       Animated.timing(errorAnimRef.current, {
         toValue: 1,
@@ -357,8 +334,6 @@ export default function PracticeScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-    
-    // 不再自动清除错误状态，让用户看到错误位置直到改正
   }, []);
 
   // 处理输入变化（支持任意顺序输入单词）
@@ -630,12 +605,6 @@ export default function PracticeScreen() {
     }
   }, [currentInput, handleInputChange]);
 
-  // 跳过句子
-  const skipSentence = useCallback(() => {
-    stopPlayback();
-    goToNextSentence();
-  }, [stopPlayback, goToNextSentence]);
-
   // 清理
   useEffect(() => {
     return () => {
@@ -644,9 +613,6 @@ export default function PracticeScreen() {
       }
       if (recordingRef.current) {
         recordingRef.current.stopAndUnloadAsync();
-      }
-      if (errorTimeoutRef.current) {
-        clearTimeout(errorTimeoutRef.current);
       }
     };
   }, []);
