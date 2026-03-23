@@ -21,13 +21,13 @@ app.get('/api/v1/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Routes
+// Routes - 注意：更具体的路由要放在前面
+app.use('/api/v1/materials/download', videoDownloadRouter);
 app.use('/api/v1/materials', materialsRouter);
 app.use('/api/v1/learning-records', learningRouter);
 app.use('/api/v1/speech-recognize', speechRouter);
 app.use('/api/v1/translate', translateRouter);
 app.use('/api/v1/letter-pronunciation', letterPronunciationRouter);
-app.use('/api/v1/materials/download', videoDownloadRouter);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

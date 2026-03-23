@@ -61,6 +61,37 @@ const VIDEO_PLATFORMS: Record<string, { patterns: RegExp[]; name: string }> = {
   },
 };
 
+// 解析短链接重定向（使用 curl，更可靠）
+async function resolveRedirect(url: string): Promise<string> {
+  try {
+    // 使用 curl 解析重定向，模拟移动端微信
+    const { stdout } = await execAsync(
+      `curl -sIL -A "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38" "${url}" | grep -i "^location:" | tail -1 | cut -d' ' -f2 | tr -d '\\r\\n'`,
+      { timeout: 15000 }
+    );
+    
+    const resolved = stdout.trim();
+    if (resolved && resolved.startsWith('http')) {
+      console.log(`[重定向解析] ${url} -> ${resolved}`);
+      return resolved;
+    }
+    
+    // 备用方案：使用 axios
+    const response = await axios.head(url, {
+      maxRedirects: 10,
+      timeout: 10000,
+      validateStatus: () => true,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38',
+      },
+    });
+    return response.request?.res?.responseUrl || url;
+  } catch (e) {
+    console.log('[重定向解析] 失败，使用原始URL:', (e as Error).message);
+    return url;
+  }
+}
+
 // 检测视频平台
 function detectPlatform(url: string): { key: string; name: string } | null {
   for (const [key, config] of Object.entries(VIDEO_PLATFORMS)) {
@@ -162,8 +193,16 @@ router.post('/', async (req: Request, res: Response) => {
     let videoTitle = title || '';
     let duration = 0;
     
-    // 使用 yt-dlp 下载
-    const downloadCmd = [
+    // 解析短链接重定向
+    let resolvedUrl = url;
+    if (platform?.key === 'douyin' || platform?.key === 'xiaohongshu' || platform?.key === 'kuaishou') {
+      console.log(`[下载] 解析短链接重定向...`);
+      resolvedUrl = await resolveRedirect(url);
+      console.log(`[下载] 重定向后: ${resolvedUrl}`);
+    }
+    
+    // 构建 yt-dlp 命令
+    const ytdlpArgs = [
       'yt-dlp',
       '--no-playlist',
       '-f', 'bestaudio/best',
@@ -171,20 +210,57 @@ router.post('/', async (req: Request, res: Response) => {
       '--audio-format', 'mp3',
       '--audio-quality', '0',
       '--no-check-certificate',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      '--no-warnings',
+      // 抖音/小红书/快手需要移动端UA
+      '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38',
       '-o', outputTemplate,
       '--print', 'filepath',
       '--print', 'title',
       '--print', 'duration_string',
-      url,
-    ].join(' ');
+    ];
     
+    // 为特定平台添加额外参数
+    if (platform?.key === 'douyin') {
+      // 抖音可能需要提取视频而非音频
+      ytdlpArgs.push('--extractor-args', 'douyin:webpage_fallback=true');
+    }
+    
+    ytdlpArgs.push(resolvedUrl);
+    
+    // 使用数组形式执行命令，避免 shell 注入问题
     console.log(`[下载] 执行命令: yt-dlp ...`);
     
     try {
-      const downloadResult = await execAsync(downloadCmd, {
-        maxBuffer: 1024 * 1024 * 50, // 50MB buffer
-        timeout: 5 * 60 * 1000, // 5分钟超时
+      // 使用 spawn 而不是 exec，避免 shell 解析问题
+      const { spawn } = await import('child_process');
+      
+      const downloadResult = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+        const proc = spawn('yt-dlp', ytdlpArgs.slice(1), { // 跳过第一个 'yt-dlp'
+          timeout: 5 * 60 * 1000,
+        });
+        
+        let stdout = '';
+        let stderr = '';
+        
+        proc.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+        
+        proc.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+        
+        proc.on('close', (code) => {
+          if (code === 0) {
+            resolve({ stdout, stderr });
+          } else {
+            reject(new Error(`yt-dlp 退出码 ${code}: ${stderr || stdout}`));
+          }
+        });
+        
+        proc.on('error', (err) => {
+          reject(err);
+        });
       });
       
       // 解析下载结果
@@ -211,6 +287,28 @@ router.post('/', async (req: Request, res: Response) => {
     } catch (execError: any) {
       console.error(`[下载] yt-dlp 执行失败:`, execError.message);
       
+      // 解析具体错误原因
+      let errorMsg = execError.message || '未知错误';
+      let suggestion = '';
+      
+      if (errorMsg.includes('Video unavailable') || errorMsg.includes('not available')) {
+        suggestion = '视频不可用，可能已被删除或设为私密';
+      } else if (errorMsg.includes('Sign in') || errorMsg.includes('login') || errorMsg.includes('age-restricted')) {
+        suggestion = '视频需要登录或年龄验证，暂不支持';
+      } else if (errorMsg.includes('Private video')) {
+        suggestion = '这是私密视频，无法下载';
+      } else if (errorMsg.includes('HTTP Error 403') || errorMsg.includes('Forbidden')) {
+        suggestion = '访问被拒绝，可能是地区限制或需要登录';
+      } else if (errorMsg.includes('HTTP Error 404')) {
+        suggestion = '视频不存在或已被删除';
+      } else if (errorMsg.includes('Fresh cookies') || errorMsg.includes('cookies')) {
+        suggestion = '该平台视频暂时无法下载，请尝试其他视频或使用其他平台';
+      } else if (platform?.key === 'douyin') {
+        suggestion = '抖音视频下载失败，请尝试：1) 使用完整链接（非短链接）；2) 确认视频公开可访问；3) 尝试其他视频';
+      } else if (platform?.key === 'xiaohongshu') {
+        suggestion = '小红书视频下载失败，请确保视频公开可访问';
+      }
+      
       // 尝试备用方案：直接下载（适用于直接链接）
       console.log(`[下载] 尝试直接下载...`);
       const directResult = await downloadDirectly(url, tempDir, timestamp);
@@ -220,7 +318,7 @@ router.post('/', async (req: Request, res: Response) => {
         videoTitle = videoTitle || directResult.title;
         duration = directResult.duration;
       } else {
-        throw new Error('下载失败，请检查链接是否有效。支持的链接：抖音、B站、腾讯视频、爱奇艺、优酷、YouTube、小红书、快手等');
+        throw new Error(`${errorMsg}\n\n${suggestion || '请检查链接是否有效，或尝试其他平台视频'}`);
       }
     }
     
@@ -299,10 +397,24 @@ router.post('/', async (req: Request, res: Response) => {
     
   } catch (error) {
     console.error('[下载] 失败:', error);
+    const errorMessage = (error as Error).message;
+    
+    // 构建友好的错误提示
+    let userMessage = errorMessage;
+    let suggestion = '支持的链接：抖音、B站、腾讯视频、爱奇艺、优酷、YouTube、小红书、快手等。\n\n';
+    
+    if (errorMessage.includes('抖音')) {
+      suggestion += '抖音下载提示：\n• 请使用完整视频链接（如 https://www.douyin.com/video/xxx）\n• 确保视频公开可访问，非私密或限流视频\n• 部分视频可能需要登录查看，暂不支持';
+    } else if (errorMessage.includes('小红书')) {
+      suggestion += '小红书下载提示：\n• 确保视频公开可访问\n• 建议使用完整的笔记链接';
+    } else {
+      suggestion += '请确保：\n• 链接可以在浏览器中直接打开\n• 视频是公开可访问的\n• 视频未被删除或设为私密';
+    }
+    
     res.status(500).json({ 
       error: '下载失败', 
-      message: (error as Error).message,
-      suggestion: '请确保链接有效且可以在浏览器中直接访问。支持的链接：抖音、B站、腾讯视频、爱奇艺、优酷、YouTube、小红书、快手等',
+      message: userMessage,
+      suggestion,
     });
   }
 });

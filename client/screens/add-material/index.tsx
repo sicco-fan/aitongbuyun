@@ -216,9 +216,11 @@ export default function AddMaterialScreen() {
       }
     } catch (error) {
       console.error('下载失败:', error);
+      const errorMsg = (error as Error).message;
+      // 显示服务端返回的详细错误信息
       setErrorDialog({ 
         visible: true, 
-        message: `下载失败：${(error as Error).message}\n\n请确保链接可以在浏览器中直接访问。` 
+        message: errorMsg || '下载失败，请重试'
       });
     } finally {
       setDownloading(false);
@@ -623,7 +625,7 @@ export default function AddMaterialScreen() {
                   borderRadius: BorderRadius.md,
                   alignSelf: 'flex-start',
                 }}>
-                  <FontAwesome6 name="check-circle" size={14} color={theme.success} style={{ marginRight: 6 }} />
+                  <FontAwesome6 name="circle-check" size={14} color={theme.success} style={{ marginRight: 6 }} />
                   <ThemedText variant="caption" color={theme.success}>
                     检测到：{detectedPlatform}
                   </ThemedText>
