@@ -298,14 +298,14 @@ export default function PracticeScreen() {
           positionMillis: start,
         },
         (status) => {
-          if (status.isLoaded) {
+          if (status.isLoaded && soundRef.current && isLoopingRef.current) {
             // 当播放到句子结束位置时，跳回开始位置继续播放
-            if (status.positionMillis >= end && isLoopingRef.current) {
-              soundRef.current?.setPositionAsync(start);
+            if (status.positionMillis >= end) {
+              soundRef.current.setPositionAsync(start);
               setPlayCount(prev => prev + 1);
             }
             
-            if (status.didJustFinish && !isLoopingRef.current) {
+            if (status.didJustFinish) {
               setIsPlaying(false);
             }
           }
@@ -325,17 +325,21 @@ export default function PracticeScreen() {
 
   // 停止播放
   const stopPlayback = useCallback(async () => {
+    // 先设置循环标志为 false，防止回调继续循环
     isLoopingRef.current = false;
+    
     if (soundRef.current) {
       try {
+        // 先暂停，然后卸载
+        await soundRef.current.pauseAsync();
         await soundRef.current.stopAsync();
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       } catch (e) {
         // 忽略错误
       }
-      setIsPlaying(false);
     }
+    setIsPlaying(false);
   }, []);
 
   // 当完成时，停止音频播放
