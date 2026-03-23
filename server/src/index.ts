@@ -3,6 +3,7 @@ import cors from "cors";
 import materialsRouter from "./routes/materials";
 import learningRouter from "./routes/learning";
 import speechRouter from "./routes/speech";
+import translateRouter from "./routes/translate";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -22,6 +23,7 @@ app.get('/api/v1/health', (req, res) => {
 app.use('/api/v1/materials', materialsRouter);
 app.use('/api/v1/learning-records', learningRouter);
 app.use('/api/v1/speech-recognize', speechRouter);
+app.use('/api/v1/translate', translateRouter);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

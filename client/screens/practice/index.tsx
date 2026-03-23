@@ -72,6 +72,10 @@ export default function PracticeScreen() {
   const [feedbackWord, setFeedbackWord] = useState('');
   const [hintWordIndex, setHintWordIndex] = useState<number | null>(null); // 当前显示提示的单词索引
   
+  // 翻译显示
+  const [wordTranslation, setWordTranslation] = useState<string | null>(null); // 当前完成的单词翻译
+  const [sentenceTranslation, setSentenceTranslation] = useState<string | null>(null); // 句子完成后的翻译
+  
   // 音频控制状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [playCount, setPlayCount] = useState(0);
@@ -153,6 +157,8 @@ export default function PracticeScreen() {
       setFeedback(null);
       setHintWordIndex(null);
       setPlayCount(0);
+      setWordTranslation(null); // 清除单词翻译
+      setSentenceTranslation(null); // 清除句子翻译
       
       // 保存当前句子的时间范围
       sentenceTimesRef.current = {
@@ -393,7 +399,24 @@ export default function PracticeScreen() {
       wordStatuses.filter(w => !w.isPunctuation).every(w => w.revealed);
     
     if (allWordsRevealed && currentSentence && !completed) {
-      // 延迟一下再跳转，让用户看到完成状态
+      // 获取句子翻译
+      fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: currentSentence.text, type: 'sentence' }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.translation) {
+            setSentenceTranslation(data.translation);
+          }
+        })
+        .catch(err => console.error('翻译失败:', err));
+      
+      // 清除单词翻译
+      setWordTranslation(null);
+      
+      // 延迟一下再跳转，让用户看到完成状态和翻译
       const timer = setTimeout(() => {
         // 停止播放
         stopPlayback();
@@ -422,7 +445,7 @@ export default function PracticeScreen() {
         } else {
           setCompleted(true);
         }
-      }, 800);
+      }, 2000); // 延长到2秒，让用户有时间看翻译
       
       return () => clearTimeout(timer);
     }
@@ -434,6 +457,11 @@ export default function PracticeScreen() {
     if (text.includes(' ')) {
       setCurrentInput('');
       return;
+    }
+    
+    // 新单词开始输入时，清除上一个单词的翻译
+    if (text.length === 1) {
+      setWordTranslation(null);
     }
     
     setCurrentInput(text);
@@ -461,7 +489,7 @@ export default function PracticeScreen() {
     }
   };
 
-  // 监听单词完成，自动清空输入框
+  // 监听单词完成，自动清空输入框并显示翻译
   useEffect(() => {
     if (!currentInput) return;
     
@@ -475,10 +503,25 @@ export default function PracticeScreen() {
     
     if (matchedWord) {
       // 找到了完整匹配的单词，清空输入
+      const completedWord = currentInput;
       setCurrentInput('');
-      setFeedbackWord(currentInput);
+      setFeedbackWord(completedWord);
       setFeedback('correct');
       setTimeout(() => setFeedback(null), 300);
+      
+      // 获取单词翻译
+      fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: matchedWord.displayText, type: 'word' }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.translation) {
+            setWordTranslation(data.translation);
+          }
+        })
+        .catch(err => console.error('翻译失败:', err));
     }
   }, [wordStatuses, currentInput]);
 
@@ -935,9 +978,30 @@ export default function PracticeScreen() {
             </View>
           </View>
           <ThemedText variant="caption" color={theme.textMuted}>
-            {isPlaying ? '循环播放当前句子中' : '已暂停'} · 已循环 {playCount} 次
+            {isPlaying ? '循环播放当前句子中' : '已暂停'}
           </ThemedText>
         </View>
+
+        {/* 翻译显示区 - 右上角 */}
+        {(wordTranslation || sentenceTranslation) && (
+          <View style={styles.translationBox}>
+            {sentenceTranslation ? (
+              <>
+                <ThemedText variant="caption" color={theme.textMuted}>整句翻译：</ThemedText>
+                <ThemedText variant="body" color={theme.textPrimary} style={styles.translationText}>
+                  {sentenceTranslation}
+                </ThemedText>
+              </>
+            ) : wordTranslation && (
+              <>
+                <ThemedText variant="caption" color={theme.textMuted}>单词释义：</ThemedText>
+                <ThemedText variant="body" color={theme.textPrimary} style={styles.translationText}>
+                  {wordTranslation}
+                </ThemedText>
+              </>
+            )}
+          </View>
+        )}
 
         {/* Sentence Display */}
         <View style={styles.sentenceSection}>

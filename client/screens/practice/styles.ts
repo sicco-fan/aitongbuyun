@@ -78,6 +78,21 @@ export const createStyles = (theme: Theme) => {
     },
     playCount: {},
     
+    // 翻译显示区
+    translationBox: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.xl,
+      borderWidth: 1,
+      borderColor: theme.primary,
+      padding: Spacing.lg,
+      marginBottom: Spacing.lg,
+      alignItems: 'flex-end',
+    },
+    translationText: {
+      textAlign: 'right',
+      marginTop: Spacing.xs,
+    },
+    
     // 句子显示区
     sentenceSection: {
       backgroundColor: theme.backgroundDefault,
