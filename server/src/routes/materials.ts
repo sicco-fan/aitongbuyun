@@ -368,9 +368,8 @@ router.post('/chunk-json', express.json({ limit: '50mb' }), async (req: Request,
     const index = parseInt(chunkIndex);
     const total = parseInt(totalChunks);
 
-    // 将 base64 解码为 Buffer
-    const buffer = Buffer.from(data, 'base64');
-    console.log(`[JSON分块] 解码后大小: ${buffer.length} bytes`);
+    // 存储 base64 字符串（不解码），避免分块解码时丢失数据
+    console.log(`[JSON分块] 收到 base64 数据: ${data.length} 字符`);
 
     // 初始化或获取上传会话
     if (!uploadChunks.has(uploadId)) {
@@ -383,21 +382,21 @@ router.post('/chunk-json', express.json({ limit: '50mb' }), async (req: Request,
     }
 
     const session = uploadChunks.get(uploadId)!;
-    session.chunks[index] = buffer;
+    session.chunks[index] = data;  // 存储 base64 字符串
     
-    console.log(`[JSON分块] 保存分块 ${index}: ${buffer.length} bytes`);
+    console.log(`[JSON分块] 保存分块 ${index}: ${data.length} 字符`);
 
     // 检查是否所有块都已上传
     const uploadedCount = session.chunks.filter(c => c !== undefined).length;
-    const totalSize = session.chunks.reduce((sum, c) => sum + (c?.length || 0), 0);
-    console.log(`[JSON分块] 进度: ${uploadedCount}/${total}, 已接收总大小: ${totalSize} bytes`);
+    const totalChars = session.chunks.reduce((sum, c) => sum + (c?.length || 0), 0);
+    console.log(`[JSON分块] 进度: ${uploadedCount}/${total}, 已接收总字符: ${totalChars}`);
     
     res.json({ 
       success: true, 
       chunkIndex: index, 
       uploaded: uploadedCount,
       total: total,
-      chunkSize: buffer.length,
+      chunkChars: data.length,
     });
   } catch (error) {
     console.error('JSON分块上传失败:', error);
@@ -428,17 +427,21 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
     console.log(`\n[完成上传] 会话信息: uploadId=${uploadId}`);
     console.log(`[完成上传] 预期分块数: ${session.chunks.length}`);
     session.chunks.forEach((c, i) => {
-      console.log(`[完成上传] 分块 ${i}: ${c ? c.length + ' bytes' : 'undefined'}`);
+      console.log(`[完成上传] 分块 ${i}: ${c ? c.length + ' 字符' : 'undefined'}`);
     });
 
-    // 合并所有块
-    const chunks = session.chunks.filter(c => c !== undefined);
-    if (chunks.length === 0) {
+    // 合并所有 base64 字符串
+    const base64Chunks = session.chunks.filter(c => c !== undefined);
+    if (base64Chunks.length === 0) {
       console.error(`没有有效的分块数据: uploadId=${uploadId}`);
       return res.status(400).json({ error: '没有有效的上传数据' });
     }
     
-    let buffer = Buffer.concat(chunks);
+    // 合并 base64 后一次性解码（避免分块解码丢失数据）
+    const combinedBase64 = base64Chunks.join('');
+    console.log(`[完成上传] 合并后 base64 长度: ${combinedBase64.length} 字符`);
+    
+    let buffer = Buffer.from(combinedBase64, 'base64');
     let fileName = session.fileName;
     let mimeType = session.contentType;
     
@@ -446,7 +449,7 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
     console.log('文件名:', fileName);
     console.log('MIME类型:', mimeType);
     console.log('文件大小:', buffer.length, 'bytes');
-    console.log('有效分块数:', chunks.length, '/', session.chunks.length);
+    console.log('有效分块数:', base64Chunks.length, '/', session.chunks.length);
 
     // 上传到对象存储
     const fileKey = await storage.uploadFile({

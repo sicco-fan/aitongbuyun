@@ -44,7 +44,8 @@ const getBackendUrl = (): string => {
 const BACKEND_URL = getBackendUrl();
 
 // 分块上传配置 - 使用较小的分块以避免代理限制
-const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB 每块（更安全）
+// Base64 编码后每 4 字符 = 3 字节，所以 1MB 原始数据 ≈ 1.33MB base64
+const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB 原始字节大小
 
 /**
  * 分块上传文件
@@ -60,24 +61,33 @@ const uploadFileInChunks = async (
   // 读取文件内容
   onProgress(0, '读取文件...');
   
+  // 获取文件信息
+  const fileInfo = await (FileSystem as any).getInfoAsync(fileUri);
+  const originalFileSize = fileInfo.size || 0;
+  
   const base64Content = await (FileSystem as any).readAsStringAsync(fileUri, {
     encoding: 'base64',
   });
   
-  const fileSize = base64Content.length;
-  const totalChunks = Math.ceil(fileSize / (CHUNK_SIZE * 4 / 3)); // base64 编码后大小约增加 1/3
+  const base64Length = base64Content.length;
+  const totalChunks = Math.ceil(originalFileSize / CHUNK_SIZE);
   
-  console.log(`[分块上传] 文件大小: ${(fileSize * 3 / 4 / 1024 / 1024).toFixed(1)} MB`);
+  console.log(`[分块上传] 原始文件大小: ${(originalFileSize / 1024 / 1024).toFixed(2)} MB`);
+  console.log(`[分块上传] Base64长度: ${base64Length} 字符`);
   console.log(`[分块上传] 分块数量: ${totalChunks}`);
   
   // 生成唯一上传 ID
   const uploadId = `${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
   
+  // Base64 每 4 字符 = 3 字节
+  // 每块对应的 base64 字符数 = CHUNK_SIZE * 4 / 3
+  const base64CharsPerChunk = Math.ceil(CHUNK_SIZE * 4 / 3);
+  
   // 逐块上传
   for (let i = 0; i < totalChunks; i++) {
-    const start = i * (CHUNK_SIZE * 4 / 3);
-    const end = Math.min(start + CHUNK_SIZE * 4 / 3, fileSize);
-    const chunkBase64 = base64Content.substring(start, end);
+    const base64Start = i * base64CharsPerChunk;
+    const base64End = Math.min(base64Start + base64CharsPerChunk, base64Length);
+    const chunkBase64 = base64Content.substring(base64Start, base64End);
     
     onProgress(
       Math.round((i / totalChunks) * 100),
