@@ -211,11 +211,19 @@ export default function AdminScreen() {
 
               <View style={styles.materialActions}>
                 <TouchableOpacity
+                  style={[styles.actionButton, styles.timelineButton]}
+                  onPress={() => router.push('/timestamp-editor', { materialId: material.id, title: material.title })}
+                >
+                  <FontAwesome6 name="sliders" size={14} color="#fff" />
+                  <ThemedText variant="smallMedium" color="#fff">时间轴</ThemedText>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
                   style={[styles.actionButton, styles.textButton]}
                   onPress={() => router.push('/text-split', { materialId: material.id, title: material.title })}
                 >
                   <FontAwesome6 name="scissors" size={14} color={theme.accent} />
-                  <ThemedText variant="smallMedium" color={theme.accent}>文本切分</ThemedText>
+                  <ThemedText variant="smallMedium" color={theme.accent}>切分</ThemedText>
                 </TouchableOpacity>
                 
                 <TouchableOpacity

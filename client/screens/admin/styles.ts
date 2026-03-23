@@ -89,6 +89,9 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.md,
       gap: Spacing.xs,
     },
+    timelineButton: {
+      backgroundColor: theme.primary,
+    },
     textButton: {
       backgroundColor: theme.accent + '15',
     },

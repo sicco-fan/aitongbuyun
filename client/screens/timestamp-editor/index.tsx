@@ -108,6 +108,19 @@ export default function TimestampEditorScreen() {
     
     setLoading(true);
     try {
+      // 首先尝试自动准备时间轴数据
+      const prepareRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/prepare-timestamps`, {
+        method: 'POST',
+      });
+      const prepareData = await prepareRes.json();
+      
+      if (prepareData.sentences && prepareData.sentences.length > 0) {
+        setSentences(prepareData.sentences);
+        if (prepareData.wasProcessed) {
+          console.log('自动处理完成:', prepareData.message);
+        }
+      }
+      
       // 获取材料详情
       const materialRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}`);
       const materialData = await materialRes.json();
@@ -133,27 +146,12 @@ export default function TimestampEditorScreen() {
         console.log('未获取到单词时间戳');
       }
       
-      // 获取句子
-      if (materialData.sentences && materialData.sentences.length > 0) {
-        // 检查是否所有句子都已经有时间戳
-        const needMatch = materialData.sentences.some((s: Sentence) => s.start_time === 0 || s.end_time === 0);
-        
-        if (needMatch) {
-          // 有句子没有时间戳，自动匹配
-          setSentences(materialData.sentences);
-          await autoMatchAllSentences(materialData.sentences, materialId);
-        } else {
-          // 所有句子都已有时间戳
-          setSentences(materialData.sentences);
-        }
-      }
-      
     } catch (error) {
       console.error('获取数据失败:', error);
     } finally {
       setLoading(false);
     }
-  }, [materialId, autoMatchAllSentences]);
+  }, [materialId]);
 
   useEffect(() => {
     fetchData();

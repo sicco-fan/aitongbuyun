@@ -1714,4 +1714,198 @@ router.post('/:id/reorder-sentences', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/v1/materials/:id/prepare-timestamps
+ * 自动准备时间轴编辑所需的数据（一键完成：提取文本 → 切分句子 → 匹配时间戳）
+ * 如果材料没有文本，会自动调用 ASR
+ * 如果没有句子，会自动切分并匹配时间戳
+ */
+router.post('/:id/prepare-timestamps', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const materialId = Array.isArray(id) ? id[0] : id;
+    const supabase = getSupabaseClient();
+    
+    console.log(`\n===== 开始准备时间轴数据 =====`);
+    console.log('材料 ID:', id);
+    
+    // 获取材料
+    const { data: material, error: materialError } = await supabase
+      .from('materials')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (materialError || !material) {
+      return res.status(404).json({ error: '材料不存在' });
+    }
+
+    let fullText = material.full_text || '';
+    let duration = material.duration || 0;
+
+    // Step 1: 如果没有文本，调用 ASR 提取
+    if (!fullText || fullText.length === 0) {
+      console.log('Step 1: 提取 ASR 文本...');
+      
+      // 生成签名 URL
+      const audioUrl = await storage.generatePresignedUrl({
+        key: material.audio_url,
+        expireTime: 86400,
+      });
+
+      // 调用 ASR
+      const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+      const asrClient = new ASRClient(new Config(), customHeaders);
+      
+      const asrResult = await asrClient.recognize({
+        uid: 'user',
+        url: audioUrl,
+      });
+
+      fullText = asrResult.text || asrResult.rawData?.text || '';
+      duration = (asrResult.duration || asrResult.rawData?.audio_info?.duration || 0) * 1000;
+
+      console.log(`ASR 完成: 文本长度=${fullText.length}, 时长=${duration}ms`);
+
+      // 更新材料
+      await supabase
+        .from('materials')
+        .update({ 
+          full_text: fullText,
+          duration: duration,
+        })
+        .eq('id', id);
+    } else {
+      console.log('Step 1: 已有文本，跳过 ASR');
+    }
+
+    if (!fullText || fullText.length === 0) {
+      return res.status(400).json({ error: '无法提取文本，请检查音频文件' });
+    }
+
+    // Step 2: 检查是否已有句子
+    const { data: existingSentences } = await supabase
+      .from('sentences')
+      .select('*')
+      .eq('material_id', id)
+      .order('sentence_index');
+
+    if (existingSentences && existingSentences.length > 0) {
+      console.log(`Step 2: 已有 ${existingSentences.length} 个句子，跳过切分`);
+      return res.json({ 
+        sentences: existingSentences,
+        message: '已有句子数据',
+        wasProcessed: false,
+      });
+    }
+
+    // Step 3: 获取单词时间戳用于匹配
+    console.log('Step 3: 获取单词时间戳...');
+    
+    const audioUrl = await storage.generatePresignedUrl({
+      key: material.audio_url,
+      expireTime: 86400,
+    });
+
+    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+    const asrClient = new ASRClient(new Config(), customHeaders);
+    
+    const asrResult = await asrClient.recognize({
+      uid: 'user',
+      url: audioUrl,
+    });
+
+    // 提取单词时间戳
+    const wordsWithTime = extractWordsWithTimestamps(asrResult);
+    console.log(`获取到 ${wordsWithTime.length} 个单词时间戳`);
+
+    // Step 4: 切分句子
+    console.log('Step 4: 切分句子...');
+    const sentenceTexts = splitIntoSentences(fullText);
+    console.log(`切分为 ${sentenceTexts.length} 个句子`);
+
+    // Step 5: 匹配时间戳并保存
+    console.log('Step 5: 匹配时间戳并保存句子...');
+    const sentences = [];
+    
+    if (wordsWithTime.length > 0) {
+      // 有单词时间戳，精确匹配
+      let wordIndex = 0;
+      
+      for (let i = 0; i < sentenceTexts.length; i++) {
+        const sentenceText = sentenceTexts[i];
+        const sentenceWords = sentenceText.split(/\s+/).filter(w => w.length > 0);
+        const sentenceWordCount = sentenceWords.length;
+        
+        const startIdx = wordIndex;
+        const endIdx = Math.min(wordIndex + sentenceWordCount, wordsWithTime.length);
+        
+        if (startIdx < wordsWithTime.length) {
+          const startTime = wordsWithTime[startIdx].start_time;
+          const endWord = wordsWithTime[Math.min(endIdx - 1, wordsWithTime.length - 1)];
+          const endTime = endWord ? endWord.end_time : startTime + 2000;
+          
+          const { data: savedSentence } = await supabase
+            .from('sentences')
+            .insert({
+              material_id: parseInt(materialId),
+              text: sentenceText,
+              start_time: startTime,
+              end_time: endTime,
+              sentence_index: i,
+            })
+            .select()
+            .single();
+          
+          if (savedSentence) {
+            sentences.push(savedSentence);
+          }
+          
+          wordIndex = endIdx;
+        }
+      }
+    } else {
+      // 没有单词时间戳，按比例分配
+      const totalChars = fullText.length;
+      let currentChar = 0;
+      
+      for (let i = 0; i < sentenceTexts.length; i++) {
+        const sentenceText = sentenceTexts[i];
+        const charRatio = sentenceText.length / totalChars;
+        const startTime = Math.round((currentChar / totalChars) * duration);
+        const endTime = Math.round(((currentChar + sentenceText.length) / totalChars) * duration);
+        
+        const { data: savedSentence } = await supabase
+          .from('sentences')
+          .insert({
+            material_id: parseInt(materialId),
+            text: sentenceText,
+            start_time: startTime,
+            end_time: Math.max(endTime, startTime + 1000),
+            sentence_index: i,
+          })
+          .select()
+          .single();
+        
+        if (savedSentence) {
+          sentences.push(savedSentence);
+        }
+        
+        currentChar += sentenceText.length;
+      }
+    }
+
+    console.log(`===== 准备完成，共 ${sentences.length} 个句子 =====\n`);
+    
+    res.json({ 
+      sentences,
+      message: `自动处理完成，共切分 ${sentences.length} 个句子`,
+      wasProcessed: true,
+    });
+  } catch (error) {
+    console.error('准备时间轴数据失败:', error);
+    res.status(500).json({ error: '准备时间轴数据失败', message: (error as Error).message });
+  }
+});
+
 export default router;
