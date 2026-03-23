@@ -20,6 +20,7 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { BorderRadius } from '@/constants/theme';
+import { createFormDataFile } from '@/utils';
 
 interface FileInfo {
   uri: string;
@@ -331,92 +332,44 @@ export default function AddMaterialScreen() {
 
     try {
       const baseUrl = EXPO_PUBLIC_BACKEND_BASE_URL || '';
-      const uploadId = generateUploadId();
-      const CHUNK_SIZE = 512 * 1024; // 512KB 每块，确保小于代理限制
       
-      // 获取文件数据
-      const response = await fetch(file.uri);
-      const fileData = await response.arrayBuffer();
+      console.log('文件信息:', { name: file.name, uri: file.uri, size: file.size, mimeType: file.mimeType });
 
-      const totalSize = fileData.byteLength;
-      const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
+      // 使用 expo-file-system 上传文件（支持进度回调）
+      setUploadStatus('上传中...');
       
-      console.log('文件信息:', { name: file.name, size: totalSize, chunks: totalChunks });
-
-      // 分块上传
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, totalSize);
-        const chunk = fileData.slice(start, end);
-        
-        const progress = Math.round(((i + 1) / totalChunks) * 100);
-        setUploadProgress(progress);
-        setUploadStatus(`上传中 ${progress}% (${i + 1}/${totalChunks} 块)`);
-
-        const formData = new FormData();
-        const chunkBlob = new Blob([chunk], { type: file.mimeType || 'application/octet-stream' });
-        formData.append('chunk', chunkBlob, `chunk_${i}`);
-        formData.append('chunkIndex', i.toString());
-        formData.append('totalChunks', totalChunks.toString());
-        formData.append('uploadId', uploadId);
-        formData.append('fileName', file.name);
-        formData.append('contentType', file.mimeType || 'application/octet-stream');
-
-        /**
-         * 服务端文件：server/src/routes/materials.ts
-         * 接口：POST /api/v1/materials/chunk
-         * FormData 参数：chunk: File, chunkIndex: number, totalChunks: number, uploadId: string, fileName: string, contentType: string
-         */
-        const chunkResponse = await fetch(`${baseUrl}/api/v1/materials/chunk`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!chunkResponse.ok) {
-          const errorText = await chunkResponse.text();
-          throw new Error(`上传块 ${i + 1} 失败: ${errorText.substring(0, 100)}`);
+      const uploadResult = await (FileSystem as any).uploadAsync(
+        `${baseUrl}/api/v1/materials`,
+        file.uri,
+        {
+          httpMethod: 'POST',
+          uploadType: (FileSystem as any).FileSystemUploadType.MULTIPART,
+          fieldName: 'file',
+          parameters: {
+            title: title,
+            description: description || '',
+          },
+          headers: {
+            'Accept': 'application/json',
+          },
         }
+      );
 
-        console.log(`块 ${i + 1}/${totalChunks} 上传成功`);
-      }
-
-      setUploadStatus('处理中，正在识别语音...');
-
-      // 完成上传
-      /**
-       * 服务端文件：server/src/routes/materials.ts
-       * 接口：POST /api/v1/materials/complete
-       * Body 参数：uploadId: string, title: string, description?: string
-       */
-      const completeResponse = await fetch(`${baseUrl}/api/v1/materials/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uploadId,
-          title,
-          description,
-        }),
-      });
-
-      const responseText = await completeResponse.text();
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch {
-        throw new Error(`服务器返回非 JSON 格式: ${responseText.substring(0, 200)}`);
-      }
-
-      if (completeResponse.ok && data.success) {
+      console.log('上传结果:', uploadResult);
+      
+      const responseData = JSON.parse(uploadResult.body);
+      
+      if (uploadResult.status === 200 && responseData.success && responseData.material) {
+        setUploadProgress(100);
         setUploadStatus('上传成功！');
         setUploadSuccess(true);
-        // 显示成功确认对话框
         setSuccessDialog({
           visible: true,
-          materialId: data.material.id,
-          title: data.material.title,
+          materialId: responseData.material.id,
+          title: responseData.material.title || title,
         });
       } else {
-        throw new Error(data.error || data.message || '处理失败');
+        throw new Error(responseData.error || '上传失败');
       }
     } catch (error) {
       console.error('上传失败:', error);
