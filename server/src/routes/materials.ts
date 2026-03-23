@@ -303,7 +303,12 @@ router.post('/chunk', upload.single('chunk'), async (req: Request, res: Response
     const { chunkIndex, totalChunks, uploadId, fileName, contentType } = req.body;
     const chunk = req.file;
 
+    console.log(`[分块上传] 收到分块: index=${chunkIndex}, total=${totalChunks}, uploadId=${uploadId}`);
+    console.log(`[分块上传] 文件信息: name=${chunk?.originalname}, size=${chunk?.size}, mimetype=${chunk?.mimetype}`);
+    console.log(`[分块上传] buffer大小: ${chunk?.buffer?.length || 0} bytes`);
+
     if (!chunk || !uploadId || !fileName) {
+      console.log(`[分块上传] 缺少必要参数: chunk=${!!chunk}, uploadId=${uploadId}, fileName=${fileName}`);
       return res.status(400).json({ error: '缺少必要参数' });
     }
 
@@ -312,6 +317,7 @@ router.post('/chunk', upload.single('chunk'), async (req: Request, res: Response
 
     // 初始化或获取上传会话
     if (!uploadChunks.has(uploadId)) {
+      console.log(`[分块上传] 创建新会话: uploadId=${uploadId}, total=${total}`);
       uploadChunks.set(uploadId, {
         chunks: new Array(total),
         fileName,
@@ -321,18 +327,80 @@ router.post('/chunk', upload.single('chunk'), async (req: Request, res: Response
 
     const session = uploadChunks.get(uploadId)!;
     session.chunks[index] = chunk.buffer;
+    
+    console.log(`[分块上传] 保存分块 ${index}: ${chunk.buffer.length} bytes`);
 
     // 检查是否所有块都已上传
     const uploadedCount = session.chunks.filter(c => c !== undefined).length;
+    const totalSize = session.chunks.reduce((sum, c) => sum + (c?.length || 0), 0);
+    console.log(`[分块上传] 进度: ${uploadedCount}/${total}, 已接收总大小: ${totalSize} bytes`);
     
     res.json({ 
       success: true, 
       chunkIndex: index, 
       uploaded: uploadedCount,
       total: total,
+      chunkSize: chunk.buffer.length,
     });
   } catch (error) {
     console.error('上传块失败:', error);
+    res.status(500).json({ error: '上传块失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * POST /api/v1/materials/chunk-json
+ * 分块上传 - JSON 格式（避免 multipart 代理问题）
+ * Body: { chunkIndex: number, totalChunks: number, uploadId: string, fileName: string, contentType: string, data: string }
+ */
+router.post('/chunk-json', express.json({ limit: '50mb' }), async (req: Request, res: Response) => {
+  try {
+    const { chunkIndex, totalChunks, uploadId, fileName, contentType, data } = req.body;
+
+    console.log(`[JSON分块] 收到分块: index=${chunkIndex}, total=${totalChunks}, uploadId=${uploadId}`);
+    console.log(`[JSON分块] 数据长度: ${data?.length || 0} 字符`);
+
+    if (!data || !uploadId || !fileName) {
+      console.log(`[JSON分块] 缺少必要参数`);
+      return res.status(400).json({ error: '缺少必要参数' });
+    }
+
+    const index = parseInt(chunkIndex);
+    const total = parseInt(totalChunks);
+
+    // 将 base64 解码为 Buffer
+    const buffer = Buffer.from(data, 'base64');
+    console.log(`[JSON分块] 解码后大小: ${buffer.length} bytes`);
+
+    // 初始化或获取上传会话
+    if (!uploadChunks.has(uploadId)) {
+      console.log(`[JSON分块] 创建新会话: uploadId=${uploadId}, total=${total}`);
+      uploadChunks.set(uploadId, {
+        chunks: new Array(total),
+        fileName,
+        contentType: contentType || 'application/octet-stream',
+      });
+    }
+
+    const session = uploadChunks.get(uploadId)!;
+    session.chunks[index] = buffer;
+    
+    console.log(`[JSON分块] 保存分块 ${index}: ${buffer.length} bytes`);
+
+    // 检查是否所有块都已上传
+    const uploadedCount = session.chunks.filter(c => c !== undefined).length;
+    const totalSize = session.chunks.reduce((sum, c) => sum + (c?.length || 0), 0);
+    console.log(`[JSON分块] 进度: ${uploadedCount}/${total}, 已接收总大小: ${totalSize} bytes`);
+    
+    res.json({ 
+      success: true, 
+      chunkIndex: index, 
+      uploaded: uploadedCount,
+      total: total,
+      chunkSize: buffer.length,
+    });
+  } catch (error) {
+    console.error('JSON分块上传失败:', error);
     res.status(500).json({ error: '上传块失败', message: (error as Error).message });
   }
 });
@@ -356,6 +424,13 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
       return res.status(400).json({ error: '上传会话不存在或已过期' });
     }
 
+    // 详细记录每个分块的状态
+    console.log(`\n[完成上传] 会话信息: uploadId=${uploadId}`);
+    console.log(`[完成上传] 预期分块数: ${session.chunks.length}`);
+    session.chunks.forEach((c, i) => {
+      console.log(`[完成上传] 分块 ${i}: ${c ? c.length + ' bytes' : 'undefined'}`);
+    });
+
     // 合并所有块
     const chunks = session.chunks.filter(c => c !== undefined);
     if (chunks.length === 0) {
@@ -371,7 +446,7 @@ router.post('/complete', express.json(), async (req: Request, res: Response) => 
     console.log('文件名:', fileName);
     console.log('MIME类型:', mimeType);
     console.log('文件大小:', buffer.length, 'bytes');
-    console.log('分块数:', chunks.length, '/', session.chunks.length);
+    console.log('有效分块数:', chunks.length, '/', session.chunks.length);
 
     // 上传到对象存储
     const fileKey = await storage.uploadFile({

@@ -84,38 +84,25 @@ const uploadFileInChunks = async (
       `上传中... ${i + 1}/${totalChunks} 块`
     );
     
-    // 使用 FileSystem.uploadAsync 上传单个块
-    // 将 base64 块写入临时文件再上传
-    const tempChunkPath = `${(FileSystem as any).cacheDirectory}chunk_${i}.tmp`;
-    await (FileSystem as any).writeAsStringAsync(tempChunkPath, chunkBase64, {
-      encoding: 'base64',
+    // 使用 JSON 格式上传分块（避免 multipart 代理问题）
+    const chunkResponse = await fetch(`${BACKEND_URL}/api/v1/materials/chunk-json`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        chunkIndex: i,
+        totalChunks: totalChunks,
+        uploadId: uploadId,
+        fileName: fileName,
+        contentType: mimeType,
+        data: chunkBase64,  // base64 编码的分块数据
+      }),
     });
     
-    const chunkResult = await (FileSystem as any).uploadAsync(
-      `${BACKEND_URL}/api/v1/materials/chunk`,
-      tempChunkPath,
-      {
-        httpMethod: 'POST',
-        uploadType: (FileSystem as any).FileSystemUploadType.MULTIPART,
-        fieldName: 'chunk',
-        parameters: {
-          chunkIndex: String(i),
-          totalChunks: String(totalChunks),
-          uploadId: uploadId,
-          fileName: fileName,
-          contentType: mimeType,
-        },
-        headers: {
-          'Accept': 'application/json',
-        },
-      }
-    );
-    
-    // 清理临时文件
-    await (FileSystem as any).deleteAsync(tempChunkPath, { idempotent: true });
-    
-    if (chunkResult.status !== 200) {
-      const errorBody = JSON.parse(chunkResult.body || '{}');
+    if (!chunkResponse.ok) {
+      const errorBody = await chunkResponse.json().catch(() => ({}));
       throw new Error(errorBody.error || `上传第 ${i + 1} 块失败`);
     }
     
