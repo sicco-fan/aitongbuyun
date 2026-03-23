@@ -423,9 +423,17 @@ export default function AdminSentencesScreen() {
             <ThemedText variant="h4" color={theme.textPrimary} style={styles.headerTitle}>
               {title || material?.title}
             </ThemedText>
-            <TouchableOpacity onPress={addSentence}>
-              <FontAwesome6 name="plus" size={20} color={theme.primary} />
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <TouchableOpacity 
+                style={styles.timestampBtn}
+                onPress={() => router.push('/timestamp-editor', { materialId: materialId, title: title })}
+              >
+                <FontAwesome6 name="sliders" size={16} color={theme.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={addSentence}>
+                <FontAwesome6 name="plus" size={20} color={theme.primary} />
+              </TouchableOpacity>
+            </View>
           </View>
           <ThemedText variant="small" color={theme.textMuted}>
             共 {sentences.length} 句 · 点击句子播放对应音频 · 长按编辑

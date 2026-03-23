@@ -22,6 +22,14 @@ export const createStyles = (theme: Theme) => {
       flex: 1,
       textAlign: 'center',
     },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.md,
+    },
+    timestampBtn: {
+      padding: Spacing.xs,
+    },
     sentencesSection: {
       gap: Spacing.md,
     },
