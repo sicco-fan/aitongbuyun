@@ -14,7 +14,7 @@ import { Screen } from '@/components/Screen';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { TimeDial } from '@/components/TimeDial';
+import { TimeControl } from '@/components/TimeControl';
 import { Audio } from 'expo-av';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
@@ -533,28 +533,22 @@ export default function TimestampEditorScreen() {
       {/* 时间调整区域 - 核心上下布局 */}
       <View style={styles.dialSection}>
         {/* 开始时间 */}
-        <View style={styles.dialRow}>
-          <TimeDial
-            value={currentSentence?.start_time || 0}
-            onChange={(delta) => {
-              if (!currentSentence) return;
-              const newSentences = [...sentences];
-              newSentences[currentIndex] = {
-                ...newSentences[currentIndex],
-                start_time: Math.max(0, currentSentence.start_time + delta),
-              };
-              setSentences(newSentences);
-            }}
-            label="开始时间"
-            color="#00ff88"
-          />
-          <View style={styles.timeDisplay}>
-            <Text style={[styles.timeLabel, { color: '#00ff88' }]}>开始</Text>
-            <Text style={[styles.timeValue, { color: '#00ff88' }]}>
-              {hasValidTime ? formatTime(currentSentence?.start_time || 0) : '--:--'}
-            </Text>
-          </View>
-        </View>
+        <TimeControl
+          value={currentSentence?.start_time || 0}
+          onChange={(delta) => {
+            if (!currentSentence) return;
+            const newSentences = [...sentences];
+            newSentences[currentIndex] = {
+              ...newSentences[currentIndex],
+              start_time: Math.max(0, currentSentence.start_time + delta),
+            };
+            setSentences(newSentences);
+          }}
+          onPlay={playCurrentSentence}
+          label="开始"
+          playIcon="play-from"
+          color="#00ff88"
+        />
         
         {/* 时长 */}
         <View style={styles.durationRow}>
@@ -569,28 +563,22 @@ export default function TimestampEditorScreen() {
         </View>
         
         {/* 结束时间 */}
-        <View style={styles.dialRow}>
-          <TimeDial
-            value={currentSentence?.end_time || 0}
-            onChange={(delta) => {
-              if (!currentSentence) return;
-              const newSentences = [...sentences];
-              newSentences[currentIndex] = {
-                ...newSentences[currentIndex],
-                end_time: Math.max((currentSentence.start_time || 0) + 10, currentSentence.end_time + delta),
-              };
-              setSentences(newSentences);
-            }}
-            label="结束时间"
-            color="#ff8800"
-          />
-          <View style={styles.timeDisplay}>
-            <Text style={[styles.timeLabel, { color: '#ff8800' }]}>结束</Text>
-            <Text style={[styles.timeValue, { color: '#ff8800' }]}>
-              {hasValidTime ? formatTime(currentSentence?.end_time || 0) : '--:--'}
-            </Text>
-          </View>
-        </View>
+        <TimeControl
+          value={currentSentence?.end_time || 0}
+          onChange={(delta) => {
+            if (!currentSentence) return;
+            const newSentences = [...sentences];
+            newSentences[currentIndex] = {
+              ...newSentences[currentIndex],
+              end_time: Math.max((currentSentence.start_time || 0) + 10, currentSentence.end_time + delta),
+            };
+            setSentences(newSentences);
+          }}
+          onPlay={playCurrentSentence}
+          label="结束"
+          playIcon="play-to"
+          color="#ff8800"
+        />
       </View>
 
       {/* 单词列表 - 仅在有单词时间戳数据时显示 */}
@@ -732,26 +720,19 @@ export default function TimestampEditorScreen() {
 
       {/* 底部控制栏 */}
       <View style={styles.controls}>
-        <View style={styles.playControls}>
-          <TouchableOpacity 
-            style={[styles.playBtn, !hasValidTime && styles.playBtnDisabled]} 
-            onPress={playCurrentSentence}
-            disabled={!hasValidTime}
-          >
-            <FontAwesome6 name={isPlaying ? "pause" : "play"} size={24} color={hasValidTime ? "#000" : "#666"} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.stopBtn} onPress={stopPlaying}>
-            <FontAwesome6 name="stop" size={18} color="#888" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.stopBtn} onPress={stopPlaying}>
+          <FontAwesome6 name="stop" size={16} color="#888" />
+          <Text style={styles.stopBtnText}>停止</Text>
+        </TouchableOpacity>
         
         <TouchableOpacity style={styles.confirmBtn} onPress={confirmAndNext}>
-          <FontAwesome6 name="check" size={18} color="#000" />
+          <FontAwesome6 name="check" size={16} color="#000" />
           <Text style={styles.confirmBtnText}>确认并下一句</Text>
         </TouchableOpacity>
         
         <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
-          {saving ? <ActivityIndicator size="small" color="#00ff88" /> : <FontAwesome6 name="floppy-disk" size={18} color="#00ff88" />}
+          {saving ? <ActivityIndicator size="small" color="#00ff88" /> : <FontAwesome6 name="floppy-disk" size={16} color="#00ff88" />}
+          <Text style={styles.saveBtnText}>保存</Text>
         </TouchableOpacity>
       </View>
 
@@ -833,29 +814,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#333',
     paddingVertical: 12,
-  },
-  dialRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  timeDisplay: {
-    alignItems: 'flex-end',
-    minWidth: 80,
-    marginLeft: 'auto',
-    paddingRight: 12,
-  },
-  timeLabel: {
-    fontSize: 10,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  timeValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
   },
   durationRow: {
     flexDirection: 'row',
@@ -1021,59 +979,56 @@ const styles = StyleSheet.create({
   controls: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     backgroundColor: '#222',
     borderTopWidth: 1,
     borderTopColor: '#333',
-  },
-  playControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
   },
-  playBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#00ff88',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  playBtnDisabled: {
-    backgroundColor: '#333',
-  },
   stopBtn: {
-    width: 40,
-    height: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: 20,
     backgroundColor: '#333',
-    justifyContent: 'center',
-    alignItems: 'center',
+  },
+  stopBtnText: {
+    color: '#888',
+    fontSize: 13,
+    fontWeight: '500',
   },
   confirmBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     backgroundColor: '#00ff88',
     paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 24,
+    paddingHorizontal: 18,
+    borderRadius: 20,
   },
   confirmBtnText: {
     color: '#000',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   saveBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#333',
-    justifyContent: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 20,
+    backgroundColor: '#333',
     borderWidth: 1,
     borderColor: '#00ff88',
+  },
+  saveBtnText: {
+    color: '#00ff88',
+    fontSize: 13,
+    fontWeight: '500',
   },
 });
