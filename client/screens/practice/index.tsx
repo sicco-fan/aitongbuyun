@@ -177,16 +177,29 @@ export default function PracticeScreen() {
         const currentSentenceId = currentSentenceIdRef.current;
         const updatedCurrentIndex = data.sentences.findIndex((s: Sentence) => s.id === currentSentenceId);
         
+        let newIndex = 0;
         if (updatedCurrentIndex >= 0 && !data.sentences[updatedCurrentIndex]?.is_completed) {
           // 当前句子未完成，保持位置
-          setCurrentIndex(updatedCurrentIndex);
+          newIndex = updatedCurrentIndex;
         } else {
           // 当前句子已完成或不存在，跳转到第一个未完成的
           const firstIncomplete = data.sentences.findIndex((s: Sentence) => !s.is_completed);
-          setCurrentIndex(firstIncomplete >= 0 ? firstIncomplete : 0);
+          newIndex = firstIncomplete >= 0 ? firstIncomplete : 0;
         }
         
         setSentences(data.sentences);
+        setCurrentIndex(newIndex);
+        
+        // 立即更新 sentenceTimesRef，不依赖 useEffect
+        const newSentence = data.sentences[newIndex];
+        if (newSentence) {
+          sentenceTimesRef.current = {
+            start: newSentence.start_time || 0,
+            end: newSentence.end_time || 0,
+          };
+          console.log('[刷新] 时间戳已更新:', newSentence.start_time, '-', newSentence.end_time, 'ms');
+        }
+        
         const total = data.sentences.reduce((sum: number, s: Sentence) => sum + (s.attempts || 0), 0);
         setTotalAttempts(total);
         console.log('[刷新] 材料数据已更新，共', data.sentences.length, '个句子');
@@ -219,6 +232,9 @@ export default function PracticeScreen() {
   // 当切换句子时，初始化单词状态并开始播放
   useEffect(() => {
     if (currentSentence && material?.audio_url) {
+      console.log('[切换句子] 句子ID:', currentSentence.id, '文本:', currentSentence.text?.substring(0, 30));
+      console.log('[切换句子] 时间戳:', currentSentence.start_time, '-', currentSentence.end_time, 'ms');
+      
       const tokens = extractWords(currentSentence.text);
       
       setWordStatuses(tokens.map((token, index) => ({
@@ -244,6 +260,7 @@ export default function PracticeScreen() {
         start: currentSentence.start_time || 0,
         end: currentSentence.end_time || 0,
       };
+      console.log('[切换句子] sentenceTimesRef 已更新:', sentenceTimesRef.current);
       
       // 自动开始循环播放
       isLoopingRef.current = true;
