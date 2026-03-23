@@ -16,15 +16,6 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { Spacing, BorderRadius } from '@/constants/theme';
 
-interface Sentence {
-  id: number;
-  text: string;
-  audio_url: string | null;
-  start_time: number;
-  end_time: number;
-  is_completed: boolean;
-}
-
 interface Material {
   id: number;
   title: string;
@@ -57,9 +48,8 @@ export default function HomeScreen() {
       const data = await response.json();
       
       if (data.materials) {
-        // 只显示已准备好的素材（每个句子都有音频）
+        // 只显示已准备好的素材
         const readyMaterials = data.materials.filter((m: Material) => {
-          // 检查是否有句子且每个句子都有audio_url
           return m.sentences_count > 0 && m.status === 'ready';
         });
         setMaterials(readyMaterials);
@@ -85,10 +75,6 @@ export default function HomeScreen() {
 
   const handleMaterialPress = (material: Material) => {
     router.push('/practice', { materialId: material.id, title: material.title });
-  };
-
-  const handleGoToAdmin = () => {
-    router.push('/admin');
   };
 
   const formatDuration = (ms: number) => {
@@ -130,43 +116,6 @@ export default function HomeScreen() {
           </ThemedText>
         </ThemedView>
 
-        {/* Admin Entry Button */}
-        <TouchableOpacity 
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: theme.backgroundDefault,
-            padding: Spacing.lg,
-            borderRadius: BorderRadius.lg,
-            marginBottom: Spacing.lg,
-            borderWidth: 1,
-            borderColor: theme.border,
-          }}
-          onPress={handleGoToAdmin}
-          activeOpacity={0.7}
-        >
-          <View style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            backgroundColor: theme.primary,
-            justifyContent: 'center',
-            alignItems: 'center',
-            marginRight: Spacing.md,
-          }}>
-            <FontAwesome6 name="gear" size={18} color={theme.buttonPrimaryText} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-              后台管理
-            </ThemedText>
-            <ThemedText variant="caption" color={theme.textMuted}>
-              上传素材、编辑时间轴、切分音频
-            </ThemedText>
-          </View>
-          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
-        </TouchableOpacity>
-
         {/* Materials List */}
         <View style={styles.sectionHeader}>
           <ThemedText variant="h4" color={theme.textPrimary}>
@@ -179,74 +128,74 @@ export default function HomeScreen() {
 
         {materials.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <FontAwesome6 name="headphones" size={48} color={theme.textMuted} style={styles.emptyIcon} />
-            <ThemedText variant="body" color={theme.textPrimary} style={styles.emptyText}>
+            <View style={styles.emptyIconContainer}>
+              <FontAwesome6 name="headphones" size={32} color={theme.primary} />
+            </View>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.emptyText}>
               暂无学习材料
             </ThemedText>
             <ThemedText variant="small" color={theme.textMuted} style={styles.emptySubtext}>
-              请先进入后台管理添加素材
+              请先在后台管理中添加素材
             </ThemedText>
-            <TouchableOpacity 
-              style={{
-                marginTop: Spacing.lg,
-                paddingHorizontal: Spacing.xl,
-                paddingVertical: Spacing.md,
-                backgroundColor: theme.primary,
-                borderRadius: BorderRadius.md,
-              }}
-              onPress={handleGoToAdmin}
-            >
-              <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-                进入后台管理
-              </ThemedText>
-            </TouchableOpacity>
           </View>
         ) : (
-          materials.map((material) => (
-            <TouchableOpacity
-              key={material.id}
-              style={styles.materialCard}
-              onPress={() => handleMaterialPress(material)}
-              activeOpacity={0.7}
-            >
-              <ThemedText variant="title" color={theme.textPrimary} style={styles.materialTitle}>
-                {material.title}
-              </ThemedText>
-              {material.description ? (
-                <ThemedText variant="small" color={theme.textMuted} numberOfLines={2}>
-                  {material.description}
-                </ThemedText>
-              ) : null}
-              
-              <View style={styles.materialMeta}>
-                <View style={styles.materialMetaItem}>
-                  <FontAwesome6 name="clock" size={12} color={theme.textMuted} style={styles.materialMetaIcon} />
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    {formatDuration(material.duration)}
-                  </ThemedText>
-                </View>
-                <View style={styles.materialMetaItem}>
-                  <FontAwesome6 name="list" size={12} color={theme.textMuted} style={styles.materialMetaIcon} />
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    {material.sentences_count} 句
-                  </ThemedText>
-                </View>
-              </View>
-
-              {material.sentences_count > 0 && (
-                <View style={styles.progressContainer}>
-                  <View style={styles.progressBar}>
-                    <View 
-                      style={[styles.progressFill, { width: `${getProgress(material)}%` }]} 
-                    />
+          materials.map((material) => {
+            const progress = getProgress(material);
+            return (
+              <TouchableOpacity
+                key={material.id}
+                style={styles.materialCard}
+                onPress={() => handleMaterialPress(material)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.materialHeader}>
+                  <View style={styles.materialIconContainer}>
+                    <FontAwesome6 name="headphones" size={20} color={theme.primary} />
                   </View>
-                  <ThemedText variant="tiny" color={theme.textMuted} style={styles.progressText}>
-                    {material.completed_count}/{material.sentences_count} 已完成 ({Math.round(getProgress(material))}%)
-                  </ThemedText>
+                  <View style={styles.materialInfo}>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.materialTitle}>
+                      {material.title}
+                    </ThemedText>
+                    <View style={styles.materialMeta}>
+                      <View style={styles.metaTag}>
+                        <FontAwesome6 name="clock" size={10} color={theme.textMuted} />
+                        <ThemedText variant="tiny" color={theme.textMuted}>
+                          {formatDuration(material.duration)}
+                        </ThemedText>
+                      </View>
+                      <View style={styles.metaTag}>
+                        <FontAwesome6 name="list" size={10} color={theme.textMuted} />
+                        <ThemedText variant="tiny" color={theme.textMuted}>
+                          {material.sentences_count} 句
+                        </ThemedText>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.materialArrow}>
+                    <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+                  </View>
                 </View>
-              )}
-            </TouchableOpacity>
-          ))
+
+                {material.sentences_count > 0 && (
+                  <View style={styles.progressSection}>
+                    <View style={styles.progressBar}>
+                      <View 
+                        style={[styles.progressFill, { width: `${progress}%` }]} 
+                      />
+                    </View>
+                    <View style={styles.progressInfo}>
+                      <ThemedText variant="tiny" color={theme.textMuted}>
+                        {material.completed_count}/{material.sentences_count} 已完成
+                      </ThemedText>
+                      <ThemedText variant="tiny" color={theme.primary}>
+                        {Math.round(progress)}%
+                      </ThemedText>
+                    </View>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })
         )}
       </ScrollView>
     </Screen>

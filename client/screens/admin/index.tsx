@@ -5,6 +5,7 @@ import {
   View,
   TextInput,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
@@ -17,7 +18,7 @@ import { createStyles } from './styles';
 import { Spacing, BorderRadius } from '@/constants/theme';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 
-// 后端服务地址 - 直接连接后端服务器，不经过 Metro 代理
+// 后端服务地址
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
 interface Material {
@@ -48,7 +49,14 @@ export default function AdminScreen() {
     material: Material | null;
   }>({ visible: false, material: null });
   
-  // 删除成功提示
+  // 编辑名称对话框状态
+  const [editModal, setEditModal] = useState<{
+    visible: boolean;
+    material: Material | null;
+    title: string;
+  }>({ visible: false, material: null, title: '' });
+  
+  // 成功提示
   const [successDialog, setSuccessDialog] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: '',
@@ -112,6 +120,48 @@ export default function AdminScreen() {
 
   const handleDeleteCancel = () => {
     setDeleteDialog({ visible: false, material: null });
+  };
+
+  // 打开编辑名称对话框
+  const handleEditClick = (material: Material) => {
+    setEditModal({
+      visible: true,
+      material,
+      title: material.title,
+    });
+  };
+
+  // 保存名称修改
+  const handleSaveTitle = async () => {
+    if (!editModal.material || !editModal.title.trim()) return;
+    
+    const newTitle = editModal.title.trim();
+    
+    try {
+      /**
+       * 服务端文件：server/src/routes/materials.ts
+       * 接口：PUT /api/v1/materials/:id
+       * Body 参数：title: string
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${editModal.material.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      });
+      
+      if (response.ok) {
+        // 更新本地列表
+        setMaterials(prev => prev.map(m => 
+          m.id === editModal.material!.id ? { ...m, title: newTitle } : m
+        ));
+        setSuccessDialog({ visible: true, message: '名称已更新' });
+      }
+    } catch (error) {
+      console.error('更新名称失败:', error);
+      setSuccessDialog({ visible: true, message: '更新失败，请重试' });
+    } finally {
+      setEditModal({ visible: false, material: null, title: '' });
+    }
   };
 
   const handleAddMaterial = () => {
@@ -216,91 +266,102 @@ export default function AdminScreen() {
           {filteredMaterials.map((material) => {
             const status = getMaterialStatus(material);
             return (
-            <View key={material.id} style={styles.materialCard}>
-              <View style={styles.materialHeader}>
-                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
-                  <ThemedText variant="smallMedium" color={theme.textPrimary} style={styles.materialTitle}>
-                    {material.title}
+              <View key={material.id} style={styles.materialCard}>
+                <View style={styles.materialHeader}>
+                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+                    <ThemedText variant="smallMedium" color={theme.textPrimary} style={styles.materialTitle}>
+                      {material.title}
+                    </ThemedText>
+                    {/* 编辑名称按钮 */}
+                    <TouchableOpacity 
+                      onPress={() => handleEditClick(material)}
+                      style={{
+                        padding: Spacing.xs,
+                        backgroundColor: theme.backgroundTertiary,
+                        borderRadius: BorderRadius.sm,
+                      }}
+                    >
+                      <FontAwesome6 name="pen" size={12} color={theme.textMuted} />
+                    </TouchableOpacity>
+                    {/* 状态标签 */}
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: status.color + '20',
+                      paddingHorizontal: Spacing.sm,
+                      paddingVertical: 2,
+                      borderRadius: BorderRadius.sm,
+                      gap: 4,
+                    }}>
+                      <FontAwesome6 name={status.icon as any} size={10} color={status.color} />
+                      <ThemedText variant="tiny" color={status.color}>{status.text}</ThemedText>
+                    </View>
+                  </View>
+                  <ThemedText variant="caption" color={theme.textMuted}>
+                    {formatDuration(material.duration)}
                   </ThemedText>
-                  {/* 状态标签 */}
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: status.color + '20',
-                    paddingHorizontal: Spacing.sm,
-                    paddingVertical: 2,
-                    borderRadius: BorderRadius.sm,
-                    gap: 4,
-                  }}>
-                    <FontAwesome6 name={status.icon as any} size={10} color={status.color} />
-                    <ThemedText variant="tiny" color={status.color}>{status.text}</ThemedText>
+                </View>
+                
+                <View style={styles.materialStats}>
+                  <View style={styles.statRow}>
+                    <FontAwesome6 name="list" size={12} color={theme.textMuted} />
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      {material.sentences_count || 0} 句
+                    </ThemedText>
+                  </View>
+                  <View style={styles.statRow}>
+                    <FontAwesome6 name="circle-check" size={12} color={theme.success} />
+                    <ThemedText variant="caption" color={theme.success}>
+                      {material.completed_count || 0} 完成
+                    </ThemedText>
+                  </View>
+                  {/* 显示文本状态 */}
+                  <View style={styles.statRow}>
+                    <FontAwesome6 
+                      name={material.full_text ? "file-lines" : "file-circle-plus"} 
+                      size={12} 
+                      color={material.full_text ? theme.success : theme.textMuted} 
+                    />
+                    <ThemedText variant="caption" color={material.full_text ? theme.success : theme.textMuted}>
+                      {material.full_text ? '已有文本' : '待提取'}
+                    </ThemedText>
                   </View>
                 </View>
-                <ThemedText variant="caption" color={theme.textMuted}>
-                  {formatDuration(material.duration)}
-                </ThemedText>
-              </View>
-              
-              <View style={styles.materialStats}>
-                <View style={styles.statRow}>
-                  <FontAwesome6 name="list" size={12} color={theme.textMuted} />
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    {material.sentences_count || 0} 句
-                  </ThemedText>
-                </View>
-                <View style={styles.statRow}>
-                  <FontAwesome6 name="circle-check" size={12} color={theme.success} />
-                  <ThemedText variant="caption" color={theme.success}>
-                    {material.completed_count || 0} 完成
-                  </ThemedText>
-                </View>
-                {/* 显示文本状态 */}
-                <View style={styles.statRow}>
-                  <FontAwesome6 
-                    name={material.full_text ? "file-lines" : "file-circle-plus"} 
-                    size={12} 
-                    color={material.full_text ? theme.success : theme.textMuted} 
-                  />
-                  <ThemedText variant="caption" color={material.full_text ? theme.success : theme.textMuted}>
-                    {material.full_text ? '已有文本' : '待提取'}
-                  </ThemedText>
-                </View>
-              </View>
 
-              <View style={styles.materialActions}>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.timelineButton]}
-                  onPress={() => router.push('/timestamp-editor', { materialId: material.id, title: material.title })}
-                >
-                  <FontAwesome6 name="sliders" size={14} color="#fff" />
-                  <ThemedText variant="smallMedium" color="#fff">时间轴</ThemedText>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.textButton]}
-                  onPress={() => router.push('/text-split', { materialId: material.id, title: material.title })}
-                >
-                  <FontAwesome6 name="scissors" size={14} color={theme.accent} />
-                  <ThemedText variant="smallMedium" color={theme.accent}>切分</ThemedText>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.editButton]}
-                  onPress={() => router.push('/admin-sentences', { materialId: material.id, title: material.title })}
-                >
-                  <FontAwesome6 name="pen-to-square" size={14} color={theme.primary} />
-                  <ThemedText variant="smallMedium" color={theme.primary}>编辑</ThemedText>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.deleteButton]}
-                  onPress={() => handleDeleteClick(material)}
-                >
-                  <FontAwesome6 name="trash" size={14} color={theme.error} />
-                  <ThemedText variant="smallMedium" color={theme.error}>删除</ThemedText>
-                </TouchableOpacity>
+                <View style={styles.materialActions}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.timelineButton]}
+                    onPress={() => router.push('/timestamp-editor', { materialId: material.id, title: material.title })}
+                  >
+                    <FontAwesome6 name="sliders" size={14} color="#fff" />
+                    <ThemedText variant="smallMedium" color="#fff">时间轴</ThemedText>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.textButton]}
+                    onPress={() => router.push('/text-split', { materialId: material.id, title: material.title })}
+                  >
+                    <FontAwesome6 name="scissors" size={14} color={theme.accent} />
+                    <ThemedText variant="smallMedium" color={theme.accent}>切分</ThemedText>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.editButton]}
+                    onPress={() => router.push('/admin-sentences', { materialId: material.id, title: material.title })}
+                  >
+                    <FontAwesome6 name="pen-to-square" size={14} color={theme.primary} />
+                    <ThemedText variant="smallMedium" color={theme.primary}>编辑</ThemedText>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.deleteButton]}
+                    onPress={() => handleDeleteClick(material)}
+                  >
+                    <FontAwesome6 name="trash" size={14} color={theme.error} />
+                    <ThemedText variant="smallMedium" color={theme.error}>删除</ThemedText>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
           )})}
 
           {filteredMaterials.length === 0 && (
@@ -313,6 +374,76 @@ export default function AdminScreen() {
           )}
         </View>
       </ScrollView>
+      
+      {/* 编辑名称 Modal */}
+      <Modal
+        visible={editModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditModal({ visible: false, material: null, title: '' })}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: Spacing.lg,
+        }}>
+          <View style={{
+            backgroundColor: theme.backgroundDefault,
+            borderRadius: BorderRadius.xl,
+            padding: Spacing.xl,
+            width: '100%',
+            maxWidth: 400,
+          }}>
+            <ThemedText variant="h4" color={theme.textPrimary} style={{ marginBottom: Spacing.lg }}>
+              编辑材料名称
+            </ThemedText>
+            <TextInput
+              style={{
+                backgroundColor: theme.backgroundTertiary,
+                borderRadius: BorderRadius.lg,
+                paddingHorizontal: Spacing.lg,
+                paddingVertical: Spacing.md,
+                fontSize: 16,
+                color: theme.textPrimary,
+                marginBottom: Spacing.lg,
+              }}
+              value={editModal.title}
+              onChangeText={(text) => setEditModal(prev => ({ ...prev, title: text }))}
+              placeholder="输入材料名称"
+              placeholderTextColor={theme.textMuted}
+              autoFocus
+            />
+            <View style={{ flexDirection: 'row', gap: Spacing.md }}>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  paddingVertical: Spacing.md,
+                  borderRadius: BorderRadius.lg,
+                  backgroundColor: theme.backgroundTertiary,
+                  alignItems: 'center',
+                }}
+                onPress={() => setEditModal({ visible: false, material: null, title: '' })}
+              >
+                <ThemedText variant="bodyMedium" color={theme.textPrimary}>取消</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  paddingVertical: Spacing.md,
+                  borderRadius: BorderRadius.lg,
+                  backgroundColor: theme.primary,
+                  alignItems: 'center',
+                }}
+                onPress={handleSaveTitle}
+              >
+                <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>保存</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       
       {/* 删除确认对话框 */}
       <ConfirmDialog

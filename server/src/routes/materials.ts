@@ -1777,6 +1777,44 @@ router.delete('/:id', async (req: Request, res: Response) => {
 });
 
 /**
+ * PUT /api/v1/materials/:id
+ * 更新材料信息（标题、描述）
+ * Body: { title?: string, description?: string }
+ */
+router.put('/:id', express.json(), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { title, description } = req.body;
+
+    if (!title && description === undefined) {
+      return res.status(400).json({ error: '请提供要更新的字段' });
+    }
+
+    const supabase = getSupabaseClient();
+
+    const updateData: Record<string, unknown> = {};
+    if (title) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+
+    const { data: material, error } = await supabase
+      .from('materials')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    res.json({ success: true, material });
+  } catch (error) {
+    console.error('更新材料失败:', error);
+    res.status(500).json({ error: '更新材料失败' });
+  }
+});
+
+/**
  * 处理 ASR 结果，提取带时间戳的句子
  * 核心原则：先按文字分割，再匹配语音时间
  */

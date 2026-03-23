@@ -7,6 +7,9 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from 'expo-router';
@@ -71,6 +74,7 @@ export default function PracticeScreen() {
   const [playCount, setPlayCount] = useState(0);
   const soundRef = useRef<Audio.Sound | null>(null);
   const isLoopingRef = useRef(true);
+  const isMountedRef = useRef(true);
   
   // 语音输入
   const [isRecording, setIsRecording] = useState(false);
@@ -95,6 +99,10 @@ export default function PracticeScreen() {
     
     setLoading(true);
     try {
+      /**
+       * 服务端文件：server/src/routes/materials.ts
+       * 接口：GET /api/v1/materials/:id
+       */
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}`);
       const data = await response.json();
       
@@ -115,12 +123,18 @@ export default function PracticeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      isMountedRef.current = true;
       fetchMaterial();
+      
+      return () => {
+        isMountedRef.current = false;
+        stopPlayback();
+      };
     }, [fetchMaterial])
   );
 
   // 提取单词和标点
-  const extractWords = (text: string): { word: string; displayText: string; isPunctuation: boolean }[] => {
+  const extractWords = useCallback((text: string): { word: string; displayText: string; isPunctuation: boolean }[] => {
     const result: { word: string; displayText: string; isPunctuation: boolean }[] = [];
     const tokens = text.match(/\w+|[^\w\s]+/g) || [];
     
@@ -134,34 +148,23 @@ export default function PracticeScreen() {
     });
     
     return result;
-  };
+  }, []);
 
-  // 初始化当前句子的单词状态
-  useEffect(() => {
-    if (currentSentence) {
-      const tokens = extractWords(currentSentence.text);
-      
-      setWordStatuses(tokens.map((token, index) => ({
-        word: token.word,
-        displayText: token.displayText,
-        revealed: token.isPunctuation,
-        revealedChars: token.isPunctuation ? [] : new Array(token.word.length).fill(false),
-        errorCharIndex: -1,
-        index,
-        isPunctuation: token.isPunctuation,
-      })));
-      setCurrentInput('');
-      setPlayCount(0);
-      
-      // 自动开始播放
-      isLoopingRef.current = true;
-      playSentenceAudio();
+  // 生成音频URL
+  const generateAudioUrl = useCallback(async (audioKey: string): Promise<string> => {
+    if (audioKey.startsWith('http')) {
+      return audioKey;
     }
     
-    return () => {
-      stopPlayback();
-    };
-  }, [currentSentence?.id]);
+    try {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/audio-url?key=${encodeURIComponent(audioKey)}`);
+      const data = await response.json();
+      return data.url || audioKey;
+    } catch (e) {
+      console.error('获取音频URL失败:', e);
+      return audioKey;
+    }
+  }, [materialId]);
 
   // 播放当前句子的音频
   const playSentenceAudio = useCallback(async () => {
@@ -201,7 +204,7 @@ export default function PracticeScreen() {
               setIsPlaying(false);
               
               // 如果还在循环状态，重新播放
-              if (isLoopingRef.current && soundRef.current) {
+              if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
                 setPlayCount(prev => prev + 1);
                 soundRef.current.replayAsync();
               }
@@ -219,25 +222,7 @@ export default function PracticeScreen() {
     } catch (error) {
       console.error('[播放] 失败:', error);
     }
-  }, [currentSentence]);
-
-  // 生成音频URL
-  const generateAudioUrl = async (audioKey: string): Promise<string> => {
-    // 如果已经是完整URL，直接返回
-    if (audioKey.startsWith('http')) {
-      return audioKey;
-    }
-    
-    // 否则调用后端获取签名URL
-    try {
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/audio-url?key=${encodeURIComponent(audioKey)}`);
-      const data = await response.json();
-      return data.url || audioKey;
-    } catch (e) {
-      console.error('获取音频URL失败:', e);
-      return audioKey;
-    }
-  };
+  }, [currentSentence, generateAudioUrl]);
 
   // 停止播放
   const stopPlayback = useCallback(async () => {
@@ -253,12 +238,38 @@ export default function PracticeScreen() {
     setIsPlaying(false);
   }, []);
 
+  // 初始化当前句子的单词状态并自动播放
+  useEffect(() => {
+    if (!currentSentence) return;
+    
+    const tokens = extractWords(currentSentence.text);
+    
+    setWordStatuses(tokens.map((token, index) => ({
+      word: token.word,
+      displayText: token.displayText,
+      revealed: token.isPunctuation,
+      revealedChars: token.isPunctuation ? [] : new Array(token.word.length).fill(false),
+      errorCharIndex: -1,
+      index,
+      isPunctuation: token.isPunctuation,
+    })));
+    setCurrentInput('');
+    setPlayCount(0);
+    
+    // 自动开始播放
+    isLoopingRef.current = true;
+    playSentenceAudio();
+    
+    return () => {
+      stopPlayback();
+    };
+  }, [currentSentence?.id]);
+
   // 处理输入变化
   const handleInputChange = useCallback((text: string) => {
     setCurrentInput(text);
     
     if (!text) {
-      // 重置所有错误状态
       setWordStatuses(prev => prev.map(w => ({ ...w, errorCharIndex: -1 })));
       return;
     }
@@ -275,10 +286,8 @@ export default function PracticeScreen() {
         
         const wordLower = ws.word.toLowerCase();
         
-        // 已经完全匹配的单词
         if (ws.revealed) continue;
         
-        // 检查当前单词是否匹配
         let allMatched = true;
         let firstErrorIndex = -1;
         
@@ -297,11 +306,9 @@ export default function PracticeScreen() {
         }
         
         if (allMatched && inputIndex + wordLower.length <= inputLower.length) {
-          // 单词匹配成功
           const nextInputIndex = inputIndex + wordLower.length;
           const nextChar = inputLower[nextInputIndex];
           
-          // 检查下一个字符是否是标点或空格
           const nextWord = newStatuses[i + 1];
           if (!nextWord || nextWord.isPunctuation || nextChar === ' ' || nextChar === undefined) {
             newStatuses[i] = {
@@ -315,7 +322,6 @@ export default function PracticeScreen() {
             break;
           }
         } else {
-          // 显示已匹配的部分
           const matchedChars = [];
           for (let j = 0; j < wordLower.length; j++) {
             const inputCharIndex = inputIndex + j;
@@ -342,16 +348,14 @@ export default function PracticeScreen() {
     });
     
     // 检查是否全部完成
-    checkCompletion();
-  }, []);
-
-  // 检查是否完成当前句子
-  const checkCompletion = useCallback(() => {
-    const allRevealed = wordStatuses.every(w => w.isPunctuation || w.revealed);
+    const timer = setTimeout(() => {
+      const allRevealed = wordStatuses.every(w => w.isPunctuation || w.revealed);
+      if (allRevealed && wordStatuses.some(w => !w.isPunctuation)) {
+        handleSentenceComplete();
+      }
+    }, 100);
     
-    if (allRevealed && wordStatuses.some(w => !w.isPunctuation)) {
-      handleSentenceComplete();
-    }
+    return () => clearTimeout(timer);
   }, [wordStatuses]);
 
   // 句子完成处理
@@ -370,11 +374,10 @@ export default function PracticeScreen() {
       console.error('标记完成失败:', e);
     }
     
-    // 播放成功音效
     // 等待一下再切换
     setTimeout(() => {
       goToNextSentence();
-    }, 1000);
+    }, 800);
   }, [currentSentence, materialId]);
 
   // 跳转到下一句
@@ -383,12 +386,13 @@ export default function PracticeScreen() {
       stopPlayback();
       setCurrentIndex(prev => prev + 1);
     } else {
-      // 全部完成
       setCompleted(true);
       stopPlayback();
-      Alert.alert('恭喜！', '你已经完成了所有句子的学习！');
+      Alert.alert('恭喜！', '你已经完成了所有句子的学习！', [
+        { text: '返回', onPress: () => router.back() }
+      ]);
     }
-  }, [currentIndex, sentences.length, stopPlayback]);
+  }, [currentIndex, sentences.length, stopPlayback, router]);
 
   // 开始语音输入
   const startRecording = useCallback(async () => {
@@ -426,12 +430,15 @@ export default function PracticeScreen() {
       recordingRef.current = null;
       
       if (uri) {
-        // 发送到后端进行ASR识别
         const fileData = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
         const formData = new FormData();
-        // React Native FormData 支持直接传入 { uri, type, name } 对象
         formData.append('audio', fileData as any);
         
+        /**
+         * 服务端文件：server/src/routes/speech.ts
+         * 接口：POST /api/v1/speech/recognize
+         * Body: FormData { audio: audio file }
+         */
         const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech/recognize`, {
           method: 'POST',
           body: formData,
@@ -440,7 +447,6 @@ export default function PracticeScreen() {
         const data = await response.json();
         
         if (data.text) {
-          // 直接用识别结果更新输入
           handleInputChange(data.text.toLowerCase());
         }
       }
@@ -490,15 +496,30 @@ export default function PracticeScreen() {
     return (
       <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
         <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }}>
-          <FontAwesome6 name="file-circle-xmark" size={48} color={theme.textMuted} />
-          <ThemedText variant="body" color={theme.textPrimary} style={{ marginTop: Spacing.lg }}>
+          <View style={{
+            width: 80,
+            height: 80,
+            borderRadius: BorderRadius.full,
+            backgroundColor: theme.error + '15',
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginBottom: Spacing.lg,
+          }}>
+            <FontAwesome6 name="file-circle-xmark" size={36} color={theme.error} />
+          </View>
+          <ThemedText variant="bodyMedium" color={theme.textPrimary} style={{ marginBottom: Spacing.sm }}>
             素材未准备好
           </ThemedText>
-          <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: Spacing.sm, textAlign: 'center' }}>
+          <ThemedText variant="small" color={theme.textMuted} style={{ textAlign: 'center', marginBottom: Spacing.xl }}>
             请先在后台管理中完成时间轴编辑并切分音频
           </ThemedText>
           <TouchableOpacity 
-            style={{ marginTop: Spacing.xl, paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, backgroundColor: theme.primary, borderRadius: BorderRadius.md }}
+            style={{ 
+              paddingHorizontal: Spacing.xl, 
+              paddingVertical: Spacing.md, 
+              backgroundColor: theme.primary, 
+              borderRadius: BorderRadius.lg 
+            }}
             onPress={() => router.back()}
           >
             <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>返回</ThemedText>
@@ -510,107 +531,139 @@ export default function PracticeScreen() {
 
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerInfo}>
-          <ThemedText variant="caption" color={theme.textMuted}>{material.title}</ThemedText>
-          <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-            句子 {currentIndex + 1} / {sentences.length}
-          </ThemedText>
-        </View>
-        <View style={{ width: 40 }} />
-      </View>
-      
-      {/* Progress Bar */}
-      <View style={styles.progressContainer}>
-        <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${progress}%` }]} />
-        </View>
-      </View>
-      
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Sentence Display */}
-        <View style={styles.sentenceSection}>
-          <View style={styles.wordContainer}>
-            {wordStatuses.map((ws, idx) => (
-              <View key={idx} style={styles.wordWrapper}>
-                {ws.isPunctuation ? (
-                  <ThemedText variant="h3" color={theme.textPrimary}>
-                    {ws.displayText}
-                  </ThemedText>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={{ flex: 1 }}>
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                <FontAwesome6 name="arrow-left" size={18} color={theme.textPrimary} />
+              </TouchableOpacity>
+              <View style={styles.headerInfo}>
+                <ThemedText variant="caption" color={theme.textMuted}>{material.title}</ThemedText>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                  句子 {currentIndex + 1} / {sentences.length}
+                </ThemedText>
+              </View>
+              <View style={styles.playIndicator}>
+                {isPlaying ? (
+                  <FontAwesome6 name="volume-high" size={18} color={theme.primary} />
                 ) : (
-                  <View style={styles.wordBox}>
-                    {ws.displayText.split('').map((char, charIdx) => (
-                      <ThemedText
-                        key={charIdx}
-                        variant="h3"
-                        color={
-                          ws.revealed
-                            ? theme.success
-                            : ws.revealedChars[charIdx]
-                            ? theme.textPrimary
-                            : ws.errorCharIndex === charIdx
-                            ? theme.error
-                            : theme.textMuted
-                        }
-                        style={[
-                          styles.char,
-                          !ws.revealed && !ws.revealedChars[charIdx] && styles.hiddenChar,
-                        ]}
-                      >
-                        {ws.revealed || ws.revealedChars[charIdx] ? char : '_'}
-                      </ThemedText>
-                    ))}
-                  </View>
+                  <FontAwesome6 name="volume-off" size={18} color={theme.textMuted} />
                 )}
               </View>
-            ))}
+            </View>
+            
+            {/* Progress Bar */}
+            <View style={styles.progressContainer}>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${progress}%` }]} />
+              </View>
+            </View>
+            
+            <ScrollView 
+              contentContainerStyle={styles.scrollContent} 
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
+              {/* Sentence Display */}
+              <View style={styles.sentenceCard}>
+                <View style={styles.sentenceHeader}>
+                  <View style={styles.sentenceIconContainer}>
+                    <FontAwesome6 name="quote-left" size={16} color={theme.primary} />
+                  </View>
+                  <ThemedText variant="caption" color={theme.textMuted}>
+                    听写句子
+                  </ThemedText>
+                </View>
+                
+                <View style={styles.wordContainer}>
+                  {wordStatuses.map((ws, idx) => (
+                    <View key={idx} style={styles.wordWrapper}>
+                      {ws.isPunctuation ? (
+                        <ThemedText variant="h4" color={theme.textPrimary}>
+                          {ws.displayText}
+                        </ThemedText>
+                      ) : (
+                        <View style={styles.wordBox}>
+                          {ws.displayText.split('').map((char, charIdx) => (
+                            <ThemedText
+                              key={charIdx}
+                              variant="h4"
+                              color={
+                                ws.revealed
+                                  ? theme.success
+                                  : ws.revealedChars[charIdx]
+                                  ? theme.textPrimary
+                                  : ws.errorCharIndex === charIdx
+                                  ? theme.error
+                                  : theme.textMuted
+                              }
+                              style={[
+                                styles.char,
+                                !ws.revealed && !ws.revealedChars[charIdx] && styles.hiddenChar,
+                              ]}
+                            >
+                              {ws.revealed || ws.revealedChars[charIdx] ? char : '_'}
+                            </ThemedText>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              </View>
+              
+              {/* Input Section */}
+              <View style={styles.inputSection}>
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    style={styles.input}
+                    value={currentInput}
+                    onChangeText={handleInputChange}
+                    placeholder="输入听到的内容..."
+                    placeholderTextColor={theme.textMuted}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  
+                  {/* Voice Input Button */}
+                  <TouchableOpacity
+                    style={[styles.voiceBtn, isRecording && styles.voiceBtnActive]}
+                    onPressIn={startRecording}
+                    onPressOut={stopRecordingAndRecognize}
+                  >
+                    <FontAwesome6 
+                      name={isRecording ? "microphone" : "microphone"} 
+                      size={22} 
+                      color={isRecording ? theme.buttonPrimaryText : theme.primary} 
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              
+              {/* Controls */}
+              <View style={styles.controlsSection}>
+                <View style={styles.playInfo}>
+                  <FontAwesome6 name="rotate" size={12} color={theme.textMuted} />
+                  <ThemedText variant="caption" color={theme.textMuted}>
+                    已播放 {playCount} 次
+                  </ThemedText>
+                </View>
+                
+                {/* Skip Button */}
+                <TouchableOpacity style={styles.skipBtn} onPress={skipSentence}>
+                  <FontAwesome6 name="forward" size={14} color={theme.textMuted} />
+                  <ThemedText variant="small" color={theme.textMuted}>跳过</ThemedText>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
-        </View>
-        
-        {/* Input Section */}
-        <View style={styles.inputSection}>
-          <TextInput
-            style={styles.input}
-            value={currentInput}
-            onChangeText={handleInputChange}
-            placeholder="输入听到的内容..."
-            placeholderTextColor={theme.textMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          
-          {/* Voice Input Button */}
-          <TouchableOpacity
-            style={[styles.voiceBtn, isRecording && styles.voiceBtnActive]}
-            onPressIn={startRecording}
-            onPressOut={stopRecordingAndRecognize}
-          >
-            <FontAwesome6 
-              name={isRecording ? "microphone" : "microphone"} 
-              size={24} 
-              color={isRecording ? theme.error : theme.primary} 
-            />
-          </TouchableOpacity>
-        </View>
-        
-        {/* Controls */}
-        <View style={styles.controlsSection}>
-          {/* Play Count */}
-          <ThemedText variant="caption" color={theme.textMuted}>
-            已播放 {playCount} 次
-          </ThemedText>
-          
-          {/* Skip Button */}
-          <TouchableOpacity style={styles.skipBtn} onPress={skipSentence}>
-            <FontAwesome6 name="forward" size={16} color={theme.textMuted} />
-            <ThemedText variant="caption" color={theme.textMuted}>跳过</ThemedText>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }

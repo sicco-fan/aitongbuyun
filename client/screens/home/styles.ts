@@ -5,39 +5,20 @@ export const createStyles = (theme: Theme) => {
   return StyleSheet.create({
     scrollContent: {
       flexGrow: 1,
-      paddingHorizontal: Spacing['2xl'],
+      paddingHorizontal: Spacing.lg,
       paddingTop: Spacing['2xl'],
       paddingBottom: Spacing['5xl'],
     },
     header: {
-      marginBottom: Spacing['3xl'],
+      marginBottom: Spacing['2xl'],
     },
     greeting: {
       marginBottom: Spacing.xs,
+      letterSpacing: 1,
     },
     title: {
       marginBottom: Spacing.sm,
     },
-    statsRow: {
-      flexDirection: 'row',
-      marginBottom: Spacing['2xl'],
-    },
-    statCard: {
-      flex: 1,
-      backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.lg,
-      borderWidth: 1,
-      borderColor: theme.border,
-      padding: Spacing.lg,
-      marginRight: Spacing.md,
-    },
-    statCardLast: {
-      marginRight: 0,
-    },
-    statValue: {
-      marginBottom: Spacing.xs,
-    },
-    statLabel: {},
     sectionHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -46,13 +27,33 @@ export const createStyles = (theme: Theme) => {
     },
     materialCard: {
       backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.lg,
-      borderWidth: 1,
-      borderColor: theme.border,
+      borderRadius: BorderRadius.xl,
       padding: Spacing.lg,
       marginBottom: Spacing.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+      // 柔和阴影
+      shadowColor: theme.primary,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    materialHeader: {
       flexDirection: 'row',
-      alignItems: 'flex-start',
+      alignItems: 'center',
+    },
+    materialIconContainer: {
+      width: 48,
+      height: 48,
+      borderRadius: BorderRadius.lg,
+      backgroundColor: theme.primary + '12',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    materialInfo: {
+      flex: 1,
+      marginLeft: Spacing.md,
     },
     materialTitle: {
       marginBottom: Spacing.xs,
@@ -60,22 +61,25 @@ export const createStyles = (theme: Theme) => {
     materialMeta: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginTop: Spacing.md,
+      gap: Spacing.md,
     },
-    materialMetaItem: {
+    metaTag: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginRight: Spacing.lg,
+      gap: 4,
     },
-    materialMetaIcon: {
-      marginRight: Spacing.xs,
+    materialArrow: {
+      paddingLeft: Spacing.sm,
     },
-    progressContainer: {
+    progressSection: {
       marginTop: Spacing.md,
+      paddingTop: Spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: theme.borderLight,
     },
     progressBar: {
-      height: 4,
-      backgroundColor: theme.border,
+      height: 6,
+      backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.full,
       overflow: 'hidden',
     },
@@ -84,19 +88,11 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: theme.primary,
       borderRadius: BorderRadius.full,
     },
-    progressText: {
-      marginTop: Spacing.xs,
-    },
-    deleteButton: {
-      padding: Spacing.md,
-      marginLeft: Spacing.md,
-      backgroundColor: theme.error + '20',
-      borderRadius: BorderRadius.lg,
-      alignSelf: 'center',
-      minWidth: 44,
-      minHeight: 44,
-      justifyContent: 'center',
+    progressInfo: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
       alignItems: 'center',
+      marginTop: Spacing.xs,
     },
     emptyContainer: {
       flex: 1,
@@ -104,7 +100,13 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
       paddingVertical: Spacing['6xl'],
     },
-    emptyIcon: {
+    emptyIconContainer: {
+      width: 80,
+      height: 80,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.primary + '12',
+      justifyContent: 'center',
+      alignItems: 'center',
       marginBottom: Spacing.lg,
     },
     emptyText: {
@@ -112,22 +114,6 @@ export const createStyles = (theme: Theme) => {
     },
     emptySubtext: {
       textAlign: 'center',
-    },
-    addButton: {
-      position: 'absolute',
-      right: Spacing['2xl'],
-      bottom: Spacing['2xl'],
-      width: 56,
-      height: 56,
-      borderRadius: BorderRadius.full,
-      backgroundColor: theme.primary,
-      justifyContent: 'center',
-      alignItems: 'center',
-      shadowColor: theme.primary,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 8,
     },
   });
 };
