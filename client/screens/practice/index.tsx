@@ -87,7 +87,6 @@ export default function PracticeScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [hasRecordingPermission, setHasRecordingPermission] = useState(false);
   const [recordingCount, setRecordingCount] = useState(0); // 录音次数计数
-  const [isLetterMode, setIsLetterMode] = useState(false); // 逐字母识别模式
   const [deviceId, setDeviceId] = useState<string>(''); // 设备ID
   
   const recordingRef = useRef<Audio.Recording | null>(null);
@@ -97,6 +96,8 @@ export default function PracticeScreen() {
   const isRecordingRef = useRef(false); // 使用 ref 跟踪录音状态，避免闭包问题
   const inputRef = useRef<TextInput>(null); // 输入框引用
   const currentSentenceIdRef = useRef<number | null>(null); // 跟踪当前句子ID，防止异步翻译混乱
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null); // 静音检测定时器
+  const audioChunksRef = useRef<string[]>([]); // 累积的音频片段
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -583,33 +584,22 @@ export default function PracticeScreen() {
       });
       
       setIsRecording(true);
-      isRecordingRef.current = true; // 同步设置 ref
+      isRecordingRef.current = true;
       setRecordingCount(0);
+      audioChunksRef.current = [];
       
-      // 开始第一段录音
-      await startNewRecordingSegment();
+      // 开始连续录音循环
+      await startRecordingLoop();
       
     } catch (error) {
-      console.error('录音失败:', error);
+      console.error('开始录音失败:', error);
       setIsRecording(false);
       isRecordingRef.current = false;
-      resumePlayback();
     }
   };
 
-  // 开始新的录音片段
-  const startNewRecordingSegment = async () => {
-    // 先清理之前的录音
-    if (recordingRef.current) {
-      try {
-        await recordingRef.current.stopAndUnloadAsync();
-      } catch (e) {
-        // 忽略
-      }
-      recordingRef.current = null;
-    }
-
-    // 检查是否还在录音状态
+  // 录音循环 - 持续录音并检测停顿
+  const startRecordingLoop = async () => {
     if (!isRecordingRef.current) return;
 
     try {
@@ -618,161 +608,135 @@ export default function PracticeScreen() {
       await recording.startAsync();
       recordingRef.current = recording;
       
-      // 根据模式设置不同的录音时长
-      const recordDuration = isLetterMode ? 150 : 1000; // 字母模式150ms，单词模式1秒
-      
+      // 每500ms检查一次，检测停顿
       setTimeout(async () => {
-        if (isRecordingRef.current) {
-          await recognizeAndContinue();
+        if (!isRecordingRef.current) return;
+        
+        if (recordingRef.current) {
+          try {
+            await recordingRef.current.stopAndUnloadAsync();
+            const uri = recordingRef.current.getURI();
+            recordingRef.current = null;
+            
+            if (uri) {
+              // 累积音频
+              audioChunksRef.current.push(uri);
+              setRecordingCount(prev => prev + 1);
+              
+              // 检查是否有停顿（通过音频长度判断）
+              // 如果累积了音频，等待一小段时间看是否继续说话
+              if (silenceTimerRef.current) {
+                clearTimeout(silenceTimerRef.current);
+              }
+              
+              // 800ms内没有新音频，认为意群结束，开始识别
+              silenceTimerRef.current = setTimeout(async () => {
+                if (audioChunksRef.current.length > 0 && isRecordingRef.current) {
+                  await recognizeAccumulatedAudio();
+                }
+              }, 800);
+            }
+          } catch (e) {
+            console.error('停止录音片段失败:', e);
+          }
         }
-      }, recordDuration);
+        
+        // 继续下一轮录音
+        if (isRecordingRef.current) {
+          await startRecordingLoop();
+        }
+      }, 500);
       
     } catch (error) {
-      console.error('录音片段失败:', error);
-      // 出错后尝试继续录音
+      console.error('录音失败:', error);
       if (isRecordingRef.current) {
-        setTimeout(() => startNewRecordingSegment(), 100);
+        setTimeout(() => startRecordingLoop(), 100);
       }
     }
   };
 
-  // 识别当前录音并继续
-  const recognizeAndContinue = async () => {
-    if (!recordingRef.current) {
-      // 如果没有录音，直接开始新录音
-      if (isRecordingRef.current) {
-        await startNewRecordingSegment();
-      }
-      return;
-    }
-
+  // 识别累积的音频
+  const recognizeAccumulatedAudio = async () => {
+    const uris = [...audioChunksRef.current];
+    audioChunksRef.current = [];
+    
+    if (uris.length === 0) return;
+    
     try {
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
-      setRecordingCount(prev => prev + 1);
-
-      if (uri) {
-        const formData = new FormData();
-        const audioFile = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
-        formData.append('file', audioFile as any);
-
-        if (isLetterMode) {
-          // 字母模式：快速识别单个字母
-          formData.append('deviceId', deviceId);
-          const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/letter-pronunciation/recognize`, {
-            method: 'POST',
-            body: formData,
-          });
-          const data = await response.json();
-          if (data.success && data.letter) {
-            // 识别到字母，直接输入
-            checkInputRealtime(data.letter);
+      // 合并音频或分别识别（这里简化为识别最后一个片段）
+      const lastUri = uris[uris.length - 1];
+      
+      const formData = new FormData();
+      const audioFile = await createFormDataFile(lastUri, 'recording.m4a', 'audio/m4a');
+      formData.append('file', audioFile as any);
+      formData.append('deviceId', deviceId);
+      
+      // 获取未完成的单词列表用于模糊匹配
+      const uncompletedWords = wordStatuses
+        .filter(w => !w.isPunctuation && !w.revealed)
+        .map(w => w.word)
+        .join(',');
+      
+      if (uncompletedWords) {
+        formData.append('targetWords', uncompletedWords);
+      }
+      
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech-recognize`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // 后端返回识别结果和类型（字母或单词）
+        if (data.letters && data.letters.length > 0) {
+          // 字母模式：逐个填入字母
+          for (const letter of data.letters) {
+            checkInputRealtime(letter);
           }
-        } else {
-          // 单词模式：获取未完成的单词列表用于模糊匹配
-          const uncompletedWords = wordStatuses
-            .filter(w => !w.isPunctuation && !w.revealed)
-            .map(w => w.word)
-            .join(',');
-          
-          if (uncompletedWords) {
-            formData.append('targetWords', uncompletedWords);
+        } else if (data.matchedWords && data.matchedWords.length > 0) {
+          // 单词模式：填入匹配的单词
+          for (const word of data.matchedWords) {
+            checkInputRealtime(word);
           }
-          
-          const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech-recognize`, {
-            method: 'POST',
-            body: formData,
-          });
-          const data = await response.json();
-          
-          if (data.matchedWords && data.matchedWords.length > 0) {
-            // 使用模糊匹配的结果
-            for (const word of data.matchedWords) {
-              checkInputRealtime(word);
-            }
-          } else if (data.text) {
-            // 没有匹配结果，尝试原始识别
-            const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
-            for (const word of words) {
-              checkInputRealtime(word);
-            }
+        } else if (data.text) {
+          // 原始识别结果
+          const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
+          for (const word of words) {
+            checkInputRealtime(word);
           }
         }
       }
-      
-      // 继续下一段录音（如果还在录音状态）
-      if (isRecordingRef.current) {
-        await startNewRecordingSegment();
-      }
-      
     } catch (error) {
-      console.error('语音识别失败:', error);
-      // 即使识别失败，也继续录音
-      if (isRecordingRef.current) {
-        await startNewRecordingSegment();
-      }
+      console.error('识别失败:', error);
     }
   };
 
   // 停止持续录音
   const stopContinuousRecording = async () => {
     setIsRecording(false);
-    isRecordingRef.current = false; // 同步设置 ref
+    isRecordingRef.current = false;
     
-    // 识别最后一段录音
+    // 清除停顿计时器
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    
+    // 停止当前录音
     if (recordingRef.current) {
       try {
         await recordingRef.current.stopAndUnloadAsync();
-        const uri = recordingRef.current.getURI();
         recordingRef.current = null;
-
-        if (uri) {
-          const formData = new FormData();
-          const audioFile = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
-          formData.append('file', audioFile as any);
-
-          if (isLetterMode) {
-            formData.append('deviceId', deviceId);
-            const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/letter-pronunciation/recognize`, {
-              method: 'POST',
-              body: formData,
-            });
-            const data = await response.json();
-            if (data.success && data.letter) {
-              checkInputRealtime(data.letter);
-            }
-          } else {
-            const uncompletedWords = wordStatuses
-              .filter(w => !w.isPunctuation && !w.revealed)
-              .map(w => w.word)
-              .join(',');
-            
-            if (uncompletedWords) {
-              formData.append('targetWords', uncompletedWords);
-            }
-            
-            const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech-recognize`, {
-              method: 'POST',
-              body: formData,
-            });
-
-            const data = await response.json();
-            if (data.matchedWords && data.matchedWords.length > 0) {
-              for (const word of data.matchedWords) {
-                checkInputRealtime(word);
-              }
-            } else if (data.text) {
-              const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
-              for (const word of words) {
-                checkInputRealtime(word);
-              }
-            }
-          }
-        }
-      } catch (error) {
-        console.error('最后识别失败:', error);
+      } catch (e) {
+        // 忽略
       }
+    }
+    
+    // 识别剩余的音频
+    if (audioChunksRef.current.length > 0) {
+      await recognizeAccumulatedAudio();
     }
     
     // 恢复播放
@@ -1127,54 +1091,9 @@ export default function PracticeScreen() {
           </View>
           {isRecording && (
             <ThemedText variant="caption" color={theme.primary} style={{ marginTop: 8, textAlign: 'center' }}>
-              {isLetterMode 
-                ? `逐字母模式 · 说出单个字母 · 已识别 ${recordingCount} 次`
-                : `正在识别... 说对的单词会自动填入 · 已识别 ${recordingCount} 次`
-              }
+              {`正在识别... 说对的单词或字母会自动填入 · 已识别 ${recordingCount} 次`}
             </ThemedText>
           )}
-          
-          {/* 模式切换按钮 */}
-          <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 12, gap: 8 }}>
-            <TouchableOpacity
-              style={{
-                paddingVertical: 8,
-                paddingHorizontal: 16,
-                borderRadius: 16,
-                backgroundColor: !isLetterMode ? theme.primary : theme.backgroundTertiary,
-                borderWidth: 1,
-                borderColor: !isLetterMode ? theme.primary : theme.border,
-              }}
-              onPress={() => setIsLetterMode(false)}
-            >
-              <Text style={{ 
-                color: !isLetterMode ? theme.buttonPrimaryText : theme.textSecondary,
-                fontSize: 12,
-                fontWeight: '600',
-              }}>
-                单词模式
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{
-                paddingVertical: 8,
-                paddingHorizontal: 16,
-                borderRadius: 16,
-                backgroundColor: isLetterMode ? theme.success : theme.backgroundTertiary,
-                borderWidth: 1,
-                borderColor: isLetterMode ? theme.success : theme.border,
-              }}
-              onPress={() => setIsLetterMode(true)}
-            >
-              <Text style={{ 
-                color: isLetterMode ? theme.buttonPrimaryText : theme.textSecondary,
-                fontSize: 12,
-                fontWeight: '600',
-              }}>
-                字母模式
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
 
         {/* Feedback - 只显示正确提示 */}
