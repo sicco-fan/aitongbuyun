@@ -43,8 +43,8 @@ const getBackendUrl = (): string => {
 
 const BACKEND_URL = getBackendUrl();
 
-// 分块上传配置
-const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB 每块（避免代理限制）
+// 分块上传配置 - 使用较小的分块以避免代理限制
+const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB 每块（更安全）
 
 /**
  * 分块上传文件
@@ -560,14 +560,20 @@ export default function AddMaterialScreen() {
 
     setUploading(true);
     setUploadStatus('准备上传...');
-    setUploadProgress(-1); // 使用动画进度条
+    setUploadProgress(-1);
 
     try {
-      console.log('开始上传文件:', { name: file.name, uri: file.uri, size: file.size, mimeType: file.mimeType });
-
       const fileSize = file.size || 0;
       const fileSizeMB = fileSize / 1024 / 1024;
       const isLargeFile = fileSize > LARGE_FILE_THRESHOLD;
+      
+      console.log('[上传] 文件信息:', { 
+        name: file.name, 
+        size: file.size, 
+        sizeMB: fileSizeMB.toFixed(2),
+        isLargeFile,
+        threshold: LARGE_FILE_THRESHOLD / 1024 / 1024 + 'MB'
+      });
 
       // 构建上传参数
       const params: Record<string, string> = {
