@@ -619,21 +619,24 @@ router.post('/:id/match-sentence', async (req: Request, res: Response) => {
     console.log(`\n===== 匹配句子位置 =====`);
     console.log('句子:', sentenceText);
 
+    // 获取材料信息
+    const supabase = getSupabaseClient();
+    const { data: material } = await supabase
+      .from('materials')
+      .select('audio_url, duration')
+      .eq('id', id)
+      .single();
+
+    if (!material) {
+      return res.status(404).json({ error: '材料不存在' });
+    }
+
     // 获取单词列表（优先使用传入的，否则重新获取）
     let words = providedWords;
+    let audioDuration = material.duration || 0;
+    let fullText = '';
     
     if (!words || words.length === 0) {
-      const supabase = getSupabaseClient();
-      const { data: material } = await supabase
-        .from('materials')
-        .select('audio_url')
-        .eq('id', id)
-        .single();
-
-      if (!material) {
-        return res.status(404).json({ error: '材料不存在' });
-      }
-
       const audioUrl = await storage.generatePresignedUrl({
         key: material.audio_url,
         expireTime: 86400,
@@ -642,99 +645,182 @@ router.post('/:id/match-sentence', async (req: Request, res: Response) => {
       const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
       const asrClient = new ASRClient(new Config(), customHeaders);
       
-      const asrResult = await asrClient.recognize({
-        uid: 'user',
-        url: audioUrl,
-      });
+      try {
+        const asrResult = await asrClient.recognize({
+          uid: 'user',
+          url: audioUrl,
+        });
 
-      words = extractWordsWithTimestamps(asrResult);
-    }
-
-    // 提取句子的前N个单词和后N个单词
-    const sentenceWords = sentenceText.toLowerCase().split(/\s+/).filter((w: string) => w.length > 0);
-    const firstWords = sentenceWords.slice(0, 3); // 前3个单词
-    const lastWords = sentenceWords.slice(-3);    // 后3个单词
-
-    console.log('前3个单词:', firstWords);
-    console.log('后3个单词:', lastWords);
-
-    // 在音频单词列表中查找匹配
-    const lowerWords = words.map((w: WordWithTime) => ({ 
-      ...w, 
-      wordLower: w.word.toLowerCase().replace(/[.,!?;:'"]/g, '') 
-    }));
-
-    // 查找前3个单词的起始位置
-    let startMatch = { index: -1, confidence: 0 };
-    for (let i = 0; i <= lowerWords.length - firstWords.length; i++) {
-      const slice = lowerWords.slice(i, i + firstWords.length);
-      const matchCount = slice.filter((w: { wordLower: string }, idx: number) => 
-        w.wordLower === firstWords[idx] || 
-        w.wordLower.includes(firstWords[idx]) ||
-        firstWords[idx].includes(w.wordLower)
-      ).length;
-      
-      const confidence = matchCount / firstWords.length;
-      if (confidence > startMatch.confidence && confidence >= 0.5) {
-        startMatch = { index: i, confidence };
+        words = extractWordsWithTimestamps(asrResult);
+        fullText = asrResult.text || asrResult.rawData?.result?.text || '';
+        
+        // 更新音频时长
+        if (asrResult.duration) {
+          audioDuration = asrResult.duration * 1000;
+        }
+        
+        console.log(`ASR 返回: ${words.length} 个单词, 总时长 ${audioDuration}ms`);
+      } catch (asrError: any) {
+        console.log('ASR 调用失败:', asrError.message);
+        words = [];
       }
     }
 
-    // 查找后3个单词的结束位置
-    let endMatch = { index: -1, confidence: 0 };
-    for (let i = firstWords.length; i <= lowerWords.length; i++) {
-      const slice = lowerWords.slice(i - lastWords.length, i);
-      const matchCount = slice.filter((w: { wordLower: string }, idx: number) => 
-        w.wordLower === lastWords[idx] || 
-        w.wordLower.includes(lastWords[idx]) ||
-        lastWords[idx].includes(w.wordLower)
-      ).length;
-      
-      const confidence = matchCount / lastWords.length;
-      if (confidence > endMatch.confidence && confidence >= 0.5) {
-        endMatch = { index: i, confidence };
-      }
-    }
-
-    // 计算时间戳
+    // 提取句子的单词
+    const sentenceWords = sentenceText.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter((w: string) => w.length > 0);
+    
     let startTime = 0;
     let endTime = 0;
     let matched = false;
+    let matchMethod = 'none';
 
-    if (startMatch.index >= 0 && endMatch.index > startMatch.index) {
-      startTime = lowerWords[startMatch.index].start_time;
-      endTime = lowerWords[endMatch.index - 1].end_time;
-      matched = true;
-      console.log(`匹配成功: 索引 ${startMatch.index} 到 ${endMatch.index - 1}`);
-    } else if (startMatch.index >= 0) {
-      // 只找到开始位置，结束位置估算
-      startTime = lowerWords[startMatch.index].start_time;
-      // 估算时长：每个单词平均时长
-      const avgWordDuration = words.length > 1 ? 
-        (words[words.length - 1].end_time - words[0].start_time) / words.length : 
-        500;
-      endTime = startTime + sentenceWords.length * avgWordDuration;
-      matched = true;
-      console.log(`只匹配到开始位置，估算结束时间`);
-    } else {
-      console.log('未找到匹配');
+    // 方案1: 使用单词时间戳精确匹配
+    if (words && words.length > 0) {
+      console.log('使用单词时间戳精确匹配');
+      
+      const firstWords = sentenceWords.slice(0, 3);
+      const lastWords = sentenceWords.slice(-3);
+      
+      const lowerWords = words.map((w: WordWithTime) => ({ 
+        ...w, 
+        wordLower: w.word.toLowerCase().replace(/[.,!?;:'"]/g, '') 
+      }));
+
+      // 查找前3个单词的起始位置
+      let startMatch = { index: -1, confidence: 0 };
+      for (let i = 0; i <= lowerWords.length - firstWords.length; i++) {
+        const slice = lowerWords.slice(i, i + firstWords.length);
+        const matchCount = slice.filter((w: { wordLower: string }, idx: number) => 
+          w.wordLower === firstWords[idx] || 
+          w.wordLower.includes(firstWords[idx]) ||
+          firstWords[idx].includes(w.wordLower)
+        ).length;
+        
+        const confidence = matchCount / firstWords.length;
+        if (confidence > startMatch.confidence && confidence >= 0.5) {
+          startMatch = { index: i, confidence };
+        }
+      }
+
+      // 查找后3个单词的结束位置
+      let endMatch = { index: -1, confidence: 0 };
+      for (let i = firstWords.length; i <= lowerWords.length; i++) {
+        const slice = lowerWords.slice(i - lastWords.length, i);
+        const matchCount = slice.filter((w: { wordLower: string }, idx: number) => 
+          w.wordLower === lastWords[idx] || 
+          w.wordLower.includes(lastWords[idx]) ||
+          lastWords[idx].includes(w.wordLower)
+        ).length;
+        
+        const confidence = matchCount / lastWords.length;
+        if (confidence > endMatch.confidence && confidence >= 0.5) {
+          endMatch = { index: i, confidence };
+        }
+      }
+
+      if (startMatch.index >= 0 && endMatch.index > startMatch.index) {
+        startTime = lowerWords[startMatch.index].start_time;
+        endTime = lowerWords[endMatch.index - 1].end_time;
+        matched = true;
+        matchMethod = 'word_timestamps';
+        console.log(`精确匹配成功: 索引 ${startMatch.index} 到 ${endMatch.index - 1}`);
+      }
     }
 
-    console.log(`结果: 开始=${Math.round(startTime)}ms, 结束=${Math.round(endTime)}ms, 匹配=${matched}`);
+    // 方案2: 基于文本位置估算（当精确匹配失败或没有时间戳时）
+    if (!matched && audioDuration > 0 && fullText) {
+      console.log('使用文本位置估算');
+      
+      // 清理全文和句子文本
+      const cleanFullText = fullText.toLowerCase().replace(/[^\w\s]/g, ' ');
+      const cleanSentence = sentenceText.toLowerCase().replace(/[^\w\s]/g, ' ');
+      
+      // 在全文中查找句子的位置
+      const fullTextWords = cleanFullText.split(/\s+/).filter((w: string) => w.length > 0);
+      const sentenceWordList = cleanSentence.split(/\s+/).filter((w: string) => w.length > 0);
+      
+      if (sentenceWordList.length > 0 && fullTextWords.length > 0) {
+        // 尝试找到句子在全文中的位置
+        let foundIndex = -1;
+        const firstSentenceWord = sentenceWordList[0];
+        
+        // 找到第一个单词出现的位置
+        for (let i = 0; i <= fullTextWords.length - sentenceWordList.length; i++) {
+          if (fullTextWords[i] === firstSentenceWord) {
+            // 检查后续单词是否匹配
+            let matchCount = 0;
+            for (let j = 0; j < Math.min(sentenceWordList.length, 5); j++) {
+              if (fullTextWords[i + j] === sentenceWordList[j]) {
+                matchCount++;
+              }
+            }
+            if (matchCount >= Math.min(sentenceWordList.length, 3)) {
+              foundIndex = i;
+              break;
+            }
+          }
+        }
+        
+        if (foundIndex >= 0) {
+          // 计算时间比例
+          const startRatio = foundIndex / fullTextWords.length;
+          const endRatio = Math.min((foundIndex + sentenceWordList.length) / fullTextWords.length, 1);
+          
+          // 添加一些缓冲（前后各留5%的余量）
+          const bufferTime = audioDuration * 0.02;
+          startTime = Math.round(startRatio * audioDuration) + bufferTime;
+          endTime = Math.round(endRatio * audioDuration) - bufferTime;
+          
+          matched = true;
+          matchMethod = 'text_position_estimate';
+          console.log(`文本位置估算成功: 单词位置 ${foundIndex} 到 ${foundIndex + sentenceWordList.length}`);
+        }
+      }
+    }
+
+    // 方案3: 基于句子长度和音频时长的简单估算（最后的备选）
+    if (!matched && audioDuration > 0) {
+      console.log('使用简单时长估算');
+      
+      // 获取该材料的所有句子，计算总字符数
+      const { data: allSentences } = await supabase
+        .from('sentences')
+        .select('text')
+        .eq('material_id', id)
+        .order('sentence_index', { ascending: true });
+      
+      if (allSentences && allSentences.length > 0) {
+        const totalChars = allSentences.reduce((sum: number, s: any) => sum + s.text.length, 0);
+        const sentenceChars = sentenceText.length;
+        
+        // 找到当前句子在列表中的位置
+        let charOffset = 0;
+        for (const s of allSentences) {
+          if (s.text === sentenceText) break;
+          charOffset += s.text.length;
+        }
+        
+        const startRatio = charOffset / totalChars;
+        const endRatio = (charOffset + sentenceChars) / totalChars;
+        
+        startTime = Math.round(startRatio * audioDuration);
+        endTime = Math.round(endRatio * audioDuration);
+        matched = true;
+        matchMethod = 'char_ratio_estimate';
+        console.log(`简单时长估算成功: 字符位置 ${charOffset} 到 ${charOffset + sentenceChars}`);
+      }
+    }
+
+    console.log(`结果: 开始=${Math.round(startTime)}ms, 结束=${Math.round(endTime)}ms, 方法=${matchMethod}`);
     console.log('========== 匹配结束 ==========\n');
 
     res.json({
       matched,
       start_time: Math.round(startTime),
       end_time: Math.round(endTime),
-      confidence: {
-        start: startMatch.confidence,
-        end: endMatch.confidence,
-      },
-      first_words: firstWords,
-      last_words: lastWords,
-      start_match_index: startMatch.index,
-      end_match_index: endMatch.index,
+      method: matchMethod,
+      word_count: sentenceWords.length,
+      audio_duration: audioDuration,
     });
   } catch (error) {
     console.error('匹配句子位置失败:', error);

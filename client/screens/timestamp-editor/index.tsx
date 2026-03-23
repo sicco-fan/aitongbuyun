@@ -6,6 +6,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -38,6 +39,7 @@ export default function TimestampEditorScreen() {
   const materialId = params.materialId;
   
   const [loading, setLoading] = useState(true);
+  const [matching, setMatching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -56,50 +58,56 @@ export default function TimestampEditorScreen() {
 
   const currentSentence = sentences[currentIndex];
 
-  // 根据句子文本匹配单词时间戳，找到开始和结束时间
-  const matchSentenceToTimestamps = useCallback((sentenceText: string, words: WordTimestamp[]): { start: number; end: number } => {
-    if (words.length === 0) {
-      return { start: 0, end: 0 };
+  // 调用后端API自动匹配所有句子的时间戳
+  const autoMatchAllSentences = useCallback(async (sentencesData: Sentence[], materialIdNum: number) => {
+    setMatching(true);
+    console.log('开始自动匹配所有句子...');
+    
+    try {
+      // 批量调用后端匹配API
+      const matchedSentences = await Promise.all(
+        sentencesData.map(async (sentence) => {
+          try {
+            const res = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialIdNum}/match-sentence`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sentenceText: sentence.text }),
+            });
+            const data = await res.json();
+            
+            if (data.matched) {
+              console.log(`句子 "${sentence.text.substring(0, 20)}..." 匹配成功: ${data.start_time}ms - ${data.end_time}ms`);
+              return {
+                ...sentence,
+                start_time: data.start_time,
+                end_time: data.end_time,
+              };
+            } else {
+              console.log(`句子 "${sentence.text.substring(0, 20)}..." 未匹配到`);
+              return sentence;
+            }
+          } catch (e) {
+            console.log(`匹配句子失败:`, e);
+            return sentence;
+          }
+        })
+      );
+      
+      setSentences(matchedSentences);
+      console.log('自动匹配完成！');
+    } catch (error) {
+      console.error('批量匹配失败:', error);
+    } finally {
+      setMatching(false);
     }
-    
-    // 清理句子文本，提取单词
-    const sentenceWords = sentenceText.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 0);
-    
-    if (sentenceWords.length === 0) {
-      return { start: 0, end: 0 };
-    }
-    
-    const firstWord = sentenceWords[0];
-    const lastWord = sentenceWords[sentenceWords.length - 1];
-    
-    // 找第一个单词的时间戳
-    let startTime = 0;
-    for (let i = 0; i < words.length; i++) {
-      const wordLower = words[i].word.toLowerCase().replace(/\W/g, '');
-      if (wordLower === firstWord || wordLower.startsWith(firstWord) || firstWord.startsWith(wordLower)) {
-        startTime = words[i].start_time;
-        break;
-      }
-    }
-    
-    // 找最后一个单词的时间戳
-    let endTime = duration || 0;
-    for (let i = words.length - 1; i >= 0; i--) {
-      const wordLower = words[i].word.toLowerCase().replace(/\W/g, '');
-      if (wordLower === lastWord || wordLower.endsWith(lastWord) || lastWord.endsWith(wordLower)) {
-        endTime = words[i].end_time;
-        break;
-      }
-    }
-    
-    return { start: startTime, end: endTime };
-  }, [duration]);
+  }, []);
 
   const fetchData = useCallback(async () => {
     if (!materialId) return;
     
     setLoading(true);
     try {
+      // 获取材料详情
       const materialRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}`);
       const materialData = await materialRes.json();
       
@@ -108,8 +116,6 @@ export default function TimestampEditorScreen() {
         setDuration(materialData.material.duration || 0);
       }
       
-      let wordsData: WordTimestamp[] = [];
-      
       // 获取单词时间戳
       try {
         const wordsRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/word-timestamps`, {
@@ -117,8 +123,7 @@ export default function TimestampEditorScreen() {
         });
         const wordsJson = await wordsRes.json();
         if (wordsJson.words && wordsJson.words.length > 0) {
-          wordsData = wordsJson.words;
-          setWordTimestamps(wordsData);
+          setWordTimestamps(wordsJson.words);
           if (wordsJson.duration) {
             setDuration(wordsJson.duration);
           }
@@ -129,23 +134,17 @@ export default function TimestampEditorScreen() {
       
       // 获取句子
       if (materialData.sentences && materialData.sentences.length > 0) {
-        // 自动匹配每个句子的时间戳
-        const processedSentences = materialData.sentences.map((s: Sentence) => {
-          // 如果已经有时间戳，保持不变
-          if (s.start_time > 0 && s.end_time > 0) {
-            return s;
-          }
-          
-          // 否则自动匹配
-          const { start, end } = matchSentenceToTimestamps(s.text, wordsData);
-          return {
-            ...s,
-            start_time: start,
-            end_time: end,
-          };
-        });
+        // 检查是否所有句子都已经有时间戳
+        const needMatch = materialData.sentences.some((s: Sentence) => s.start_time === 0 || s.end_time === 0);
         
-        setSentences(processedSentences);
+        if (needMatch) {
+          // 有句子没有时间戳，自动匹配
+          setSentences(materialData.sentences);
+          await autoMatchAllSentences(materialData.sentences, materialId);
+        } else {
+          // 所有句子都已有时间戳
+          setSentences(materialData.sentences);
+        }
       }
       
     } catch (error) {
@@ -153,7 +152,7 @@ export default function TimestampEditorScreen() {
     } finally {
       setLoading(false);
     }
-  }, [materialId, matchSentenceToTimestamps]);
+  }, [materialId, autoMatchAllSentences]);
 
   useEffect(() => {
     fetchData();
@@ -239,7 +238,7 @@ export default function TimestampEditorScreen() {
     const end = currentSentence.end_time;
     
     if (end <= start) {
-      console.log('时间戳无效');
+      Alert.alert('提示', '该句子尚未匹配到时间戳，请先进行自动匹配');
       return;
     }
     
@@ -255,8 +254,8 @@ export default function TimestampEditorScreen() {
         clearInterval(checkInterval);
         return;
       }
-      const status = await soundRef.current.getStatusAsync();
-      if (status.isLoaded && status.positionMillis >= end) {
+      const s = await soundRef.current.getStatusAsync();
+      if (s.isLoaded && s.positionMillis >= end) {
         await soundRef.current.pauseAsync();
         setIsPlaying(false);
         clearInterval(checkInterval);
@@ -295,8 +294,8 @@ export default function TimestampEditorScreen() {
         clearInterval(checkInterval);
         return;
       }
-      const status = await soundRef.current.getStatusAsync();
-      if (status.isLoaded && status.positionMillis >= word.end_time) {
+      const s = await soundRef.current.getStatusAsync();
+      if (s.isLoaded && s.positionMillis >= word.end_time) {
         await soundRef.current.pauseAsync();
         setIsPlaying(false);
         clearInterval(checkInterval);
@@ -322,6 +321,35 @@ export default function TimestampEditorScreen() {
       end_time: word.end_time,
     };
     setSentences(newSentences);
+  };
+
+  // 手动重新匹配当前句子
+  const rematchCurrentSentence = async () => {
+    if (!currentSentence || !materialId) return;
+    
+    try {
+      const res = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/match-sentence`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sentenceText: currentSentence.text }),
+      });
+      const data = await res.json();
+      
+      if (data.matched) {
+        const newSentences = [...sentences];
+        newSentences[currentIndex] = {
+          ...newSentences[currentIndex],
+          start_time: data.start_time,
+          end_time: data.end_time,
+        };
+        setSentences(newSentences);
+        Alert.alert('成功', `重新匹配成功: ${data.start_time}ms - ${data.end_time}ms`);
+      } else {
+        Alert.alert('提示', '未能匹配到该句子的时间戳');
+      }
+    } catch (e) {
+      Alert.alert('错误', '重新匹配失败');
+    }
   };
 
   // 确认并跳转下一句
@@ -361,11 +389,6 @@ export default function TimestampEditorScreen() {
     return `${minutes}:${(seconds % 60).toString().padStart(2, '0')}.${Math.floor((totalSeconds % 1) * 100).toString().padStart(2, '0')}`;
   };
 
-  const formatTimeSimple = (ms: number) => {
-    const seconds = Math.floor(ms / 1000);
-    return `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
-  };
-
   // 获取当前句子范围内的单词
   const getSentenceWords = useCallback(() => {
     if (!currentSentence || wordTimestamps.length === 0) return [];
@@ -376,12 +399,26 @@ export default function TimestampEditorScreen() {
     return wordTimestamps.filter(w => w.start_time >= start && w.end_time <= end);
   }, [currentSentence, wordTimestamps]);
 
-  if (loading) {
+  // 计算当前句子之前的所有单词（用于调整开始时间）
+  const getWordsBeforeSentence = useCallback(() => {
+    if (!currentSentence || wordTimestamps.length === 0) return [];
+    return wordTimestamps.filter(w => w.end_time < currentSentence.start_time).slice(-10);
+  }, [currentSentence, wordTimestamps]);
+
+  // 计算当前句子之后的所有单词（用于调整结束时间）
+  const getWordsAfterSentence = useCallback(() => {
+    if (!currentSentence || wordTimestamps.length === 0) return [];
+    return wordTimestamps.filter(w => w.start_time > currentSentence.end_time).slice(0, 10);
+  }, [currentSentence, wordTimestamps]);
+
+  if (loading || matching) {
     return (
       <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
         <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a' }}>
           <ActivityIndicator size="large" color="#00ff88" />
-          <Text style={{ color: '#888', marginTop: 16 }}>正在加载...</Text>
+          <Text style={{ color: '#888', marginTop: 16 }}>
+            {matching ? '正在自动匹配句子时间戳...' : '正在加载...'}
+          </Text>
         </ThemedView>
       </Screen>
     );
@@ -402,7 +439,10 @@ export default function TimestampEditorScreen() {
   }
 
   const sentenceWords = getSentenceWords();
+  const wordsBefore = getWordsBeforeSentence();
+  const wordsAfter = getWordsAfterSentence();
   const sentenceDuration = Math.abs(currentSentence?.end_time - currentSentence?.start_time) || 0;
+  const hasValidTime = currentSentence && currentSentence.end_time > currentSentence.start_time;
 
   return (
     <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
@@ -442,99 +482,114 @@ export default function TimestampEditorScreen() {
       <View style={styles.timeInfo}>
         <View style={styles.timeBox}>
           <Text style={styles.timeLabel}>开始</Text>
-          <Text style={styles.timeValue}>{formatTime(currentSentence?.start_time || 0)}</Text>
+          <Text style={[styles.timeValue, !hasValidTime && styles.timeInvalid]}>
+            {hasValidTime ? formatTime(currentSentence.start_time) : '--:--'}
+          </Text>
         </View>
-        <View style={styles.durationBox}>
-          <Text style={styles.durationValue}>{formatTime(sentenceDuration)}</Text>
+        <View style={[styles.durationBox, !hasValidTime && styles.durationInvalid]}>
+          <Text style={[styles.durationValue, !hasValidTime && styles.timeInvalid]}>
+            {hasValidTime ? formatTime(sentenceDuration) : '--:--'}
+          </Text>
           <Text style={styles.durationLabel}>时长</Text>
         </View>
         <View style={styles.timeBox}>
           <Text style={styles.timeLabel}>结束</Text>
-          <Text style={styles.timeValue}>{formatTime(currentSentence?.end_time || 0)}</Text>
+          <Text style={[styles.timeValue, !hasValidTime && styles.timeInvalid]}>
+            {hasValidTime ? formatTime(currentSentence.end_time) : '--:--'}
+          </Text>
         </View>
       </View>
 
-      {/* 单词列表 */}
+      {/* 单词列表 - 当前句子范围内 */}
       <View style={styles.wordsSection}>
-        <Text style={styles.sectionTitle}>句子中的单词 (点击可播放，长按可设置时间)</Text>
-        <ScrollView style={styles.wordsList} contentContainerStyle={styles.wordsContent}>
-          {sentenceWords.length > 0 ? (
-            sentenceWords.map((word, idx) => (
-              <TouchableOpacity 
-                key={idx} 
-                style={styles.wordItem}
-                onPress={() => playWord(word)}
-                onLongPress={() => setStartFromWord(word)}
-              >
-                <Text style={styles.wordText}>{word.word}</Text>
-                <Text style={styles.wordTime}>{formatTime(word.start_time)}</Text>
-              </TouchableOpacity>
-            ))
-          ) : (
-            <Text style={styles.noWords}>该时间范围内没有单词，请调整开始/结束时间</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>句子中的单词</Text>
+          {hasValidTime && (
+            <TouchableOpacity onPress={rematchCurrentSentence}>
+              <Text style={styles.rematchBtn}>重新匹配</Text>
+            </TouchableOpacity>
           )}
-        </ScrollView>
+        </View>
+        
+        {!hasValidTime ? (
+          <View style={styles.emptyState}>
+            <FontAwesome6 name="clock" size={32} color="#444" />
+            <Text style={styles.emptyText}>该句子尚未匹配时间戳</Text>
+            <TouchableOpacity style={styles.matchBtn} onPress={rematchCurrentSentence}>
+              <FontAwesome6 name="wand-magic-sparkles" size={16} color="#000" />
+              <Text style={styles.matchBtnText}>自动匹配</Text>
+            </TouchableOpacity>
+          </View>
+        ) : sentenceWords.length > 0 ? (
+          <View style={{ flex: 1 }}>
+            <ScrollView horizontal style={styles.wordsList} contentContainerStyle={styles.wordsContent}>
+              {sentenceWords.map((word, idx) => (
+                <TouchableOpacity 
+                  key={idx} 
+                  style={styles.wordItem}
+                  onPress={() => playWord(word)}
+                >
+                  <Text style={styles.wordText}>{word.word}</Text>
+                  <Text style={styles.wordTime}>{formatTime(word.start_time)}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        ) : (
+          <Text style={styles.noWords}>该时间范围内没有识别到单词</Text>
+        )}
       </View>
 
-      {/* 调整时间 */}
-      <View style={styles.adjustSection}>
-        <Text style={styles.sectionTitle}>调整时间边界</Text>
-        <View style={styles.adjustButtons}>
-          <TouchableOpacity style={styles.adjustBtn} onPress={() => {
-            // 找到比当前开始时间早的单词
-            const currentStart = currentSentence?.start_time || 0;
-            const earlierWords = wordTimestamps.filter(w => w.end_time < currentStart);
-            if (earlierWords.length > 0) {
-              setStartFromWord(earlierWords[earlierWords.length - 1]);
-            }
-          }}>
-            <FontAwesome6 name="backward" size={16} color="#00ff88" />
-            <Text style={styles.adjustBtnText}>开始前移</Text>
-          </TouchableOpacity>
+      {/* 调整时间边界 */}
+      {hasValidTime && (
+        <View style={styles.adjustSection}>
+          <Text style={styles.sectionTitle}>调整时间边界</Text>
           
-          <TouchableOpacity style={styles.adjustBtn} onPress={() => {
-            // 找到比当前开始时间晚的单词
-            const currentStart = currentSentence?.start_time || 0;
-            const laterWords = wordTimestamps.filter(w => w.start_time > currentStart);
-            if (laterWords.length > 0) {
-              setStartFromWord(laterWords[0]);
-            }
-          }}>
-            <FontAwesome6 name="forward" size={16} color="#00ff88" />
-            <Text style={styles.adjustBtnText}>开始后移</Text>
-          </TouchableOpacity>
+          <View style={styles.adjustRow}>
+            <Text style={styles.adjustLabel}>开始前移:</Text>
+            <View style={{ flex: 1 }}>
+              <ScrollView horizontal style={styles.adjustWordsList}>
+                {wordsBefore.slice().reverse().map((word, idx) => (
+                  <TouchableOpacity 
+                    key={`before-${idx}`} 
+                    style={styles.adjustWordBtn}
+                    onPress={() => setStartFromWord(word)}
+                  >
+                    <Text style={styles.adjustWordText}>{word.word}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
           
-          <TouchableOpacity style={styles.adjustBtn} onPress={() => {
-            // 找到比当前结束时间早的单词
-            const currentEnd = currentSentence?.end_time || duration;
-            const earlierWords = wordTimestamps.filter(w => w.end_time < currentEnd);
-            if (earlierWords.length > 0) {
-              setEndFromWord(earlierWords[earlierWords.length - 1]);
-            }
-          }}>
-            <FontAwesome6 name="backward" size={16} color="#ff8800" />
-            <Text style={styles.adjustBtnText}>结束前移</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.adjustBtn} onPress={() => {
-            // 找到比当前结束时间晚的单词
-            const currentEnd = currentSentence?.end_time || 0;
-            const laterWords = wordTimestamps.filter(w => w.start_time > currentEnd);
-            if (laterWords.length > 0) {
-              setEndFromWord(laterWords[0]);
-            }
-          }}>
-            <FontAwesome6 name="forward" size={16} color="#ff8800" />
-            <Text style={styles.adjustBtnText}>结束后移</Text>
-          </TouchableOpacity>
+          <View style={styles.adjustRow}>
+            <Text style={styles.adjustLabel}>结束延后:</Text>
+            <View style={{ flex: 1 }}>
+              <ScrollView horizontal style={styles.adjustWordsList}>
+                {wordsAfter.map((word, idx) => (
+                  <TouchableOpacity 
+                    key={`after-${idx}`} 
+                    style={styles.adjustWordBtn}
+                    onPress={() => setEndFromWord(word)}
+                  >
+                    <Text style={styles.adjustWordText}>{word.word}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
         </View>
-      </View>
+      )}
 
       {/* 底部控制栏 */}
       <View style={styles.controls}>
         <View style={styles.playControls}>
-          <TouchableOpacity style={styles.playBtn} onPress={playCurrentSentence}>
-            <FontAwesome6 name={isPlaying ? "pause" : "play"} size={24} color="#000" />
+          <TouchableOpacity 
+            style={[styles.playBtn, !hasValidTime && styles.playBtnDisabled]} 
+            onPress={playCurrentSentence}
+            disabled={!hasValidTime}
+          >
+            <FontAwesome6 name={isPlaying ? "pause" : "play"} size={24} color={hasValidTime ? "#000" : "#666"} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.stopBtn} onPress={stopPlaying}>
             <FontAwesome6 name="stop" size={18} color="#888" />
@@ -647,12 +702,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
   },
+  timeInvalid: {
+    color: '#666',
+  },
   durationBox: {
     alignItems: 'center',
     backgroundColor: 'rgba(0, 255, 136, 0.15)',
     paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: 8,
+  },
+  durationInvalid: {
+    backgroundColor: 'rgba(102, 102, 102, 0.2)',
   },
   durationValue: {
     color: '#00ff88',
@@ -670,12 +731,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0a0a0a',
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#111',
+  },
   sectionTitle: {
     color: '#888',
     fontSize: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#111',
+  },
+  rematchBtn: {
+    color: '#00ff88',
+    fontSize: 12,
   },
   wordsList: {
     flex: 1,
@@ -708,6 +778,32 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     padding: 32,
   },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  emptyText: {
+    color: '#666',
+    fontSize: 14,
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  matchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#00ff88',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  matchBtnText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   
   adjustSection: {
     backgroundColor: '#111',
@@ -715,19 +811,30 @@ const styles = StyleSheet.create({
     borderTopColor: '#333',
     paddingVertical: 12,
   },
-  adjustButtons: {
+  adjustRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 8,
-  },
-  adjustBtn: {
     alignItems: 'center',
-    padding: 8,
+    paddingHorizontal: 16,
+    marginBottom: 8,
   },
-  adjustBtnText: {
-    color: '#888',
-    fontSize: 10,
-    marginTop: 4,
+  adjustLabel: {
+    color: '#666',
+    fontSize: 12,
+    width: 80,
+  },
+  adjustWordsList: {
+    flex: 1,
+  },
+  adjustWordBtn: {
+    backgroundColor: '#333',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  adjustWordText: {
+    color: '#fff',
+    fontSize: 12,
   },
   
   controls: {
@@ -752,6 +859,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#00ff88',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  playBtnDisabled: {
+    backgroundColor: '#333',
   },
   stopBtn: {
     width: 40,
