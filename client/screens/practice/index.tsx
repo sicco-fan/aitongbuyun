@@ -92,6 +92,7 @@ export default function PracticeScreen() {
   const sentenceTimesRef = useRef({ start: 0, end: 0 });
   const isRecordingRef = useRef(false); // 使用 ref 跟踪录音状态，避免闭包问题
   const inputRef = useRef<TextInput>(null); // 输入框引用
+  const currentSentenceIdRef = useRef<number | null>(null); // 跟踪当前句子ID，防止异步翻译混乱
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -159,6 +160,7 @@ export default function PracticeScreen() {
       setPlayCount(0);
       setWordTranslations({}); // 清除单词翻译
       setSentenceTranslation(null); // 清除句子翻译
+      currentSentenceIdRef.current = currentSentence.id; // 更新当前句子ID
       
       // 保存当前句子的时间范围
       sentenceTimesRef.current = {
@@ -395,10 +397,15 @@ export default function PracticeScreen() {
   // 监听单词状态变化，自动跳转到下一句
   useEffect(() => {
     // 检查是否所有非标点单词都已答出
-    const allWordsRevealed = wordStatuses.length > 0 && 
-      wordStatuses.filter(w => !w.isPunctuation).every(w => w.revealed);
+    const nonPunctuationWords = wordStatuses.filter(w => !w.isPunctuation);
+    const allWordsRevealed = nonPunctuationWords.length > 0 && 
+      nonPunctuationWords.every(w => w.revealed);
     
-    if (allWordsRevealed && currentSentence && !completed) {
+    // 只有当：1. 所有非标点单词都完成 2. 有非标点单词存在 3. 当前句子存在 4. 未完成 5. 还没有翻译
+    if (allWordsRevealed && currentSentence && !completed && !sentenceTranslation) {
+      // 保存当前句子ID，用于验证异步响应
+      const sentenceId = currentSentence.id;
+      
       // 句子完成后才获取翻译
       fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
         method: 'POST',
@@ -407,7 +414,8 @@ export default function PracticeScreen() {
       })
         .then(res => res.json())
         .then(data => {
-          if (data.translation) {
+          // 只有当前句子ID匹配时才设置翻译，防止切换句子后旧翻译显示
+          if (data.translation && currentSentenceIdRef.current === sentenceId) {
             setSentenceTranslation(data.translation);
           }
         })
