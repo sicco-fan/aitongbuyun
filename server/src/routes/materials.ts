@@ -7,7 +7,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import axios from 'axios';
 import { getSupabaseClient } from '../storage/database/supabase-client';
-import { S3Storage, ASRClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
+import { S3Storage, ASRClient, LLMClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
 
 const execAsync = promisify(exec);
 const router = Router();
@@ -608,6 +608,46 @@ async function processMediaAsync(
 
     console.log(`[异步处理] ASR 完成`);
 
+    // 获取 ASR 返回的原始文本
+    let rawText = asrResult.text || asrResult.rawData?.result?.text || '';
+    console.log(`[异步处理] ASR 原始文本: ${rawText.substring(0, 100)}...`);
+    
+    // 检查文本是否有标点符号
+    const hasPunctuation = /[.!?。！？]/.test(rawText);
+    
+    if (!hasPunctuation && rawText.length > 20) {
+      console.log(`[异步处理] 文本缺少标点符号，使用 LLM 添加标点...`);
+      
+      try {
+        const llmClient = new LLMClient(new Config(), customHeaders);
+        const punctResponse = await llmClient.invoke([
+          {
+            role: 'system',
+            content: 'You are a text punctuation assistant. Add proper punctuation (periods, question marks, commas) to the English text. Do NOT change any words, only add punctuation marks. Keep the original text exactly as is, just add punctuation. Return ONLY the punctuated text without any explanation.'
+          },
+          {
+            role: 'user',
+            content: `Add punctuation to this English text. Keep all words exactly as they are, only add periods, question marks, exclamation marks, and commas where appropriate:\n\n${rawText}`
+          }
+        ], { temperature: 0.3 });
+        
+        const punctuatedText = punctResponse.content.trim();
+        console.log(`[异步处理] LLM 添加标点后: ${punctuatedText.substring(0, 100)}...`);
+        
+        // 更新 ASR 结果的文本
+        if (asrResult.text) {
+          asrResult.text = punctuatedText;
+        }
+        if (asrResult.rawData?.result?.text) {
+          asrResult.rawData.result.text = punctuatedText;
+        }
+        rawText = punctuatedText;
+      } catch (llmError) {
+        console.log(`[异步处理] LLM 添加标点失败: ${(llmError as Error).message}`);
+        // 继续使用原始文本
+      }
+    }
+
     // 处理句子
     const sentences = await processASRResultWithSilence(asrResult, audioUrl);
     
@@ -1066,6 +1106,80 @@ router.post('/:id/extract-text', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('提取文本失败:', error);
     res.status(500).json({ error: '提取文本失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * POST /api/v1/materials/:id/add-punctuation
+ * 使用 LLM 为没有标点的文本添加标点
+ * Body: { text?: string } - 可选，不传则使用材料中的 full_text
+ */
+router.post('/:id/add-punctuation', express.json(), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { text } = req.body;
+
+    const supabase = getSupabaseClient();
+    
+    // 获取材料
+    const { data: material, error: materialError } = await supabase
+      .from('materials')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (materialError || !material) {
+      return res.status(404).json({ error: '材料不存在' });
+    }
+
+    const inputText = text || material.full_text || '';
+    
+    if (!inputText || inputText.length < 10) {
+      return res.status(400).json({ error: '文本太短，无法添加标点' });
+    }
+
+    console.log(`[添加标点] 材料 ${id}, 文本长度: ${inputText.length}`);
+
+    // 使用 LLM 添加标点
+    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+    const llmClient = new LLMClient(new Config(), customHeaders);
+    
+    const punctResponse = await llmClient.invoke([
+      {
+        role: 'system',
+        content: `You are a text punctuation assistant for English learning materials. 
+Add proper punctuation to the English text following these rules:
+1. Add periods (.) at the end of statements
+2. Add question marks (?) at the end of questions
+3. Add exclamation marks (!) for exclamations
+4. Add commas (,) where needed for natural pauses
+5. Do NOT change, add, or remove any words
+6. Keep the original text exactly as is, only add punctuation marks
+7. Return ONLY the punctuated text without any explanation or formatting`
+      },
+      {
+        role: 'user',
+        content: `Add punctuation to this English text. Keep all words exactly as they are:\n\n${inputText}`
+      }
+    ], { temperature: 0.3, model: 'doubao-seed-1-6-lite-251015' });
+
+    const punctuatedText = punctResponse.content.trim();
+    console.log(`[添加标点] 完成: ${punctuatedText.substring(0, 100)}...`);
+
+    // 更新材料
+    await supabase
+      .from('materials')
+      .update({ full_text: punctuatedText })
+      .eq('id', id);
+
+    res.json({ 
+      success: true, 
+      text: punctuatedText,
+      message: '标点添加成功' 
+    });
+  } catch (error) {
+    console.error('添加标点失败:', error);
+    res.status(500).json({ error: '添加标点失败', message: (error as Error).message });
   }
 });
 

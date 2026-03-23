@@ -167,6 +167,49 @@ export default function TextSplitScreen() {
     setDialog({ visible: true, message: `已重新切分为 ${autoSentences.length} 个句子` });
   };
 
+  // 添加标点符号（使用 LLM）
+  const handleAddPunctuation = async () => {
+    if (!fullText.trim()) {
+      setDialog({ visible: true, message: '请先获取文本' });
+      return;
+    }
+    
+    // 检查是否已有标点
+    if (/[.!?。！？]/.test(fullText)) {
+      setDialog({ visible: true, message: '文本已包含标点符号，无需添加' });
+      return;
+    }
+    
+    setExtracting(true);
+    try {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/add-punctuation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: fullText }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.text) {
+        setFullText(data.text);
+        // 自动切分
+        const autoSentences = autoSplitText(data.text);
+        setSentences(autoSentences);
+        setDialog({ 
+          visible: true, 
+          message: `标点添加成功！已自动切分为 ${autoSentences.length} 个句子。` 
+        });
+      } else {
+        throw new Error(data.error || '添加标点失败');
+      }
+    } catch (error) {
+      console.error('添加标点失败:', error);
+      setDialog({ visible: true, message: `添加标点失败: ${(error as Error).message}` });
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   // 保存句子
   const handleSave = async () => {
     if (!materialId || sentences.length === 0) {
@@ -291,6 +334,17 @@ export default function TextSplitScreen() {
               )}
               <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
                 {extracting ? '提取中...' : '获取文本'}
+              </ThemedText>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.autoSplitBtn]}
+              onPress={handleAddPunctuation}
+              disabled={!fullText || extracting}
+            >
+              <FontAwesome6 name="spell-check" size={16} color={theme.buttonPrimaryText} />
+              <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
+                添加标点
               </ThemedText>
             </TouchableOpacity>
             
