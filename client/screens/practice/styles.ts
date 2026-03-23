@@ -70,19 +70,26 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.full,
     },
     
-    // Audio Controls
-    audioControls: {
+    // Audio Settings Panel (弹出面板)
+    audioSettingsPanel: {
       paddingHorizontal: Spacing.lg,
       paddingVertical: Spacing.md,
       backgroundColor: theme.backgroundDefault,
       borderBottomWidth: 1,
       borderBottomColor: theme.borderLight,
     },
-    controlItem: {
+    settingRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: Spacing.sm,
-      marginBottom: Spacing.sm,
+      paddingVertical: Spacing.xs,
+    },
+    settingIcon: {
+      width: 20,
+    },
+    settingLabel: {
+      width: 35,
+      textAlign: 'center',
     },
     sliderContainer: {
       flex: 1,
@@ -119,44 +126,6 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
     },
     sliderTouchPoint: {
-      flex: 1,
-      height: '100%',
-    },
-    speedSliderContainer: {
-      flex: 1,
-      height: 24,
-      position: 'relative',
-      justifyContent: 'center',
-    },
-    speedSliderTrack: {
-      height: 4,
-      backgroundColor: theme.backgroundTertiary,
-      borderRadius: BorderRadius.full,
-      overflow: 'visible',
-    },
-    speedSliderFill: {
-      height: '100%',
-      backgroundColor: theme.primary,
-      borderRadius: BorderRadius.full,
-    },
-    speedSliderThumb: {
-      position: 'absolute',
-      top: -4,
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      backgroundColor: theme.primary,
-      marginLeft: -6,
-    },
-    speedSliderTouchArea: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      top: 0,
-      bottom: 0,
-      flexDirection: 'row',
-    },
-    speedSliderPoint: {
       flex: 1,
       height: '100%',
     },

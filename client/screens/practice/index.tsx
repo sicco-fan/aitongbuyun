@@ -77,6 +77,7 @@ export default function PracticeScreen() {
   const [isLooping, setIsLooping] = useState(true);
   const [volume, setVolume] = useState(1.0); // 音量 0-1
   const [playbackRate, setPlaybackRate] = useState(1.0); // 语速 0.5-2.0
+  const [showAudioSettings, setShowAudioSettings] = useState(false); // 显示音频设置面板
   const soundRef = useRef<Audio.Sound | null>(null);
   const isMountedRef = useRef(true);
   const isLoopingRef = useRef(true); // 用于在回调中获取最新的循环状态
@@ -666,6 +667,12 @@ export default function PracticeScreen() {
         {/* 右侧小控制按钮 */}
         <View style={styles.headerControls}>
           <TouchableOpacity 
+            style={[styles.smallControlBtn, showAudioSettings && styles.smallControlBtnActive]}
+            onPress={() => setShowAudioSettings(prev => !prev)}
+          >
+            <FontAwesome6 name="sliders" size={14} color={showAudioSettings ? theme.primary : theme.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity 
             style={[styles.smallControlBtn, isPlaying && styles.smallControlBtnActive]}
             onPress={togglePlayPause}
           >
@@ -674,58 +681,64 @@ export default function PracticeScreen() {
         </View>
       </View>
       
+      {/* Audio Settings Panel */}
+      {showAudioSettings && (
+        <View style={styles.audioSettingsPanel}>
+          {/* Volume Control */}
+          <View style={styles.settingRow}>
+            <FontAwesome6 name="volume-low" size={14} color={theme.textMuted} style={styles.settingIcon} />
+            <View style={styles.sliderContainer}>
+              <View style={styles.sliderTrack}>
+                <View style={[styles.sliderFill, { width: `${volume * 100}%` }]} />
+                <View style={[styles.sliderThumb, { left: `${volume * 100}%` }]} />
+              </View>
+              <View style={styles.sliderTouchArea}>
+                {[...Array(11)].map((_, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={styles.sliderTouchPoint}
+                    onPress={() => {
+                      updateVolume(i / 10);
+                    }}
+                  />
+                ))}
+              </View>
+            </View>
+            <FontAwesome6 name="volume-high" size={14} color={theme.textMuted} />
+          </View>
+          
+          {/* Speed Control */}
+          <View style={styles.settingRow}>
+            <ThemedText variant="caption" color={theme.textMuted} style={styles.settingLabel}>0.5x</ThemedText>
+            <View style={styles.sliderContainer}>
+              <View style={styles.sliderTrack}>
+                <View style={[styles.sliderFill, { width: `${((playbackRate - 0.5) / 1.5) * 100}%` }]} />
+                <View style={[styles.sliderThumb, { left: `${((playbackRate - 0.5) / 1.5) * 100}%` }]} />
+              </View>
+              <View style={styles.sliderTouchArea}>
+                {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((rate) => (
+                  <TouchableOpacity
+                    key={rate}
+                    style={styles.sliderTouchPoint}
+                    onPress={() => {
+                      updatePlaybackRate(rate);
+                    }}
+                  />
+                ))}
+              </View>
+            </View>
+            <ThemedText variant="caption" color={theme.textMuted} style={styles.settingLabel}>2.0x</ThemedText>
+            <View style={styles.currentSpeedBadge}>
+              <ThemedText variant="caption" color={theme.buttonPrimaryText}>{playbackRate}x</ThemedText>
+            </View>
+          </View>
+        </View>
+      )}
+      
       {/* Progress Bar */}
       <View style={styles.progressContainer}>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${progress}%` }]} />
-        </View>
-      </View>
-      
-      {/* Audio Controls */}
-      <View style={styles.audioControls}>
-        {/* Volume Control */}
-        <View style={styles.controlItem}>
-          <FontAwesome6 name="volume-low" size={14} color={theme.textMuted} />
-          <View style={styles.sliderContainer}>
-            <View style={styles.sliderTrack}>
-              <View style={[styles.sliderFill, { width: `${volume * 100}%` }]} />
-              <View style={[styles.sliderThumb, { left: `${volume * 100}%` }]} />
-            </View>
-            <View style={styles.sliderTouchArea}>
-              {[...Array(11)].map((_, i) => (
-                <TouchableOpacity
-                  key={i}
-                  style={styles.sliderTouchPoint}
-                  onPress={() => updateVolume(i / 10)}
-                />
-              ))}
-            </View>
-          </View>
-          <FontAwesome6 name="volume-high" size={14} color={theme.textMuted} />
-        </View>
-        
-        {/* Speed Control */}
-        <View style={styles.controlItem}>
-          <ThemedText variant="tiny" color={theme.textMuted}>0.5x</ThemedText>
-          <View style={styles.speedSliderContainer}>
-            <View style={styles.speedSliderTrack}>
-              <View style={[styles.speedSliderFill, { width: `${((playbackRate - 0.5) / 1.5) * 100}%` }]} />
-              <View style={[styles.speedSliderThumb, { left: `${((playbackRate - 0.5) / 1.5) * 100}%` }]} />
-            </View>
-            <View style={styles.speedSliderTouchArea}>
-              {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((rate, i) => (
-                <TouchableOpacity
-                  key={rate}
-                  style={styles.speedSliderPoint}
-                  onPress={() => updatePlaybackRate(rate)}
-                />
-              ))}
-            </View>
-          </View>
-          <ThemedText variant="tiny" color={theme.textMuted}>2.0x</ThemedText>
-          <View style={styles.currentSpeedBadge}>
-            <ThemedText variant="small" color={theme.buttonPrimaryText}>{playbackRate}x</ThemedText>
-          </View>
         </View>
       </View>
       
