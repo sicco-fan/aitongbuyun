@@ -29,8 +29,27 @@ interface FileInfo {
   mimeType?: string;
 }
 
-// 后端服务地址 - 直接连接后端服务器，不经过 Metro 代理
-const BACKEND_URL = 'http://127.0.0.1:9091';
+// 后端服务地址配置
+// 优先级：环境变量 > 硬编码外部地址 > 本地地址
+const getBackendUrl = (): string => {
+  // 1. 环境变量（Expo 会注入 EXPO_PUBLIC_ 开头的变量）
+  const envUrl = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
+  if (envUrl && envUrl.length > 0 && !envUrl.includes('127.0.0.1')) {
+    console.log('[Backend] 使用环境变量地址:', envUrl);
+    return envUrl;
+  }
+  
+  // 2. 外部访问地址（支持真机访问）
+  // 这是 Coze 平台提供的外部访问域名
+  const externalUrl = 'https://bf3da197-a0fa-4944-bbe1-c9d1ffd68f66.dev.coze.site';
+  console.log('[Backend] 使用外部地址:', externalUrl);
+  return externalUrl;
+  
+  // 注意：http://127.0.0.1:9091 只能在本地 Web 端使用
+  // 真机（iPhone/Android）无法访问电脑的 127.0.0.1
+};
+
+const BACKEND_URL = getBackendUrl();
 
 /**
  * 使用 FileSystem.uploadAsync 上传文件
