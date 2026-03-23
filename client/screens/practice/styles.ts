@@ -10,7 +10,7 @@ export const createStyles = (theme: Theme) => {
       flexGrow: 1,
       paddingHorizontal: Spacing.lg,
       paddingTop: Spacing.xl,
-      paddingBottom: Spacing['3xl'],
+      paddingBottom: Spacing['5xl'],
     },
     
     // Header
@@ -182,8 +182,12 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
       marginBottom: Spacing.xl,
     },
-    input: {
+    inputWrapper: {
       width: '80%',
+      position: 'relative',
+    },
+    input: {
+      width: '100%',
       backgroundColor: '#E8F5E9',
       borderRadius: BorderRadius.xl,
       borderWidth: 2,
@@ -194,21 +198,19 @@ export const createStyles = (theme: Theme) => {
       color: theme.textPrimary,
       fontWeight: '600',
       textAlign: 'center',
+      paddingRight: 56, // 为语音按钮留空间
     },
-    voiceBtn: {
-      width: 56,
-      height: 56,
+    inputVoiceBtn: {
+      position: 'absolute',
+      right: 8,
+      top: '50%',
+      marginTop: -20,
+      width: 40,
+      height: 40,
       borderRadius: BorderRadius.full,
       backgroundColor: theme.primary + '15',
       justifyContent: 'center',
       alignItems: 'center',
-      borderWidth: 2,
-      borderColor: theme.primary,
-      marginTop: Spacing.lg,
-    },
-    voiceBtnActive: {
-      backgroundColor: theme.error,
-      borderColor: theme.error,
     },
     
     // Translation Card
@@ -221,12 +223,14 @@ export const createStyles = (theme: Theme) => {
       borderColor: theme.primary + '30',
     },
     
-    // Navigation Buttons
+    // Navigation Buttons (Fixed at bottom)
     navButtons: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent: 'center',
       alignItems: 'center',
-      paddingHorizontal: Spacing.lg,
+      gap: Spacing['2xl'],
+      paddingVertical: Spacing.lg,
+      backgroundColor: theme.backgroundRoot,
     },
     navBtn: {
       width: 48,
