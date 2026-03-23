@@ -640,10 +640,13 @@ export default function AddMaterialScreen() {
         let errorMsg = `上传失败 (${uploadResult.status})`;
         try {
           const errorData = JSON.parse(uploadResult.body);
-          // 组合显示错误信息和提示
+          // 组合显示错误信息、详细说明和提示
           errorMsg = errorData.error || errorMsg;
+          if (errorData.message) {
+            errorMsg += '\n\n' + errorData.message;
+          }
           if (errorData.hint) {
-            errorMsg += '\n\n💡 提示：' + errorData.hint;
+            errorMsg += '\n\n💡 ' + errorData.hint;
           }
         } catch {
           errorMsg = uploadResult.body?.substring(0, 200) || errorMsg;
