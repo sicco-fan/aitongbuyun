@@ -937,49 +937,46 @@ export default function PracticeScreen() {
 
         {/* Audio Section */}
         <View style={styles.audioSection}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.md }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity
-              style={[styles.playButton, { width: 56, height: 56 }]}
+              style={styles.playButton}
               onPress={togglePlayback}
             >
               <FontAwesome6
                 name={isPlaying ? 'pause' : 'play'}
-                size={24}
+                size={20}
                 color={theme.buttonPrimaryText}
               />
             </TouchableOpacity>
             
             {/* 音量控制 */}
-            <View style={{ flex: 1, marginLeft: Spacing.lg }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.xs }}>
+            <View style={{ flex: 1, marginLeft: Spacing.md }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
                 <ThemedText variant="caption" color={theme.textMuted}>音量</ThemedText>
                 <ThemedText variant="caption" color={theme.textPrimary}>{Math.round(volume * 100)}%</ThemedText>
               </View>
-              <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
                 <TouchableOpacity
-                  style={{ padding: Spacing.sm, backgroundColor: theme.backgroundTertiary, borderRadius: 8 }}
+                  style={{ padding: 6, backgroundColor: theme.backgroundTertiary, borderRadius: 6 }}
                   onPress={() => handleVolumeChange(Math.max(0, volume - 0.1))}
                 >
-                  <FontAwesome6 name="minus" size={14} color={theme.textPrimary} />
+                  <FontAwesome6 name="minus" size={12} color={theme.textPrimary} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={{ padding: Spacing.sm, backgroundColor: theme.backgroundTertiary, borderRadius: 8 }}
+                  style={{ padding: 6, backgroundColor: theme.backgroundTertiary, borderRadius: 6 }}
                   onPress={() => handleVolumeChange(Math.min(1, volume + 0.1))}
                 >
-                  <FontAwesome6 name="plus" size={14} color={theme.textPrimary} />
+                  <FontAwesome6 name="plus" size={12} color={theme.textPrimary} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={{ padding: Spacing.sm, backgroundColor: volume >= 0.9 ? theme.primary : theme.backgroundTertiary, borderRadius: 8 }}
+                  style={{ padding: 6, backgroundColor: volume >= 0.9 ? theme.primary : theme.backgroundTertiary, borderRadius: 6 }}
                   onPress={() => handleVolumeChange(1.0)}
                 >
-                  <FontAwesome6 name="volume-high" size={14} color={volume >= 0.9 ? theme.buttonPrimaryText : theme.textPrimary} />
+                  <FontAwesome6 name="volume-high" size={12} color={volume >= 0.9 ? theme.buttonPrimaryText : theme.textPrimary} />
                 </TouchableOpacity>
               </View>
             </View>
           </View>
-          <ThemedText variant="caption" color={theme.textMuted}>
-            {isPlaying ? '循环播放当前句子中' : '已暂停'}
-          </ThemedText>
         </View>
 
         {/* 翻译显示区 - 右上角 */}

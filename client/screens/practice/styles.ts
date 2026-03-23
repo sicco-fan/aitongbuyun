@@ -57,21 +57,20 @@ export const createStyles = (theme: Theme) => {
     // 音频控制区
     audioSection: {
       alignItems: 'center',
-      marginBottom: Spacing['2xl'],
-      padding: Spacing.xl,
+      marginBottom: Spacing.lg,
+      padding: Spacing.md,
       backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.xl,
+      borderRadius: BorderRadius.lg,
       borderWidth: 1,
       borderColor: theme.border,
     },
     playButton: {
-      width: 72,
-      height: 72,
+      width: 48,
+      height: 48,
       borderRadius: BorderRadius.full,
       backgroundColor: theme.primary,
       justifyContent: 'center',
       alignItems: 'center',
-      marginBottom: Spacing.md,
     },
     playButtonDisabled: {
       backgroundColor: theme.textMuted,
@@ -81,10 +80,10 @@ export const createStyles = (theme: Theme) => {
     // 翻译显示区
     translationBox: {
       backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.xl,
+      borderRadius: BorderRadius.lg,
       borderWidth: 1,
       borderColor: theme.primary,
-      padding: Spacing.lg,
+      padding: Spacing.md,
       marginBottom: Spacing.lg,
       alignItems: 'flex-end',
     },
