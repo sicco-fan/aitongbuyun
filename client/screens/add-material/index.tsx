@@ -33,100 +33,17 @@ interface FileInfo {
 const BACKEND_URL = 'http://127.0.0.1:9091';
 
 /**
- * 带进度的文件上传（使用 XMLHttpRequest）
- * 注意：仅适用于小文件（< 50MB），大文件请使用 uploadLargeFile
+ * 使用 FileSystem.uploadAsync 上传文件
+ * 这是 React Native 中唯一可靠的大文件上传方式
  */
-const uploadFileWithProgress = (
+const uploadFile = async (
   fileUri: string,
   fileName: string,
-  mimeType: string,
   params: Record<string, string>,
-  onProgress: (progress: number, uploaded: number, total: number) => void
+  onStatusChange: (status: string) => void
 ): Promise<{ status: number; body: string }> => {
-  return new Promise(async (resolve, reject) => {
-    try {
-      // 读取文件内容为 base64
-      onProgress(0, 0, 1);
-      const base64Content = await (FileSystem as any).readAsStringAsync(fileUri, {
-        encoding: 'base64',
-      });
-      
-      onProgress(50, 0.5, 1); // 读取完成 50%
-      
-      // 将 base64 转换为 Blob
-      const byteCharacters = atob(base64Content);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: mimeType });
-      
-      // 构建 FormData
-      const formData = new FormData();
-      formData.append('file', blob, fileName);
-      
-      // 添加其他参数
-      for (const [key, value] of Object.entries(params)) {
-        formData.append(key, value);
-      }
-      
-      // 创建 XHR
-      const xhr = new XMLHttpRequest();
-      
-      // 进度监听
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable) {
-          // 将上传进度映射到 50%-100% 区间（前 50% 是文件读取）
-          const uploadProgress = (event.loaded / event.total) * 50;
-          const totalProgress = 50 + uploadProgress;
-          onProgress(totalProgress, event.loaded, event.total);
-        }
-      });
-      
-      // 完成监听
-      xhr.addEventListener('load', () => {
-        resolve({
-          status: xhr.status,
-          body: xhr.responseText,
-        });
-      });
-      
-      // 错误监听
-      xhr.addEventListener('error', () => {
-        reject(new Error('网络错误，上传失败'));
-      });
-      
-      xhr.addEventListener('abort', () => {
-        reject(new Error('上传已取消'));
-      });
-      
-      // 超时设置（10分钟）
-      xhr.timeout = 10 * 60 * 1000;
-      xhr.addEventListener('timeout', () => {
-        reject(new Error('上传超时，请检查网络连接'));
-      });
-      
-      // 发送请求
-      xhr.open('POST', `${BACKEND_URL}/api/v1/materials`);
-      xhr.setRequestHeader('Accept', 'application/json');
-      xhr.send(formData);
-      
-    } catch (error) {
-      reject(error);
-    }
-  });
-};
-
-/**
- * 大文件上传（使用 FileSystem.uploadAsync）
- * 不支持精确进度，但更稳定
- */
-const uploadLargeFile = async (
-  fileUri: string,
-  fileName: string,
-  params: Record<string, string>
-): Promise<{ status: number; body: string }> => {
+  onStatusChange('正在连接服务器...');
+  
   const uploadResult = await (FileSystem as any).uploadAsync(
     `${BACKEND_URL}/api/v1/materials`,
     fileUri,
@@ -530,10 +447,12 @@ export default function AddMaterialScreen() {
 
     setUploading(true);
     setUploadStatus('准备上传...');
-    setUploadProgress(0);
+    setUploadProgress(-1); // 使用动画进度条
 
     try {
       console.log('开始上传文件:', { name: file.name, uri: file.uri, size: file.size, mimeType: file.mimeType });
+
+      const fileSizeMB = (file.size || 0) / 1024 / 1024;
 
       // 构建上传参数
       const params: Record<string, string> = {
@@ -543,40 +462,15 @@ export default function AddMaterialScreen() {
         params.description = description;
       }
 
-      const fileSizeMB = (file.size || 0) / 1024 / 1024;
-      const isLargeFile = fileSizeMB > 50;
+      // 使用 FileSystem.uploadAsync 上传（唯一可靠的方式）
+      setUploadStatus(`上传中... (${fileSizeMB.toFixed(1)} MB)`);
       
-      let uploadResult: { status: number; body: string };
-
-      if (isLargeFile) {
-        // 大文件使用 FileSystem.uploadAsync（不支持进度，但更稳定）
-        console.log('使用大文件上传模式');
-        setUploadStatus(`上传中... (${fileSizeMB.toFixed(1)} MB)`);
-        setUploadProgress(-1); // 使用 -1 表示不确定进度
-        
-        uploadResult = await uploadLargeFile(file.uri, file.name, params);
-      } else {
-        // 小文件使用带进度的上传
-        console.log('使用小文件上传模式（带进度）');
-        setUploadStatus('读取文件...');
-        
-        uploadResult = await uploadFileWithProgress(
-          file.uri,
-          file.name,
-          file.mimeType || 'video/mp4',
-          params,
-          (progress, uploaded, total) => {
-            if (progress < 50) {
-              setUploadStatus('读取文件...');
-            } else {
-              const uploadedMB = (uploaded / 1024 / 1024).toFixed(1);
-              const totalMB = (total / 1024 / 1024).toFixed(1);
-              setUploadStatus(`上传中... ${Math.round(progress)}% (${uploadedMB}/${totalMB} MB)`);
-            }
-            setUploadProgress(progress);
-          }
-        );
-      }
+      const uploadResult = await uploadFile(
+        file.uri,
+        file.name,
+        params,
+        (status) => setUploadStatus(status)
+      );
 
       console.log('上传结果状态:', uploadResult.status);
       console.log('上传响应:', uploadResult.body?.substring(0, 500));
