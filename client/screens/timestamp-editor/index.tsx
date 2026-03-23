@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   Text,
   Dimensions,
-  Platform,
   StyleSheet,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -54,6 +53,9 @@ export default function TimestampEditorScreen() {
   // 选择区域
   const [selectionStart, setSelectionStart] = useState(0);
   const [selectionEnd, setSelectionEnd] = useState(0);
+  
+  // 缩放状态
+  const [zoomLevel, setZoomLevel] = useState(1);
   
   const webViewRef = useRef<any>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -134,17 +136,40 @@ export default function TimestampEditorScreen() {
       // 通知WebView更新选区
       if (webViewRef.current) {
         webViewRef.current.injectJavaScript(`
-          window.setSelection(${start}, ${end});
+          if (window.setSelection) {
+            window.setSelection(${start}, ${end});
+          }
           true;
         `);
       }
     }
   }, [currentIndex, currentSentence, duration, sentences]);
 
+  // 缩放变化时通知WebView
+  useEffect(() => {
+    if (webViewRef.current && duration > 0) {
+      webViewRef.current.injectJavaScript(`
+        if (window.setZoom) {
+          window.setZoom(${zoomLevel});
+        }
+        true;
+      `);
+    }
+  }, [zoomLevel, duration]);
+
+  // 缩放控制
+  const zoomIn = () => {
+    setZoomLevel(prev => Math.min(prev * 1.5, 20));
+  };
+  
+  const zoomOut = () => {
+    setZoomLevel(prev => Math.max(prev / 1.5, 1));
+  };
+
   // 生成波形HTML
-  const generateWaveformHTML = useCallback((dur: number, words: WordTimestamp[], selStart: number, selEnd: number) => {
+  const generateWaveformHTML = useCallback((dur: number, words: WordTimestamp[], selStart: number, selEnd: number, zoom: number) => {
     // 生成波形数据
-    const barCount = 400;
+    const barCount = Math.floor(800 * zoom); // 缩放后更多的条
     const bars: number[] = [];
     
     const seed = 12345;
@@ -182,79 +207,89 @@ export default function TimestampEditorScreen() {
       padding: 0;
       box-sizing: border-box;
     }
-    body {
+    html, body {
       background: #0a0a0a;
       overflow: hidden;
-      touch-action: none;
-      user-select: none;
+      height: 100%;
+      touch-action: pan-x pan-y;
     }
-    .container {
-      position: relative;
-      width: 100%;
-      height: 200px;
+    .wrapper {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .waveform-scroll {
+      flex: 1;
+      overflow-x: auto;
+      overflow-y: hidden;
       background: #0a0a0a;
+      -webkit-overflow-scrolling: touch;
+    }
+    .waveform-container {
+      position: relative;
+      height: 100%;
+      background: #0a0a0a;
+      cursor: crosshair;
     }
     canvas {
       display: block;
-      width: 100%;
       height: 100%;
     }
-    .time-display {
-      position: fixed;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0, 255, 136, 0.2);
-      color: #00ff88;
-      padding: 8px 20px;
-      border-radius: 8px;
+    .info-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 16px;
+      background: #111;
+      border-top: 1px solid #333;
+    }
+    .time-range {
+      color: #888;
+      font-size: 12px;
       font-family: monospace;
-      font-size: 24px;
-      font-weight: bold;
-      pointer-events: none;
+    }
+    .zoom-indicator {
+      color: #00ff88;
+      font-size: 12px;
+      font-family: monospace;
     }
   </style>
 </head>
 <body>
-  <div class="container" id="container">
-    <canvas id="waveform"></canvas>
+  <div class="wrapper">
+    <div class="waveform-scroll" id="scrollContainer">
+      <div class="waveform-container" id="container">
+        <canvas id="waveform"></canvas>
+      </div>
+    </div>
+    <div class="info-bar">
+      <span class="time-range" id="timeRange">0:00 - ${Math.floor(dur/1000)}s</span>
+      <span class="zoom-indicator" id="zoomIndicator">1x</span>
+    </div>
   </div>
-  <div class="time-display" id="timeDisplay">0:00.00</div>
   
   <script>
     const canvas = document.getElementById('waveform');
     const ctx = canvas.getContext('2d');
     const container = document.getElementById('container');
-    const timeDisplay = document.getElementById('timeDisplay');
+    const scrollContainer = document.getElementById('scrollContainer');
+    const timeRangeEl = document.getElementById('timeRange');
+    const zoomIndicatorEl = document.getElementById('zoomIndicator');
     
-    let width, height;
+    let baseWidth = window.innerWidth;
+    let width = baseWidth;
+    let height = 200;
     let barHeights = ${JSON.stringify(bars)};
     let duration = ${dur};
     let selectionStart = ${selStart};
     let selectionEnd = ${selEnd};
+    let zoomLevel = ${zoom};
     
     let isDragging = false;
     let dragStartX = 0;
     let dragStartTime = 0;
-    
-    function resize() {
-      const dpr = window.devicePixelRatio || 1;
-      const rect = container.getBoundingClientRect();
-      width = rect.width;
-      height = rect.height;
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-      ctx.scale(dpr, dpr);
-      draw();
-    }
-    
-    function timeToX(time) {
-      return (time / duration) * width;
-    }
-    
-    function xToTime(x) {
-      return Math.max(0, Math.min((x / width) * duration, duration));
-    }
+    let isScrolling = false;
+    let lastScrollLeft = 0;
     
     function formatTime(ms) {
       const totalSeconds = ms / 1000;
@@ -265,14 +300,47 @@ export default function TimestampEditorScreen() {
       return minutes + ':' + remainingSeconds.toString().padStart(2, '0') + '.' + decimal.toString().padStart(2, '0');
     }
     
+    function formatTimeSimple(ms) {
+      const totalSeconds = Math.floor(ms / 1000);
+      const seconds = totalSeconds % 60;
+      const minutes = Math.floor(totalSeconds / 60);
+      return minutes + ':' + seconds.toString().padStart(2, '0');
+    }
+    
+    function timeToX(time) {
+      return (time / duration) * width;
+    }
+    
+    function xToTime(x) {
+      const scrollLeft = scrollContainer.scrollLeft;
+      const absoluteX = scrollLeft + x;
+      return Math.max(0, Math.min((absoluteX / width) * duration, duration));
+    }
+    
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      height = container.clientHeight || 200;
+      width = baseWidth * zoomLevel;
+      
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      ctx.scale(dpr, dpr);
+      
+      container.style.width = width + 'px';
+      
+      draw();
+    }
+    
     function draw() {
       ctx.fillStyle = '#0a0a0a';
       ctx.fillRect(0, 0, width, height);
       
       const centerY = height / 2;
       const barWidth = width / barHeights.length;
-      const gap = barWidth * 0.3;
-      const actualBarWidth = barWidth - gap;
+      const gap = Math.max(0.5, barWidth * 0.2);
+      const actualBarWidth = Math.max(1, barWidth - gap);
       
       // 绘制波形
       ctx.fillStyle = '#00ff88';
@@ -298,7 +366,7 @@ export default function TimestampEditorScreen() {
       const leftX = Math.min(startX, endX);
       const rightX = Math.max(startX, endX);
       
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
       if (leftX > 0) {
         ctx.fillRect(0, 0, leftX, height);
       }
@@ -307,7 +375,7 @@ export default function TimestampEditorScreen() {
       }
       
       // 绘制选区高亮
-      ctx.fillStyle = 'rgba(0, 255, 136, 0.2)';
+      ctx.fillStyle = 'rgba(0, 255, 136, 0.25)';
       ctx.fillRect(leftX, 0, rightX - leftX, height);
       
       // 绘制边界线
@@ -322,9 +390,26 @@ export default function TimestampEditorScreen() {
       ctx.lineTo(rightX, height);
       ctx.stroke();
       
-      // 更新时间显示
-      const selDuration = Math.abs(selectionEnd - selectionStart);
-      timeDisplay.textContent = formatTime(selDuration);
+      updateInfo();
+    }
+    
+    function updateInfo() {
+      const scrollLeft = scrollContainer.scrollLeft;
+      const viewWidth = scrollContainer.clientWidth;
+      const startTime = (scrollLeft / width) * duration;
+      const endTime = ((scrollLeft + viewWidth) / width) * duration;
+      
+      timeRangeEl.textContent = formatTimeSimple(startTime) + ' - ' + formatTimeSimple(endTime);
+      zoomIndicatorEl.textContent = zoomLevel.toFixed(1) + 'x';
+    }
+    
+    function scrollToSelection() {
+      const startX = timeToX(selectionStart);
+      const endX = timeToX(selectionEnd);
+      const centerX = (startX + endX) / 2;
+      const viewWidth = scrollContainer.clientWidth;
+      
+      scrollContainer.scrollLeft = Math.max(0, centerX - viewWidth / 2);
     }
     
     // 鼠标事件
@@ -344,10 +429,10 @@ export default function TimestampEditorScreen() {
       if (!isDragging) return;
       e.preventDefault();
       const rect = container.getBoundingClientRect();
-      const x = Math.max(0, Math.min(e.clientX - rect.left, width));
+      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
       const time = xToTime(x);
       
-      if (x < dragStartX) {
+      if (time < dragStartTime) {
         selectionStart = time;
         selectionEnd = dragStartTime;
       } else {
@@ -361,39 +446,51 @@ export default function TimestampEditorScreen() {
       if (!isDragging) return;
       isDragging = false;
       
+      // 确保最小选择时长
+      const diff = Math.abs(selectionEnd - selectionStart);
+      if (diff < 100) {
+        selectionEnd = selectionStart + 1000;
+        if (selectionEnd > duration) selectionEnd = duration;
+      }
+      
+      draw();
+      
       // 通知React Native
       if (window.ReactNativeWebView) {
         window.ReactNativeWebView.postMessage(JSON.stringify({
           type: 'selection',
-          start: selectionStart,
-          end: selectionEnd
+          start: Math.min(selectionStart, selectionEnd),
+          end: Math.max(selectionStart, selectionEnd)
         }));
       }
     });
     
     // 触摸事件
     container.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      isDragging = true;
-      const rect = container.getBoundingClientRect();
-      const touch = e.touches[0];
-      const x = touch.clientX - rect.left;
-      dragStartX = x;
-      dragStartTime = xToTime(x);
-      selectionStart = dragStartTime;
-      selectionEnd = dragStartTime;
-      draw();
+      if (e.touches.length === 1) {
+        e.preventDefault();
+        isDragging = true;
+        isScrolling = false;
+        const rect = container.getBoundingClientRect();
+        const touch = e.touches[0];
+        const x = touch.clientX - rect.left;
+        dragStartX = x;
+        dragStartTime = xToTime(x);
+        selectionStart = dragStartTime;
+        selectionEnd = dragStartTime;
+        draw();
+      }
     }, { passive: false });
     
     container.addEventListener('touchmove', (e) => {
-      if (!isDragging) return;
+      if (!isDragging || e.touches.length !== 1) return;
       e.preventDefault();
       const rect = container.getBoundingClientRect();
       const touch = e.touches[0];
-      const x = Math.max(0, Math.min(touch.clientX - rect.left, width));
+      const x = Math.max(0, Math.min(touch.clientX - rect.left, rect.width));
       const time = xToTime(x);
       
-      if (x < dragStartX) {
+      if (time < dragStartTime) {
         selectionStart = time;
         selectionEnd = dragStartTime;
       } else {
@@ -407,13 +504,27 @@ export default function TimestampEditorScreen() {
       if (!isDragging) return;
       isDragging = false;
       
+      // 确保最小选择时长
+      const diff = Math.abs(selectionEnd - selectionStart);
+      if (diff < 100) {
+        selectionEnd = selectionStart + 1000;
+        if (selectionEnd > duration) selectionEnd = duration;
+      }
+      
+      draw();
+      
       if (window.ReactNativeWebView) {
         window.ReactNativeWebView.postMessage(JSON.stringify({
           type: 'selection',
-          start: selectionStart,
-          end: selectionEnd
+          start: Math.min(selectionStart, selectionEnd),
+          end: Math.max(selectionStart, selectionEnd)
         }));
       }
+    });
+    
+    // 滚动事件
+    scrollContainer.addEventListener('scroll', () => {
+      updateInfo();
     });
     
     // 提供给外部调用
@@ -421,14 +532,27 @@ export default function TimestampEditorScreen() {
       selectionStart = start;
       selectionEnd = end;
       draw();
+      scrollToSelection();
+    };
+    
+    window.setZoom = function(zoom) {
+      zoomLevel = zoom;
+      resize();
+      scrollToSelection();
     };
     
     window.getSelectionData = function() {
-      return { start: selectionStart, end: selectionEnd };
+      return { 
+        start: Math.min(selectionStart, selectionEnd), 
+        end: Math.max(selectionStart, selectionEnd) 
+      };
     };
     
     window.addEventListener('resize', resize);
+    
+    // 初始化
     resize();
+    scrollToSelection();
   </script>
 </body>
 </html>
@@ -447,29 +571,6 @@ export default function TimestampEditorScreen() {
       console.error('WebView消息解析失败:', e);
     }
   }, []);
-
-  // 获取当前选区
-  const getCurrentSelection = useCallback(() => {
-    return new Promise<{ start: number; end: number }>((resolve) => {
-      if (webViewRef.current) {
-        webViewRef.current.injectJavaScript(`
-          (function() {
-            const data = window.getSelectionData();
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'selectionData',
-              start: data.start,
-              end: data.end
-            }));
-          })();
-          true;
-        `);
-        // 由于WebView通信是异步的，这里返回当前state
-        resolve({ start: selectionStart, end: selectionEnd });
-      } else {
-        resolve({ start: selectionStart, end: selectionEnd });
-      }
-    });
-  }, [selectionStart, selectionEnd]);
 
   const loadAudio = async () => {
     if (!audioUrl) return null;
@@ -632,7 +733,7 @@ export default function TimestampEditorScreen() {
     );
   }
 
-  const waveformHTML = generateWaveformHTML(duration, wordTimestamps, selectionStart, selectionEnd);
+  const waveformHTML = generateWaveformHTML(duration, wordTimestamps, selectionStart, selectionEnd, zoomLevel);
 
   return (
     <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
@@ -674,13 +775,16 @@ export default function TimestampEditorScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 时间刻度 */}
-      <View style={styles.timeScale}>
-        {[0, 0.25, 0.5, 0.75, 1].map(ratio => (
-          <Text key={ratio} style={styles.timeTick}>
-            {formatTimeSimple(duration * ratio)}
-          </Text>
-        ))}
+      {/* 缩放控制 */}
+      <View style={styles.zoomControls}>
+        <Text style={styles.zoomLabel}>缩放:</Text>
+        <TouchableOpacity style={styles.zoomBtn} onPress={zoomOut} disabled={zoomLevel <= 1}>
+          <FontAwesome6 name="minus" size={14} color={zoomLevel <= 1 ? '#444' : '#00ff88'} />
+        </TouchableOpacity>
+        <Text style={styles.zoomValue}>{zoomLevel.toFixed(1)}x</Text>
+        <TouchableOpacity style={styles.zoomBtn} onPress={zoomIn} disabled={zoomLevel >= 20}>
+          <FontAwesome6 name="plus" size={14} color={zoomLevel >= 20 ? '#444' : '#00ff88'} />
+        </TouchableOpacity>
       </View>
 
       {/* 波形编辑区域 - 使用WebView */}
@@ -719,7 +823,7 @@ export default function TimestampEditorScreen() {
       {/* 操作提示 */}
       <View style={styles.tipBar}>
         <FontAwesome6 name="hand-pointer" size={14} color="#00ff88" />
-        <Text style={styles.tipText}>在波形上按住拖动选择音频片段</Text>
+        <Text style={styles.tipText}>放大波形后，拖动选择精确的音频范围</Text>
       </View>
 
       {/* 底部控制栏 */}
@@ -830,17 +934,36 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   
-  // 时间刻度
-  timeScale: {
+  // 缩放控制
+  zoomControls: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 8,
     backgroundColor: '#111',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
   },
-  timeTick: {
-    color: '#666',
-    fontSize: 10,
+  zoomLabel: {
+    color: '#888',
+    fontSize: 12,
+  },
+  zoomBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomValue: {
+    color: '#00ff88',
+    fontSize: 14,
+    fontWeight: '600',
+    minWidth: 40,
+    textAlign: 'center',
   },
   
   // 波形区域
