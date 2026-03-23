@@ -21,13 +21,30 @@ export const createStyles = (theme: Theme) => {
     subtitle: {
       textAlign: 'center',
     },
-    content: {
+    scrollView: {
       flex: 1,
+    },
+    scrollContent: {
       paddingHorizontal: Spacing.lg,
+      paddingBottom: Spacing['3xl'],
     },
     progressRow: {
+      flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: Spacing.md,
+      justifyContent: 'center',
+      gap: Spacing.md,
+      marginBottom: Spacing.lg,
+    },
+    navBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: theme.primary + '15',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    navBtnDisabled: {
+      opacity: 0.3,
     },
     sentenceCard: {
       backgroundColor: theme.backgroundDefault,
@@ -37,124 +54,135 @@ export const createStyles = (theme: Theme) => {
       borderWidth: 1,
       borderColor: theme.borderLight,
     },
-    sentenceNav: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      marginBottom: Spacing.lg,
-    },
-    navBtn: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: theme.primary + '15',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    navBtnDisabled: {
-      opacity: 0.3,
-    },
-    sentenceContent: {
-      flex: 1,
-      paddingHorizontal: Spacing.md,
-    },
     sentenceText: {
       lineHeight: 28,
       textAlign: 'center',
-      // 完整显示文字，不限制行数
     },
-    timeRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
+    // 时间轴可视化
+    timelineSection: {
+      marginBottom: Spacing.lg,
     },
-    timeBox: {
-      alignItems: 'center',
-    },
-    playerSection: {
+    timelineContainer: {
+      height: 48,
       backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.md,
+      marginTop: Spacing.sm,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    timelineTrack: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+    },
+    timelineBlock: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      borderRadius: 4,
+    },
+    selectionBlock: {
+      position: 'absolute',
+      top: 4,
+      bottom: 4,
+      backgroundColor: theme.primary + '30',
+      borderRadius: 4,
+      borderWidth: 2,
+      borderColor: theme.primary,
+    },
+    playhead: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      width: 2,
+      backgroundColor: theme.primary,
+    },
+    timelineTouchLayer: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+    },
+    timeLabels: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: Spacing.xs,
+      paddingHorizontal: Spacing.xs,
+    },
+    timeLabel: {
+      fontSize: 10,
+    },
+    // 滑块范围选择
+    rangeSection: {
+      backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
       padding: Spacing.lg,
       marginBottom: Spacing.lg,
+      borderWidth: 1,
+      borderColor: theme.borderLight,
     },
-    progressBar: {
-      flexDirection: 'row',
-      alignItems: 'center',
+    sliderRow: {
       marginBottom: Spacing.lg,
     },
-    timeLabel: {
-      fontSize: 12,
-      width: 60,
-      textAlign: 'center',
+    sliderLabel: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: Spacing.sm,
+      gap: Spacing.sm,
     },
-    sliderContainer: {
-      flex: 1,
+    sliderDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+    },
+    sliderWrapper: {
+      height: 40,
       justifyContent: 'center',
     },
     slider: {
       width: '100%',
       height: 40,
     },
+    durationInfo: {
+      alignItems: 'center',
+      paddingTop: Spacing.sm,
+      borderTopWidth: 1,
+      borderTopColor: theme.borderLight,
+    },
+    // 播放控制
     playControls: {
       flexDirection: 'row',
       justifyContent: 'center',
-      alignItems: 'center',
       gap: Spacing.md,
-      flexWrap: 'wrap',
+      marginBottom: Spacing.lg,
     },
-    playBtn: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      backgroundColor: theme.primary,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    playSentenceBtn: {
+    controlBtn: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: theme.accent,
+      backgroundColor: theme.backgroundTertiary,
       paddingVertical: Spacing.md,
-      paddingHorizontal: Spacing.md,
+      paddingHorizontal: Spacing.lg,
       borderRadius: BorderRadius.lg,
       gap: Spacing.sm,
     },
-    timestampButtons: {
-      flexDirection: 'row',
-      gap: Spacing.md,
-      marginBottom: Spacing.md,
+    playSelectionBtn: {
+      backgroundColor: theme.primary,
     },
-    timestampBtn: {
-      flex: 1,
+    // 确认按钮
+    confirmBtn: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
+      backgroundColor: theme.success,
       paddingVertical: Spacing.lg,
       borderRadius: BorderRadius.lg,
       gap: Spacing.sm,
-    },
-    startBtn: {
-      backgroundColor: theme.primary,
-    },
-    detectBtn: {
-      backgroundColor: theme.accent,
-    },
-    autoStartBtn: {
-      backgroundColor: theme.backgroundTertiary,
-      borderWidth: 1,
-      borderColor: theme.borderLight,
-    },
-    endBtn: {
-      backgroundColor: theme.success,
-    },
-    endBtnLarge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: theme.success,
-      paddingVertical: Spacing.xl,
-      borderRadius: BorderRadius.lg,
-      gap: Spacing.sm,
       marginBottom: Spacing.md,
     },
+    // 提示
     tipBox: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -162,25 +190,23 @@ export const createStyles = (theme: Theme) => {
       padding: Spacing.md,
       borderRadius: BorderRadius.md,
       gap: Spacing.sm,
-      marginBottom: Spacing.lg,
+      marginBottom: Spacing.xl,
     },
+    // 句子列表
     listSection: {
-      flex: 1,
-    },
-    scrollView: {
-      flex: 1,
+      gap: Spacing.sm,
     },
     listItem: {
       flexDirection: 'row',
+      alignItems: 'center',
       backgroundColor: theme.backgroundDefault,
       padding: Spacing.md,
       borderRadius: BorderRadius.md,
-      marginBottom: Spacing.sm,
       borderWidth: 1,
       borderColor: theme.borderLight,
     },
     listItemActive: {
-      backgroundColor: theme.primary + '15',
+      backgroundColor: theme.primary + '10',
       borderColor: theme.primary,
     },
     listItemNumber: {
@@ -191,15 +217,9 @@ export const createStyles = (theme: Theme) => {
       justifyContent: 'center',
       alignItems: 'center',
       marginRight: Spacing.sm,
-      marginTop: 2,
     },
     listItemContent: {
       flex: 1,
-    },
-    listItemText: {
-      lineHeight: 20,
-      marginBottom: 4,
-      // 完整显示文字
     },
     backBtn: {
       marginTop: Spacing.lg,

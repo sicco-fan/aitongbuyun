@@ -5,6 +5,7 @@ import {
   View,
   ActivityIndicator,
   Text,
+  LayoutChangeEvent,
 } from 'react-native';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -45,6 +46,13 @@ export default function TimestampEditorScreen() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [detecting, setDetecting] = useState(false);
   
+  // 时间轴宽度（用于计算点击位置）
+  const [timelineWidth, setTimelineWidth] = useState(0);
+  
+  // 临时编辑的开始/结束时间（用于滑块调整）
+  const [editStartTime, setEditStartTime] = useState(0);
+  const [editEndTime, setEditEndTime] = useState(0);
+  
   const soundRef = useRef<Audio.Sound | null>(null);
   
   // 提示对话框
@@ -66,7 +74,6 @@ export default function TimestampEditorScreen() {
       
       if (data.material) {
         setAudioUrl(data.material.audio_url || '');
-        // 时长可能很大，先设置，后面加载音频时会获取真实时长
         setDuration(data.material.duration || 0);
       }
       
@@ -100,6 +107,20 @@ export default function TimestampEditorScreen() {
     };
   }, [fetchData]);
 
+  // 当切换句子时，更新编辑时间并跳转
+  useEffect(() => {
+    if (currentSentence) {
+      setEditStartTime(currentSentence.start_time || 0);
+      setEditEndTime(currentSentence.end_time || duration);
+      
+      // 跳转到开始时间
+      if (soundRef.current) {
+        soundRef.current.setPositionAsync(currentSentence.start_time || 0);
+        setPosition(currentSentence.start_time || 0);
+      }
+    }
+  }, [currentIndex, currentSentence, duration]);
+
   // 加载音频并获取真实时长
   const loadAudio = async () => {
     if (!audioUrl) return null;
@@ -131,15 +152,6 @@ export default function TimestampEditorScreen() {
       return null;
     }
   };
-
-  // 当切换句子时，自动跳转到该句的开始时间
-  useEffect(() => {
-    if (currentSentence && soundRef.current) {
-      const startPos = currentSentence.start_time || 0;
-      soundRef.current.setPositionAsync(startPos);
-      setPosition(startPos);
-    }
-  }, [currentIndex]);
 
   // 播放状态更新
   const onPlaybackStatusUpdate = (status: any) => {
@@ -185,35 +197,48 @@ export default function TimestampEditorScreen() {
     }
   };
 
-  // 设置开始时间（通常只需要第一句设置）
-  const setStartTime = () => {
-    const newSentences = [...sentences];
-    newSentences[currentIndex] = {
-      ...newSentences[currentIndex],
-      start_time: Math.round(position),
-    };
-    setSentences(newSentences);
+  // 播放当前选择的区域
+  const playSelection = async () => {
+    if (!soundRef.current) {
+      await loadAudio();
+    }
+    
+    if (!soundRef.current) return;
+    
+    const start = editStartTime;
+    const end = editEndTime;
+    
+    await soundRef.current.setPositionAsync(start);
+    await soundRef.current.playAsync();
+    setIsPlaying(true);
+    
+    // 播放到结束时间后停止
+    const playDuration = end - start;
+    setTimeout(async () => {
+      if (soundRef.current && isPlaying) {
+        await soundRef.current.pauseAsync();
+        setIsPlaying(false);
+        setPosition(start); // 回到开始位置
+      }
+    }, playDuration);
   };
 
-  // 设置结束时间（核心功能：立即停止 + 自动连锁到下一句）
-  const setEndTime = async () => {
-    // 立即停止播放
-    await stopPlaying();
-    
-    const endTime = Math.round(position);
+  // 确认当前时间戳设置
+  const confirmTimestamp = async () => {
     const newSentences = [...sentences];
     
-    // 设置当前句的结束时间
+    // 设置当前句的时间
     newSentences[currentIndex] = {
       ...newSentences[currentIndex],
-      end_time: endTime,
+      start_time: Math.round(editStartTime),
+      end_time: Math.round(editEndTime),
     };
     
     // 自动设置下一句的开始时间 = 当前句的结束时间
     if (currentIndex < sentences.length - 1) {
       newSentences[currentIndex + 1] = {
         ...newSentences[currentIndex + 1],
-        start_time: endTime,
+        start_time: Math.round(editEndTime),
       };
     }
     
@@ -222,10 +247,12 @@ export default function TimestampEditorScreen() {
     // 自动跳到下一句
     if (currentIndex < sentences.length - 1) {
       setCurrentIndex(currentIndex + 1);
+    } else {
+      setDialog({ visible: true, message: '已完成所有句子的时间戳设置！' });
     }
   };
 
-  // 自动检测语音开始位置（调用后端静音检测）
+  // 自动检测语音开始位置
   const autoDetectStart = async () => {
     if (!soundRef.current) {
       await loadAudio();
@@ -233,14 +260,13 @@ export default function TimestampEditorScreen() {
     
     setDetecting(true);
     try {
-      // 调用后端 API 检测语音开始位置
       const response = await fetch(
         `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/detect-speech-start`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            from_time: currentSentence?.start_time || 0 
+            from_time: editStartTime
           }),
         }
       );
@@ -248,17 +274,8 @@ export default function TimestampEditorScreen() {
       const data = await response.json();
       
       if (data.speech_start !== undefined) {
-        // 跳转到检测到的语音开始位置
+        setEditStartTime(Math.round(data.speech_start));
         await seekTo(data.speech_start);
-        
-        // 设置开始时间
-        const newSentences = [...sentences];
-        newSentences[currentIndex] = {
-          ...newSentences[currentIndex],
-          start_time: Math.round(data.speech_start),
-        };
-        setSentences(newSentences);
-        
         setDialog({ 
           visible: true, 
           message: `检测到语音开始位置: ${formatTime(data.speech_start)}` 
@@ -272,47 +289,6 @@ export default function TimestampEditorScreen() {
     } finally {
       setDetecting(false);
     }
-  };
-
-  // 播放当前句子
-  const playCurrentSentence = async () => {
-    if (!soundRef.current) {
-      await loadAudio();
-    }
-    
-    if (!soundRef.current || !currentSentence) return;
-    
-    const start = currentSentence.start_time || 0;
-    const end = currentSentence.end_time || duration;
-    
-    await soundRef.current.setPositionAsync(start);
-    await soundRef.current.playAsync();
-    setIsPlaying(true);
-    
-    // 播放到结束时间后停止
-    const playDuration = end - start;
-    setTimeout(async () => {
-      if (soundRef.current) {
-        await soundRef.current.pauseAsync();
-        setIsPlaying(false);
-        setPosition(start); // 回到开始位置
-      }
-    }, playDuration);
-  };
-
-  // 播放剩余音频（从当前位置到结束）
-  const playRemaining = async () => {
-    if (!soundRef.current) {
-      await loadAudio();
-    }
-    
-    if (!soundRef.current) return;
-    
-    // 从当前句的开始位置播放
-    const start = currentSentence?.start_time || 0;
-    await soundRef.current.setPositionAsync(start);
-    await soundRef.current.playAsync();
-    setIsPlaying(true);
   };
 
   // 上一句
@@ -333,7 +309,6 @@ export default function TimestampEditorScreen() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      // 更新每个句子的时间戳
       for (const sentence of sentences) {
         await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials/${materialId}/sentences/${sentence.id}`, {
           method: 'PUT',
@@ -365,6 +340,40 @@ export default function TimestampEditorScreen() {
     const remainingSeconds = seconds % 60;
     const remainingMs = Math.floor((ms % 1000) / 10);
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}.${remainingMs.toString().padStart(2, '0')}`;
+  };
+
+  // 点击时间轴跳转
+  const handleTimelinePress = (evt: any) => {
+    if (timelineWidth === 0 || duration === 0) return;
+    
+    const x = evt.nativeEvent.locationX;
+    const time = (x / timelineWidth) * duration;
+    seekTo(Math.max(0, Math.min(time, duration)));
+  };
+
+  // 计算时间轴上句子的位置
+  const getSentenceStyle = (sentence: Sentence, index: number) => {
+    const left = (sentence.start_time / duration) * 100;
+    const width = ((sentence.end_time - sentence.start_time) / duration) * 100;
+    const isActive = index === currentIndex;
+    
+    return {
+      left: `${left}%` as const,
+      width: `${width}%` as const,
+      backgroundColor: isActive ? theme.primary : theme.textMuted,
+      opacity: isActive ? 0.8 : 0.3,
+    };
+  };
+
+  // 计算当前选择区域的样式
+  const getSelectionStyle = () => {
+    const left = (editStartTime / duration) * 100;
+    const width = ((editEndTime - editStartTime) / duration) * 100;
+    
+    return {
+      left: `${left}%` as const,
+      width: `${Math.max(width, 1)}%` as const,
+    };
   };
 
   if (loading) {
@@ -401,7 +410,7 @@ export default function TimestampEditorScreen() {
             <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
           </TouchableOpacity>
           <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
-            时间戳设置
+            时间轴切分
           </ThemedText>
           <TouchableOpacity onPress={handleSave} disabled={saving}>
             {saving ? (
@@ -412,162 +421,197 @@ export default function TimestampEditorScreen() {
           </TouchableOpacity>
         </View>
         <ThemedText variant="body" color={theme.textMuted} style={styles.subtitle}>
-          {title} | 总时长: {formatTime(duration)}
+          {title} · 总时长 {formatTime(duration)}
         </ThemedText>
       </View>
 
-      <View style={styles.content}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* 进度指示 */}
         <View style={styles.progressRow}>
-          <ThemedText variant="caption" color={theme.textMuted}>
-            句子 {currentIndex + 1} / {sentences.length} 
-            {currentIndex === 0 && ' (请先设置开始时间)'}
-            {currentIndex > 0 && ' (只需设置结束时间)'}
+          <TouchableOpacity 
+            style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]} 
+            onPress={prevSentence}
+            disabled={currentIndex === 0}
+          >
+            <FontAwesome6 name="chevron-left" size={14} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
+          </TouchableOpacity>
+          <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+            {currentIndex + 1} / {sentences.length}
+          </ThemedText>
+          <TouchableOpacity 
+            style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]} 
+            onPress={nextSentence}
+            disabled={currentIndex === sentences.length - 1}
+          >
+            <FontAwesome6 name="chevron-right" size={14} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* 当前句子卡片 */}
+        <View style={styles.sentenceCard}>
+          <ThemedText variant="body" color={theme.textPrimary} style={styles.sentenceText}>
+            {currentSentence?.text}
           </ThemedText>
         </View>
 
-        {/* 当前句子卡片 - 完整显示文字 */}
-        <View style={styles.sentenceCard}>
-          <View style={styles.sentenceNav}>
-            <TouchableOpacity 
-              style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
-              onPress={prevSentence}
-              disabled={currentIndex === 0}
-            >
-              <FontAwesome6 name="chevron-left" size={16} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
-            </TouchableOpacity>
-            
-            <View style={styles.sentenceContent}>
-              <ThemedText variant="body" color={theme.textPrimary} style={styles.sentenceText}>
-                {currentSentence?.text}
-              </ThemedText>
+        {/* 时间轴可视化 */}
+        <View style={styles.timelineSection}>
+          <ThemedText variant="smallMedium" color={theme.textSecondary}>
+            时间轴（点击跳转）
+          </ThemedText>
+          
+          {/* 时间轴容器 */}
+          <View 
+            style={styles.timelineContainer}
+            onLayout={(e: LayoutChangeEvent) => setTimelineWidth(e.nativeEvent.layout.width)}
+          >
+            {/* 背景轨道 */}
+            <View style={styles.timelineTrack}>
+              {/* 已标记的句子区块 */}
+              {sentences.map((sentence, index) => (
+                <View
+                  key={sentence.id}
+                  style={[
+                    styles.timelineBlock,
+                    getSentenceStyle(sentence, index),
+                  ]}
+                />
+              ))}
+              
+              {/* 当前选择区域 */}
+              <View style={[styles.selectionBlock, getSelectionStyle()]}>
+                {/* 播放位置指示器 */}
+                {position >= editStartTime && position <= editEndTime && (
+                  <View 
+                    style={[
+                      styles.playhead, 
+                      { left: `${((position - editStartTime) / (editEndTime - editStartTime)) * 100}%` }
+                    ]} 
+                  />
+                )}
+              </View>
             </View>
             
-            <TouchableOpacity 
-              style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
-              onPress={nextSentence}
-              disabled={currentIndex === sentences.length - 1}
-            >
-              <FontAwesome6 name="chevron-right" size={16} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
-            </TouchableOpacity>
+            {/* 点击层 */}
+            <View 
+              style={styles.timelineTouchLayer}
+              onTouchEnd={handleTimelinePress}
+            />
           </View>
           
-          {/* 时间显示 */}
-          <View style={styles.timeRow}>
-            <View style={styles.timeBox}>
-              <ThemedText variant="caption" color={theme.textMuted}>开始</ThemedText>
-              <ThemedText variant="h4" color={theme.primary}>
-                {formatTime(currentSentence?.start_time || 0)}
-              </ThemedText>
-              {currentIndex > 0 && (
-                <ThemedText variant="caption" color={theme.textMuted}>(自动)</ThemedText>
-              )}
-            </View>
-            <View style={styles.timeBox}>
-              <ThemedText variant="caption" color={theme.textMuted}>结束</ThemedText>
-              <ThemedText variant="h4" color={theme.success}>
-                {formatTime(currentSentence?.end_time || duration)}
-              </ThemedText>
-            </View>
+          {/* 时间刻度 */}
+          <View style={styles.timeLabels}>
+            <Text style={[styles.timeLabel, { color: theme.textMuted }]}>0:00</Text>
+            <Text style={[styles.timeLabel, { color: theme.textMuted }]}>
+              {formatTime(duration / 2)}
+            </Text>
+            <Text style={[styles.timeLabel, { color: theme.textMuted }]}>
+              {formatTime(duration)}
+            </Text>
           </View>
         </View>
 
-        {/* 音频播放器 */}
-        <View style={styles.playerSection}>
-          {/* 进度条 */}
-          <View style={styles.progressBar}>
-            <Text style={[styles.timeLabel, { color: theme.textMuted }]}>
-              {formatTime(position)}
-            </Text>
-            <View style={styles.sliderContainer}>
+        {/* 双滑块范围选择器 */}
+        <View style={styles.rangeSection}>
+          {/* 开始时间滑块 */}
+          <View style={styles.sliderRow}>
+            <View style={styles.sliderLabel}>
+              <View style={[styles.sliderDot, { backgroundColor: theme.primary }]} />
+              <ThemedText variant="small" color={theme.textSecondary}>开始时间</ThemedText>
+              <ThemedText variant="bodyMedium" color={theme.primary}>{formatTime(editStartTime)}</ThemedText>
+            </View>
+            <View style={styles.sliderWrapper}>
               <Slider
-                value={position}
+                value={editStartTime}
                 minimumValue={0}
-                maximumValue={duration}
-                onValueChange={(value) => seekTo(value)}
+                maximumValue={editEndTime - 100} // 开始不能超过结束
+                onValueChange={setEditStartTime}
+                onSlidingComplete={(value) => {
+                  setEditStartTime(value);
+                  seekTo(value);
+                }}
                 minimumTrackTintColor={theme.primary}
                 maximumTrackTintColor={theme.border}
                 thumbTintColor={theme.primary}
                 style={styles.slider}
               />
             </View>
-            <Text style={[styles.timeLabel, { color: theme.textMuted }]}>
-              {formatTime(duration)}
-            </Text>
           </View>
-          
-          {/* 播放控制 */}
-          <View style={styles.playControls}>
-            <TouchableOpacity style={styles.playBtn} onPress={togglePlay}>
-              <FontAwesome6 
-                name={isPlaying ? "pause" : "play"} 
-                size={24} 
-                color={theme.buttonPrimaryText} 
+
+          {/* 结束时间滑块 */}
+          <View style={styles.sliderRow}>
+            <View style={styles.sliderLabel}>
+              <View style={[styles.sliderDot, { backgroundColor: theme.success }]} />
+              <ThemedText variant="small" color={theme.textSecondary}>结束时间</ThemedText>
+              <ThemedText variant="bodyMedium" color={theme.success}>{formatTime(editEndTime)}</ThemedText>
+            </View>
+            <View style={styles.sliderWrapper}>
+              <Slider
+                value={editEndTime}
+                minimumValue={editStartTime + 100} // 结束不能小于开始
+                maximumValue={duration}
+                onValueChange={setEditEndTime}
+                onSlidingComplete={(value) => {
+                  setEditEndTime(value);
+                  seekTo(value);
+                }}
+                minimumTrackTintColor={theme.success}
+                maximumTrackTintColor={theme.border}
+                thumbTintColor={theme.success}
+                style={styles.slider}
               />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.playSentenceBtn} onPress={playCurrentSentence}>
-              <FontAwesome6 name="repeat" size={16} color={theme.buttonPrimaryText} />
-              <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>当前句</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.playSentenceBtn, { backgroundColor: theme.textSecondary }]} onPress={playRemaining}>
-              <FontAwesome6 name="forward" size={16} color={theme.buttonPrimaryText} />
-              <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>剩余</ThemedText>
-            </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* 选择时长显示 */}
+          <View style={styles.durationInfo}>
+            <ThemedText variant="small" color={theme.textMuted}>
+              选择时长: {formatTime(editEndTime - editStartTime)}
+            </ThemedText>
           </View>
         </View>
 
-        {/* 时间戳设置按钮 */}
-        <View style={styles.timestampButtons}>
-          {/* 第一句需要设置开始时间，其他句自动继承 */}
-          {currentIndex === 0 ? (
-            <>
-              <TouchableOpacity 
-                style={[styles.timestampBtn, styles.startBtn]} 
-                onPress={setStartTime}
-              >
-                <FontAwesome6 name="play" size={16} color={theme.buttonPrimaryText} />
-                <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
-                  设为开始
-                </ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.timestampBtn, styles.detectBtn]} 
-                onPress={autoDetectStart}
-                disabled={detecting}
-              >
-                {detecting ? (
-                  <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
-                ) : (
-                  <FontAwesome6 name="wand-magic-sparkles" size={16} color={theme.buttonPrimaryText} />
-                )}
-                <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
-                  自动检测
-                </ThemedText>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.timestampBtn, styles.detectBtn]} 
-              onPress={autoDetectStart}
-              disabled={detecting}
-            >
-              {detecting ? (
-                <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
-              ) : (
-                <FontAwesome6 name="wand-magic-sparkles" size={16} color={theme.buttonPrimaryText} />
-              )}
-              <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
-                自动检测语音开始
-              </ThemedText>
-            </TouchableOpacity>
-          )}
+        {/* 播放控制 */}
+        <View style={styles.playControls}>
+          <TouchableOpacity style={styles.controlBtn} onPress={togglePlay}>
+            <FontAwesome6 
+              name={isPlaying ? "pause" : "play"} 
+              size={18} 
+              color={theme.textPrimary} 
+            />
+            <ThemedText variant="small" color={theme.textPrimary}>
+              {isPlaying ? '暂停' : '播放'}
+            </ThemedText>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={[styles.controlBtn, styles.playSelectionBtn]} onPress={playSelection}>
+            <FontAwesome6 name="repeat" size={18} color={theme.buttonPrimaryText} />
+            <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
+              试听选中
+            </ThemedText>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.controlBtn, { backgroundColor: theme.accent + '20' }]} 
+            onPress={autoDetectStart}
+            disabled={detecting}
+          >
+            {detecting ? (
+              <ActivityIndicator size="small" color={theme.accent} />
+            ) : (
+              <FontAwesome6 name="wand-magic-sparkles" size={18} color={theme.accent} />
+            )}
+            <ThemedText variant="small" color={theme.accent}>
+              自动检测
+            </ThemedText>
+          </TouchableOpacity>
         </View>
 
-        {/* 设为结束按钮 - 突出显示 */}
-        <TouchableOpacity style={styles.endBtnLarge} onPress={setEndTime}>
-          <FontAwesome6 name="stop" size={20} color={theme.buttonPrimaryText} />
+        {/* 确认按钮 */}
+        <TouchableOpacity style={styles.confirmBtn} onPress={confirmTimestamp}>
+          <FontAwesome6 name="check" size={18} color={theme.buttonPrimaryText} />
           <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-            设为结束 ({formatTime(position)})
+            确认并继续下一句
           </ThemedText>
         </TouchableOpacity>
 
@@ -575,47 +619,51 @@ export default function TimestampEditorScreen() {
         <View style={styles.tipBox}>
           <FontAwesome6 name="lightbulb" size={14} color={theme.accent} />
           <ThemedText variant="small" color={theme.textSecondary}>
-            点击「设为结束」会立即停止播放，并自动跳到下一句
+            拖动滑块调整时间范围，点击时间轴快速跳转，点击「试听选中」检查效果
           </ThemedText>
         </View>
 
-        {/* 句子列表预览 */}
+        {/* 句子列表 */}
         <View style={styles.listSection}>
           <ThemedText variant="smallMedium" color={theme.textSecondary}>
-            所有句子（点击跳转）
+            所有句子
           </ThemedText>
-          <ScrollView style={styles.scrollView}>
-            {sentences.map((sentence, index) => (
-              <TouchableOpacity 
-                key={sentence.id}
-                style={[
-                  styles.listItem,
-                  index === currentIndex && styles.listItemActive
-                ]}
-                onPress={() => setCurrentIndex(index)}
-              >
-                <View style={styles.listItemNumber}>
-                  <ThemedText variant="caption" color={index === currentIndex ? theme.buttonPrimaryText : theme.textMuted}>
-                    {index + 1}
-                  </ThemedText>
-                </View>
-                <View style={styles.listItemContent}>
-                  <ThemedText 
-                    variant="small" 
-                    color={index === currentIndex ? theme.textPrimary : theme.textSecondary}
-                    style={styles.listItemText}
-                  >
-                    {sentence.text}
-                  </ThemedText>
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    {formatTime(sentence.start_time)} → {formatTime(sentence.end_time)}
-                  </ThemedText>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          {sentences.map((sentence, index) => (
+            <TouchableOpacity 
+              key={sentence.id}
+              style={[
+                styles.listItem,
+                index === currentIndex && styles.listItemActive
+              ]}
+              onPress={() => setCurrentIndex(index)}
+            >
+              <View style={[
+                styles.listItemNumber,
+                index === currentIndex && { backgroundColor: theme.primary }
+              ]}>
+                <ThemedText variant="caption" color={index === currentIndex ? theme.buttonPrimaryText : theme.textMuted}>
+                  {index + 1}
+                </ThemedText>
+              </View>
+              <View style={styles.listItemContent}>
+                <ThemedText 
+                  variant="small" 
+                  color={index === currentIndex ? theme.textPrimary : theme.textSecondary}
+                  numberOfLines={2}
+                >
+                  {sentence.text}
+                </ThemedText>
+                <ThemedText variant="caption" color={theme.textMuted}>
+                  {formatTime(sentence.start_time)} → {formatTime(sentence.end_time)}
+                </ThemedText>
+              </View>
+              {index === currentIndex && (
+                <FontAwesome6 name="play" size={12} color={theme.primary} />
+              )}
+            </TouchableOpacity>
+          ))}
         </View>
-      </View>
+      </ScrollView>
 
       {/* 提示对话框 */}
       <ConfirmDialog
