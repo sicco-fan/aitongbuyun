@@ -17,7 +17,6 @@ export const createStyles = (theme: Theme) => {
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
       paddingHorizontal: Spacing.lg,
       paddingVertical: Spacing.md,
       backgroundColor: theme.backgroundDefault,
@@ -35,14 +34,7 @@ export const createStyles = (theme: Theme) => {
     headerInfo: {
       alignItems: 'center',
       flex: 1,
-    },
-    playIndicator: {
-      width: 40,
-      height: 40,
-      borderRadius: BorderRadius.full,
-      backgroundColor: theme.primary + '12',
-      justifyContent: 'center',
-      alignItems: 'center',
+      paddingHorizontal: Spacing.md,
     },
     
     // Progress
@@ -68,16 +60,14 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.xl,
       padding: Spacing.xl,
-      marginTop: Spacing.lg,
       marginBottom: Spacing.lg,
       borderWidth: 1,
       borderColor: theme.borderLight,
-      // 柔和阴影
       shadowColor: theme.primary,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.06,
-      shadowRadius: 12,
-      elevation: 3,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.04,
+      shadowRadius: 8,
+      elevation: 2,
     },
     sentenceHeader: {
       flexDirection: 'row',
@@ -86,9 +76,9 @@ export const createStyles = (theme: Theme) => {
       gap: Spacing.sm,
     },
     sentenceIconContainer: {
-      width: 32,
-      height: 32,
-      borderRadius: BorderRadius.lg,
+      width: 28,
+      height: 28,
+      borderRadius: BorderRadius.md,
       backgroundColor: theme.primary + '12',
       justifyContent: 'center',
       alignItems: 'center',
@@ -98,16 +88,15 @@ export const createStyles = (theme: Theme) => {
       flexWrap: 'wrap',
       gap: Spacing.sm,
       alignItems: 'flex-end',
-      lineHeight: 40,
     },
     wordWrapper: {
-      marginBottom: Spacing.sm,
+      marginBottom: Spacing.xs,
     },
     wordBox: {
       flexDirection: 'row',
     },
     char: {
-      fontSize: 26,
+      fontSize: 24,
       fontWeight: '600',
       letterSpacing: 1,
     },
@@ -115,37 +104,73 @@ export const createStyles = (theme: Theme) => {
       opacity: 0.4,
     },
     
+    // Audio Controls
+    audioControls: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: Spacing.lg,
+      marginBottom: Spacing.xl,
+      paddingVertical: Spacing.md,
+    },
+    playBtn: {
+      width: 64,
+      height: 64,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.primary + '15',
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: theme.primary,
+    },
+    playBtnActive: {
+      backgroundColor: theme.primary,
+    },
+    loopBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      borderRadius: BorderRadius.lg,
+      backgroundColor: theme.backgroundTertiary,
+    },
+    loopBtnActive: {
+      backgroundColor: theme.primary + '15',
+    },
+    playCount: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.xs,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      borderRadius: BorderRadius.lg,
+      backgroundColor: theme.backgroundTertiary,
+    },
+    
     // Input Section
     inputSection: {
-      marginBottom: Spacing.lg,
-    },
-    inputWrapper: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: Spacing.md,
+      marginBottom: Spacing.lg,
     },
     input: {
       flex: 1,
       backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.xl,
-      borderWidth: 1,
+      borderWidth: 2,
       borderColor: theme.borderLight,
       paddingHorizontal: Spacing.xl,
       paddingVertical: Spacing.lg,
       fontSize: 18,
       color: theme.textPrimary,
-      // 凹陷效果
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.05,
-      shadowRadius: 2,
-      elevation: 1,
     },
     voiceBtn: {
-      width: 56,
-      height: 56,
+      width: 60,
+      height: 60,
       borderRadius: BorderRadius.xl,
-      backgroundColor: theme.primary + '12',
+      backgroundColor: theme.primary + '15',
       justifyContent: 'center',
       alignItems: 'center',
       borderWidth: 2,
@@ -156,30 +181,15 @@ export const createStyles = (theme: Theme) => {
       borderColor: theme.error,
     },
     
-    // Controls
-    controlsSection: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingVertical: Spacing.md,
-      paddingHorizontal: Spacing.sm,
-    },
-    playInfo: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: Spacing.xs,
-      backgroundColor: theme.backgroundTertiary,
-      paddingHorizontal: Spacing.md,
-      paddingVertical: Spacing.sm,
-      borderRadius: BorderRadius.lg,
-    },
+    // Skip Button
     skipBtn: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: Spacing.xs,
+      justifyContent: 'center',
+      gap: Spacing.sm,
       padding: Spacing.md,
-      backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.lg,
+      backgroundColor: theme.backgroundTertiary,
     },
   });
 };
