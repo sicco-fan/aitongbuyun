@@ -201,8 +201,8 @@ export default function PracticeScreen() {
           };
           // 更新当前句子ID
           currentSentenceIdRef.current = newSentence.id;
-          // 重置音频创建状态，允许重新创建（但如果是手动刷新，先卸载旧音频）
-          if (showLoading && soundRef.current) {
+          // 卸载旧音频，确保使用新的URL重新创建
+          if (soundRef.current) {
             soundRef.current.unloadAsync().catch((e) => console.log('卸载音频失败:', e));
             soundRef.current = null;
           }
@@ -240,7 +240,7 @@ export default function PracticeScreen() {
     currentIndexRef.current = currentIndex;
   }, [currentIndex]);
 
-  // 当切换句子时，初始化单词状态并开始播放
+  // 当切换句子时，初始化单词状态并准备播放
   useEffect(() => {
     console.log('[useEffect] 触发 - currentSentence:', currentSentence?.id, 'audio_url:', material?.audio_url ? '有' : '无');
     
@@ -275,19 +275,18 @@ export default function PracticeScreen() {
       };
       console.log('[切换句子] sentenceTimesRef 已更新:', sentenceTimesRef.current);
       
-      // 自动开始循环播放
+      // 设置循环播放标志
       isLoopingRef.current = true;
-      startSentenceLoopPlayback();
+      // 注意：不在这里自动播放，由用户手动点击播放按钮
+      // 因为浏览器自动播放策略会阻止自动播放
       
       // 自动聚焦输入框
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
     }
-    
-    return () => {
-      stopPlayback();
-    };
+    // 注意：不在 cleanup 中停止播放，因为这会中断正在进行的播放
+    // 播放会在 startSentenceLoopPlayback 开始时自动停止之前的播放
   }, [currentSentence, material?.audio_url]);
 
   // 清理音频
@@ -341,7 +340,7 @@ export default function PracticeScreen() {
     }
     
     console.log('[startSentenceLoopPlayback] 开始执行');
-    console.log('[startSentenceLoopPlayback] material?.audio_url:', material?.audio_url ? '有' : '无');
+    console.log('[startSentenceLoopPlayback] material?.audio_url:', material?.audio_url ? material.audio_url.substring(0, 100) : '无');
     console.log('[startSentenceLoopPlayback] sentenceTimesRef:', sentenceTimesRef.current);
     console.log('[startSentenceLoopPlayback] currentSentenceId:', currentSentenceId);
     
@@ -431,21 +430,12 @@ export default function PracticeScreen() {
       console.log('[startSentenceLoopPlayback] 音频创建成功');
       soundRef.current = sound;
       
-      // Web 环境下需要分步操作：先设置位置，再播放
-      // 直接使用 setStatusAsync 同时设置 positionMillis 和 shouldPlay 在 Web 上可能不生效
+      // 使用 playFromPositionAsync 从指定位置开始播放
+      // 这是 Expo Audio 推荐的方式，可以避免位置设置后被重置的问题
       try {
-        // 第一步：设置播放位置
-        console.log('[startSentenceLoopPlayback] 设置播放位置:', start, 'ms');
-        const positionStatus = await sound.setPositionAsync(start);
-        console.log('[startSentenceLoopPlayback] setPositionAsync 返回:', {
-          isLoaded: positionStatus.isLoaded,
-          positionMillis: positionStatus.isLoaded ? positionStatus.positionMillis : 'N/A',
-        });
-        
-        // 第二步：开始播放
-        console.log('[startSentenceLoopPlayback] 开始播放');
-        const playStatus = await sound.playAsync();
-        console.log('[startSentenceLoopPlayback] playAsync 返回:', {
+        console.log('[startSentenceLoopPlayback] 从位置', start, 'ms 开始播放');
+        const playStatus = await sound.playFromPositionAsync(start);
+        console.log('[startSentenceLoopPlayback] playFromPositionAsync 返回:', {
           isLoaded: playStatus.isLoaded,
           isPlaying: playStatus.isLoaded ? playStatus.isPlaying : 'N/A',
           positionMillis: playStatus.isLoaded ? playStatus.positionMillis : 'N/A',
@@ -456,9 +446,14 @@ export default function PracticeScreen() {
           console.log('[startSentenceLoopPlayback] 播放已启动');
         } else {
           console.log('[startSentenceLoopPlayback] 播放可能被浏览器阻止，需要用户交互');
+          // 浏览器可能阻止了自动播放，设置状态让用户知道需要手动点击
+          setIsPlaying(false);
         }
       } catch (playError) {
         console.error('[startSentenceLoopPlayback] 播放操作失败:', playError);
+        // 如果播放失败，可能是浏览器自动播放策略限制
+        // 设置状态让用户可以手动点击播放
+        setIsPlaying(false);
       }
       
     } catch (error) {
@@ -508,11 +503,16 @@ export default function PracticeScreen() {
     }
   }, []);
 
-  // 恢复播放
+  // 恢复播放（从句子开始位置）
   const resumePlayback = useCallback(async () => {
     if (soundRef.current) {
-      await soundRef.current.playAsync();
-      setIsPlaying(true);
+      const { start } = sentenceTimesRef.current;
+      console.log('[resumePlayback] 从位置', start, 'ms 恢复播放');
+      // 使用 playFromPositionAsync 确保从正确的位置开始播放
+      const status = await soundRef.current.playFromPositionAsync(start);
+      if (status.isLoaded && status.isPlaying) {
+        setIsPlaying(true);
+      }
     }
   }, []);
 
@@ -528,16 +528,20 @@ export default function PracticeScreen() {
 
   // 切换播放/暂停
   const togglePlayback = useCallback(async () => {
+    console.log('[togglePlayback] 触发, isPlaying:', isPlaying, 'soundRef:', !!soundRef.current);
     if (isPlaying) {
+      console.log('[togglePlayback] 暂停播放');
       await pausePlayback();
     } else {
       if (soundRef.current) {
+        console.log('[togglePlayback] 恢复播放');
         await resumePlayback();
       } else {
+        console.log('[togglePlayback] 开始新播放, audio_url:', material?.audio_url?.substring(0, 80));
         await startSentenceLoopPlayback();
       }
     }
-  }, [isPlaying, pausePlayback, resumePlayback, startSentenceLoopPlayback]);
+  }, [isPlaying, pausePlayback, resumePlayback, startSentenceLoopPlayback, material?.audio_url]);
 
   // 直接匹配完整单词（用于语音识别结果）
   const matchCompleteWord = useCallback((word: string) => {
