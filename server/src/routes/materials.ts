@@ -176,7 +176,8 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     const asrResult = await asrClient.recognize({
       uid: 'user',
       url: audioUrl,
-    });
+      lang: 'en', // 固定识别为英语
+    } as any);
 
     // 打印完整的 ASR 原始响应
     console.log('\n===== ASR 原始响应 =====');
@@ -437,7 +438,8 @@ router.post('/:id/extract-text', async (req: Request, res: Response) => {
     const asrResult = await asrClient.recognize({
       uid: 'user',
       url: audioUrl,
-    });
+      lang: 'en', // 固定识别为英语
+    } as any);
 
     // 提取完整文本
     const fullText = asrResult.text || asrResult.rawData?.text || '';
@@ -583,7 +585,8 @@ router.post('/:id/word-timestamps', async (req: Request, res: Response) => {
     const asrResult = await asrClient.recognize({
       uid: 'user',
       url: audioUrl,
-    });
+      lang: 'en', // 固定识别为英语
+    } as any);
 
     // 提取单词级时间戳
     const words = extractWordsWithTimestamps(asrResult);
@@ -681,7 +684,8 @@ router.post('/:id/match-sentence', async (req: Request, res: Response) => {
         const asrResult = await asrClient.recognize({
           uid: 'user',
           url: audioUrl,
-        });
+          lang: 'en', // 固定识别为英语
+        } as any);
 
         words = extractWordsWithTimestamps(asrResult);
         fullText = asrResult.text || asrResult.rawData?.result?.text || '';
@@ -1919,7 +1923,8 @@ router.post('/:id/prepare-timestamps', async (req: Request, res: Response) => {
       const asrResult = await asrClient.recognize({
         uid: 'user',
         url: audioUrl,
-      });
+        lang: 'en', // 固定识别为英语
+      } as any);
 
       fullText = asrResult.text || asrResult.rawData?.text || '';
       
@@ -1983,7 +1988,8 @@ router.post('/:id/prepare-timestamps', async (req: Request, res: Response) => {
       const asrResult = await asrClient.recognize({
         uid: 'user',
         url: audioUrl,
-      });
+        lang: 'en', // 固定识别为英语
+      } as any);
 
       const wordsWithTime = extractWordsWithTimestamps(asrResult);
       const asrFullText = asrResult.text || asrResult.rawData?.text || '';
@@ -2051,7 +2057,8 @@ router.post('/:id/prepare-timestamps', async (req: Request, res: Response) => {
     const asrResult = await asrClient.recognize({
       uid: 'user',
       url: audioUrl,
-    });
+      lang: 'en', // 固定识别为英语
+    } as any);
 
     // 提取单词时间戳
     const wordsWithTime = extractWordsWithTimestamps(asrResult);

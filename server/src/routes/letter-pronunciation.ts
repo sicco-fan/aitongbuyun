@@ -133,7 +133,8 @@ router.post('/recognize', upload.single('file'), async (req: Request, res: Respo
     const result = await asrClient.recognize({
       uid: deviceId,
       base64Data,
-    });
+      lang: 'en', // 固定识别为英语
+    } as any);
 
     // 从识别结果中提取字母
     const text = result.text.toUpperCase().trim();
@@ -221,7 +222,8 @@ router.post('/compare', upload.single('file'), async (req: Request, res: Respons
     const result = await asrClient.recognize({
       uid: deviceId,
       base64Data,
-    });
+      lang: 'en', // 固定识别为英语
+    } as any);
 
     // 从识别结果中提取字母
     const text = result.text.toUpperCase().trim();

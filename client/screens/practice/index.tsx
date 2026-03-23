@@ -10,7 +10,7 @@ import {
   Text,
   Keyboard,
 } from 'react-native';
-import { Audio } from 'expo-av';
+import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
@@ -598,9 +598,18 @@ export default function PracticeScreen() {
       // 语音输入时暂停播放
       await pausePlayback();
       
-      await Audio.setAudioModeAsync({ 
-        allowsRecordingIOS: true, 
-        playsInSilentModeIOS: true 
+      // 设置音频模式：录音模式
+      // 关键：allowsRecordingIOS 必须为 true，playsInSilentModeIOS 为 true
+      // interruptionModeIOS 设置为 DoNotMix 确保不会被其他音频打断
+      // staysActiveInBackground 为 false 确保应用在后台时不录音
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+        shouldDuckAndroid: true,
+        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+        playThroughEarpieceAndroid: false,
+        staysActiveInBackground: false,
       });
       
       setIsRecording(true);
@@ -747,6 +756,21 @@ export default function PracticeScreen() {
       } catch (e) {
         // 忽略
       }
+    }
+    
+    // 恢复音频模式为播放模式
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+        shouldDuckAndroid: true,
+        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+        playThroughEarpieceAndroid: false,
+        staysActiveInBackground: false,
+      });
+    } catch (e) {
+      console.error('恢复音频模式失败:', e);
     }
     
     // 恢复播放

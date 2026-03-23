@@ -290,7 +290,8 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     const result = await asrClient.recognize({
       uid: deviceId || 'user',
       base64Data,
-    });
+      lang: 'en', // 固定识别为英语
+    } as any);
 
     const recognizedText = result.text.trim();
     console.log('[ASR] 原始识别结果:', recognizedText);
