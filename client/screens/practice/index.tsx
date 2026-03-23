@@ -618,12 +618,14 @@ export default function PracticeScreen() {
       await recording.startAsync();
       recordingRef.current = recording;
       
-      // 300ms后自动识别并继续录音（快速响应）
+      // 根据模式设置不同的录音时长
+      const recordDuration = isLetterMode ? 150 : 1000; // 字母模式150ms，单词模式1秒
+      
       setTimeout(async () => {
         if (isRecordingRef.current) {
           await recognizeAndContinue();
         }
-      }, 300);
+      }, recordDuration);
       
     } catch (error) {
       console.error('录音片段失败:', error);
@@ -656,7 +658,7 @@ export default function PracticeScreen() {
         formData.append('file', audioFile as any);
 
         if (isLetterMode) {
-          // 逐字母模式：使用字母识别API
+          // 字母模式：快速识别单个字母
           formData.append('deviceId', deviceId);
           const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/letter-pronunciation/recognize`, {
             method: 'POST',
@@ -668,14 +670,29 @@ export default function PracticeScreen() {
             checkInputRealtime(data.letter);
           }
         } else {
-          // 单词模式：使用标准语音识别API
+          // 单词模式：获取未完成的单词列表用于模糊匹配
+          const uncompletedWords = wordStatuses
+            .filter(w => !w.isPunctuation && !w.revealed)
+            .map(w => w.word)
+            .join(',');
+          
+          if (uncompletedWords) {
+            formData.append('targetWords', uncompletedWords);
+          }
+          
           const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech-recognize`, {
             method: 'POST',
             body: formData,
           });
           const data = await response.json();
-          if (data.text) {
-            // 对于语音识别的结果，逐词匹配
+          
+          if (data.matchedWords && data.matchedWords.length > 0) {
+            // 使用模糊匹配的结果
+            for (const word of data.matchedWords) {
+              checkInputRealtime(word);
+            }
+          } else if (data.text) {
+            // 没有匹配结果，尝试原始识别
             const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
             for (const word of words) {
               checkInputRealtime(word);
@@ -715,16 +732,41 @@ export default function PracticeScreen() {
           const audioFile = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
           formData.append('file', audioFile as any);
 
-          const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech-recognize`, {
-            method: 'POST',
-            body: formData,
-          });
+          if (isLetterMode) {
+            formData.append('deviceId', deviceId);
+            const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/letter-pronunciation/recognize`, {
+              method: 'POST',
+              body: formData,
+            });
+            const data = await response.json();
+            if (data.success && data.letter) {
+              checkInputRealtime(data.letter);
+            }
+          } else {
+            const uncompletedWords = wordStatuses
+              .filter(w => !w.isPunctuation && !w.revealed)
+              .map(w => w.word)
+              .join(',');
+            
+            if (uncompletedWords) {
+              formData.append('targetWords', uncompletedWords);
+            }
+            
+            const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech-recognize`, {
+              method: 'POST',
+              body: formData,
+            });
 
-          const data = await response.json();
-          if (data.text) {
-            const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
-            for (const word of words) {
-              checkInputRealtime(word);
+            const data = await response.json();
+            if (data.matchedWords && data.matchedWords.length > 0) {
+              for (const word of data.matchedWords) {
+                checkInputRealtime(word);
+              }
+            } else if (data.text) {
+              const words = data.text.split(/\s+/).filter((w: string) => w.length > 0);
+              for (const word of words) {
+                checkInputRealtime(word);
+              }
             }
           }
         }

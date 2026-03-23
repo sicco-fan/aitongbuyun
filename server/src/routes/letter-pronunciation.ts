@@ -106,7 +106,7 @@ router.get('/status/:deviceId', async (req: Request, res: Response) => {
 
 /**
  * POST /api/v1/letter-pronunciation/recognize
- * 识别用户念的字母（使用ASR识别）
+ * 识别用户念的字母（快速模式，直接用ASR）
  * Body: FormData { file: audio file, deviceId: string }
  */
 router.post('/recognize', upload.single('file'), async (req: Request, res: Response) => {
@@ -138,32 +138,38 @@ router.post('/recognize', upload.single('file'), async (req: Request, res: Respo
     // 从识别结果中提取字母
     const text = result.text.toUpperCase().trim();
     
-    // 尝试提取单个字母
+    // 快速提取第一个字母
     let recognizedLetter: string | null = null;
     
-    // 检查是否是单个字母
+    // 1. 直接是单个字母
     if (/^[A-Z]$/.test(text)) {
       recognizedLetter = text;
-    } else if (text.length > 0) {
-      // 尝试从文本中提取第一个字母
+    }
+    // 2. 从文本开头提取字母
+    else if (text.length > 0) {
       const firstChar = text[0];
       if (/^[A-Z]$/.test(firstChar)) {
         recognizedLetter = firstChar;
       }
     }
-
-    // 也检查常见的字母发音（如 "A" -> "A", "B" -> "B", etc.）
-    const letterWords: Record<string, string> = {
-      'AY': 'A', 'BEE': 'B', 'SEE': 'C', 'DEE': 'D', 'E': 'E',
-      'EF': 'F', 'GEE': 'G', 'AITCH': 'H', 'EYE': 'I', 'JAY': 'J',
-      'KAY': 'K', 'EL': 'L', 'EM': 'M', 'EN': 'N', 'OH': 'O',
-      'PEA': 'P', 'QUEUE': 'Q', 'ARE': 'R', 'ESS': 'S', 'TEA': 'T',
-      'YOU': 'U', 'VEE': 'V', 'DOUBLE YOU': 'W', 'EX': 'X', 'WHY': 'Y', 'ZEE': 'Z'
-    };
-
-    if (!recognizedLetter) {
-      for (const [word, letter] of Object.entries(letterWords)) {
-        if (text.includes(word) || word.includes(text)) {
+    
+    // 3. 快速字母发音词匹配（仅检查常见情况）
+    if (!recognizedLetter && text.length <= 5) {
+      const quickLetterMap: Record<string, string> = {
+        'A': 'A', 'B': 'B', 'C': 'C', 'D': 'D', 'E': 'E',
+        'F': 'F', 'G': 'G', 'H': 'H', 'I': 'I', 'J': 'J',
+        'K': 'K', 'L': 'L', 'M': 'M', 'N': 'N', 'O': 'O',
+        'P': 'P', 'Q': 'Q', 'R': 'R', 'S': 'S', 'T': 'T',
+        'U': 'U', 'V': 'V', 'W': 'W', 'X': 'X', 'Y': 'Y', 'Z': 'Z',
+        'AY': 'A', 'BEE': 'B', 'SEE': 'C', 'DEE': 'D',
+        'EF': 'F', 'GEE': 'G', 'AITCH': 'H', 'EYE': 'I', 'JAY': 'J',
+        'KAY': 'K', 'EL': 'L', 'EM': 'M', 'EN': 'N', 'OH': 'O',
+        'PEA': 'P', 'QUEUE': 'Q', 'ARE': 'R', 'ESS': 'S', 'TEA': 'T',
+        'YOU': 'U', 'VEE': 'V', 'EX': 'X', 'WHY': 'Y', 'ZEE': 'Z'
+      };
+      
+      for (const [key, letter] of Object.entries(quickLetterMap)) {
+        if (text === key || text.includes(key)) {
           recognizedLetter = letter;
           break;
         }
@@ -174,7 +180,6 @@ router.post('/recognize', upload.single('file'), async (req: Request, res: Respo
       success: true,
       originalText: result.text,
       letter: recognizedLetter,
-      hasRecording: !!letterPronunciations[deviceId]?.[recognizedLetter || '']
     });
   } catch (error) {
     console.error('字母识别失败:', error);
