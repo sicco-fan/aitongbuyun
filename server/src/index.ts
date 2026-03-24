@@ -6,6 +6,7 @@ import speechRouter from "./routes/speech";
 import translateRouter from "./routes/translate";
 import letterPronunciationRouter from "./routes/letter-pronunciation";
 import videoDownloadRouter from "./routes/video-download";
+import sentenceFilesRouter from "./routes/sentence-files";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -22,6 +23,7 @@ app.get('/api/v1/health', (req, res) => {
 // Routes - 文件上传路由放在 body parser 之前
 app.use('/api/v1/materials/download', videoDownloadRouter);
 app.use('/api/v1/materials', materialsRouter);
+app.use('/api/v1/sentence-files', sentenceFilesRouter);
 
 // Body parser - 放在文件上传路由之后，避免影响 multipart/form-data
 app.use(express.json({ limit: '50mb' }));

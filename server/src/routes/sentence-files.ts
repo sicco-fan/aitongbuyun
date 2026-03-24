@@ -1,0 +1,713 @@
+import express, { Router } from 'express';
+import type { Request, Response } from 'express';
+import multer from 'multer';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import fs from 'fs/promises';
+import path from 'path';
+import axios from 'axios';
+import { getSupabaseClient } from '../storage/database/supabase-client';
+import { S3Storage, ASRClient, LLMClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
+
+const execAsync = promisify(exec);
+const router = Router();
+
+// 用于处理上传的内存存储
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 } // 500MB
+});
+
+// 初始化对象存储
+const storage = new S3Storage({
+  endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
+  accessKey: '',
+  secretKey: '',
+  bucketName: process.env.COZE_BUCKET_NAME,
+  region: 'cn-beijing',
+});
+
+// 用于存储分块上传的临时数据
+const uploadChunks: Map<string, { chunks: Buffer[], fileName: string, contentType: string }> = new Map();
+
+/**
+ * GET /api/v1/sentence-files
+ * 获取句库文件列表
+ */
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const supabase = getSupabaseClient();
+    
+    const { data: files, error } = await supabase
+      .from('sentence_files')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      throw new Error(error.message);
+    }
+    
+    // 获取每个文件的句子数量
+    const filesWithCount = await Promise.all((files || []).map(async (file) => {
+      const { count } = await supabase
+        .from('sentence_file_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('sentence_file_id', file.id);
+      
+      return {
+        ...file,
+        sentences_count: count || 0,
+      };
+    }));
+    
+    res.json({ files: filesWithCount });
+  } catch (error) {
+    console.error('获取句库文件列表失败:', error);
+    res.status(500).json({ error: '获取列表失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * GET /api/v1/sentence-files/:id
+ * 获取单个句库文件详情
+ */
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const supabase = getSupabaseClient();
+    
+    const { data: file, error } = await supabase
+      .from('sentence_files')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error || !file) {
+      return res.status(404).json({ error: '文件不存在' });
+    }
+    
+    // 获取句子列表
+    const { data: sentences } = await supabase
+      .from('sentence_file_items')
+      .select('*')
+      .eq('sentence_file_id', id)
+      .order('sentence_index');
+    
+    res.json({
+      file: {
+        ...file,
+        sentences: sentences || [],
+      },
+    });
+  } catch (error) {
+    console.error('获取句库文件详情失败:', error);
+    res.status(500).json({ error: '获取详情失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * POST /api/v1/sentence-files
+ * 创建新句库文件（上传音频/视频）
+ * Body: FormData { file: audio/video file, title: string, description?: string }
+ */
+router.post('/', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: '请上传音频或视频文件' });
+    }
+
+    const { title, description } = req.body;
+    if (!title) {
+      return res.status(400).json({ error: '请提供标题' });
+    }
+
+    let { buffer, originalname, mimetype } = req.file;
+    
+    console.log(`\n===== 创建句库文件 =====`);
+    console.log('文件名:', originalname);
+    console.log('MIME类型:', mimetype);
+    console.log('文件大小:', buffer.length, 'bytes');
+    
+    // 检测是否为视频文件
+    const isVideo = mimetype?.startsWith('video/') || 
+                    originalname?.toLowerCase().endsWith('.mov') ||
+                    originalname?.toLowerCase().endsWith('.mp4') ||
+                    originalname?.toLowerCase().endsWith('.avi') ||
+                    originalname?.toLowerCase().endsWith('.mkv') ||
+                    originalname?.toLowerCase().endsWith('.webm');
+    
+    let audioBuffer = buffer;
+    let audioFileName = originalname;
+    let duration = 0;
+    
+    // 如果是视频，转换为音频
+    if (isVideo) {
+      console.log('检测到视频文件，开始转换为音频...');
+      
+      const tempDir = '/tmp/sentence_files';
+      await fs.mkdir(tempDir, { recursive: true });
+      const tempVideoPath = path.join(tempDir, `${Date.now()}_${originalname}`);
+      const tempAudioPath = tempVideoPath.replace(/\.[^.]+$/, '.mp3');
+      
+      await fs.writeFile(tempVideoPath, buffer);
+      
+      try {
+        // 使用 ffmpeg 转换为音频
+        const ffmpegCmd = `ffmpeg -y -i "${tempVideoPath}" -vn -acodec libmp3lame -ab 192k "${tempAudioPath}"`;
+        console.log('执行命令:', ffmpegCmd);
+        
+        await execAsync(ffmpegCmd, { timeout: 5 * 60 * 1000 });
+        
+        // 获取视频时长
+        try {
+          const ffprobeCmd = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tempVideoPath}"`;
+          const durationResult = await execAsync(ffprobeCmd);
+          duration = Math.round(parseFloat(durationResult.stdout.trim()) * 1000);
+          console.log('视频时长:', duration, 'ms');
+        } catch (e) {
+          console.log('获取时长失败:', e);
+        }
+        
+        // 读取转换后的音频
+        audioBuffer = await fs.readFile(tempAudioPath);
+        audioFileName = originalname.replace(/\.[^.]+$/, '.mp3');
+        mimetype = 'audio/mpeg';
+        
+        // 清理临时文件
+        try {
+          await fs.unlink(tempVideoPath);
+          await fs.unlink(tempAudioPath);
+        } catch (e) {}
+        
+      } catch (ffmpegError) {
+        console.error('ffmpeg 转换失败:', ffmpegError);
+        try { await fs.unlink(tempVideoPath); } catch (e) {}
+        throw new Error('视频转换失败，请确保上传的是有效的视频文件');
+      }
+    }
+    
+    // 上传到对象存储
+    const fileKey = await storage.uploadFile({
+      fileContent: audioBuffer,
+      fileName: `sentence_files/${Date.now()}_${audioFileName}`,
+      contentType: mimetype || 'audio/mpeg',
+    });
+    
+    // 生成签名 URL 获取时长
+    const audioUrl = await storage.generatePresignedUrl({
+      key: fileKey,
+      expireTime: 86400,
+    });
+    
+    // 使用 ffprobe 获取音频时长
+    if (duration === 0) {
+      try {
+        const ffprobeCmd = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioUrl}"`;
+        const durationResult = await execAsync(ffprobeCmd, { timeout: 30000 });
+        duration = Math.round(parseFloat(durationResult.stdout.trim()) * 1000);
+        console.log('FFprobe 获取音频时长:', duration, 'ms');
+      } catch (e) {
+        console.log('获取音频时长失败:', (e as Error).message);
+      }
+    }
+    
+    // 存储到数据库
+    const supabase = getSupabaseClient();
+    
+    const { data: file, error: fileError } = await supabase
+      .from('sentence_files')
+      .insert({
+        title,
+        description: description || '',
+        original_audio_url: fileKey,
+        original_duration: duration,
+        source_type: 'upload',
+        status: 'audio_ready',
+      })
+      .select()
+      .single();
+    
+    if (fileError || !file) {
+      throw new Error(fileError?.message || '创建失败');
+    }
+    
+    console.log(`句库文件创建成功: ID=${file.id}, 标题=${title}`);
+    
+    res.json({
+      success: true,
+      file,
+      message: '句库文件创建成功',
+    });
+  } catch (error) {
+    console.error('创建句库文件失败:', error);
+    res.status(500).json({ error: '创建失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * POST /api/v1/sentence-files/from-link
+ * 从链接创建句库文件
+ * Body: { url: string, title?: string }
+ */
+router.post('/from-link', async (req: Request, res: Response) => {
+  try {
+    const { url, title } = req.body;
+    
+    if (!url) {
+      return res.status(400).json({ error: '请提供链接' });
+    }
+    
+    console.log(`[链接导入] 开始处理: ${url}`);
+    
+    const tempDir = '/tmp/sentence_files_downloads';
+    await fs.mkdir(tempDir, { recursive: true });
+    
+    const timestamp = Date.now();
+    const outputTemplate = path.join(tempDir, `${timestamp}_%(title)s.%(ext)s`);
+    
+    // 使用 yt-dlp 下载
+    const downloadCmd = [
+      'yt-dlp',
+      '--no-playlist',
+      '-f', '"bestaudio/best"',
+      '--extract-audio',
+      '--audio-format', 'mp3',
+      '--audio-quality', '0',
+      '--no-check-certificate',
+      '--user-agent', '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"',
+      '-o', `"${outputTemplate}"`,
+      '--print', 'filepath',
+      '--print', 'title',
+      '--print', 'duration_string',
+      `"${url}"`,
+    ].join(' ');
+    
+    let filePath = '';
+    let videoTitle = title || '';
+    let duration = 0;
+    
+    try {
+      const downloadResult = await execAsync(downloadCmd, {
+        maxBuffer: 1024 * 1024 * 50,
+        timeout: 5 * 60 * 1000,
+      });
+      
+      const lines = downloadResult.stdout.trim().split('\n').filter(Boolean);
+      
+      if (lines.length >= 1) {
+        filePath = lines[0].trim();
+      }
+      if (lines.length >= 2 && !videoTitle) {
+        videoTitle = lines[1].trim();
+      }
+      if (lines.length >= 3) {
+        const durationStr = lines[2].trim();
+        const parts = durationStr.split(':').map(Number);
+        if (parts.length === 2) {
+          duration = (parts[0] * 60 + parts[1]) * 1000;
+        } else if (parts.length === 3) {
+          duration = (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
+        }
+      }
+    } catch (downloadError: any) {
+      console.error(`[链接导入] 下载失败:`, downloadError.message);
+      throw new Error(`下载失败: ${downloadError.message}`);
+    }
+    
+    // 如果没有找到文件，尝试在目录中查找
+    if (!filePath) {
+      const files = await fs.readdir(tempDir);
+      const recentFiles = files
+        .filter(f => f.startsWith(String(timestamp)))
+        .sort()
+        .reverse();
+      
+      if (recentFiles.length > 0) {
+        filePath = path.join(tempDir, recentFiles[0]);
+      }
+    }
+    
+    if (!filePath) {
+      throw new Error('下载完成但找不到文件');
+    }
+    
+    // 读取文件
+    const fileBuffer = await fs.readFile(filePath);
+    console.log(`[链接导入] 文件大小: ${fileBuffer.length} bytes`);
+    
+    // 上传到对象存储
+    const fileKey = await storage.uploadFile({
+      fileContent: fileBuffer,
+      fileName: `sentence_files/${timestamp}_${videoTitle || 'download'}.mp3`,
+      contentType: 'audio/mpeg',
+    });
+    
+    // 清理临时文件
+    try {
+      await fs.unlink(filePath);
+    } catch (e) {}
+    
+    // 存储到数据库
+    const supabase = getSupabaseClient();
+    
+    const { data: file, error: fileError } = await supabase
+      .from('sentence_files')
+      .insert({
+        title: videoTitle || title || '未命名文件',
+        description: `来源: ${url}`,
+        original_audio_url: fileKey,
+        original_duration: duration,
+        source_type: 'link',
+        source_url: url,
+        status: 'audio_ready',
+      })
+      .select()
+      .single();
+    
+    if (fileError || !file) {
+      throw new Error(fileError?.message || '创建失败');
+    }
+    
+    res.json({
+      success: true,
+      file,
+      message: '从链接创建成功',
+    });
+  } catch (error) {
+    console.error('[链接导入] 失败:', error);
+    res.status(500).json({ 
+      error: '导入失败', 
+      message: (error as Error).message,
+    });
+  }
+});
+
+/**
+ * POST /api/v1/sentence-files/:id/extract-text
+ * 从音频提取文本
+ */
+router.post('/:id/extract-text', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const supabase = getSupabaseClient();
+    
+    // 获取文件信息
+    const { data: file, error: fileError } = await supabase
+      .from('sentence_files')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (fileError || !file) {
+      return res.status(404).json({ error: '文件不存在' });
+    }
+    
+    if (!file.original_audio_url) {
+      return res.status(400).json({ error: '文件没有音频' });
+    }
+    
+    // 生成签名 URL
+    const audioUrl = await storage.generatePresignedUrl({
+      key: file.original_audio_url,
+      expireTime: 86400,
+    });
+    
+    console.log(`[提取文本] 开始处理文件 ${id}`);
+    
+    // 调用 ASR
+    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+    const asrClient = new ASRClient(new Config(), customHeaders);
+    
+    const asrResult = await asrClient.recognize({
+      uid: 'user',
+      url: audioUrl,
+      lang: 'en',
+    } as any);
+    
+    // 获取原始文本
+    let rawText = asrResult.text || asrResult.rawData?.result?.text || '';
+    console.log(`[提取文本] 原始文本长度: ${rawText.length}`);
+    
+    // 检查是否有标点符号，如果没有则使用 LLM 添加
+    const hasPunctuation = /[.!?。！？]/.test(rawText);
+    
+    if (!hasPunctuation && rawText.length > 20) {
+      console.log(`[提取文本] 文本缺少标点，使用 LLM 添加...`);
+      
+      try {
+        const llmClient = new LLMClient(new Config(), customHeaders);
+        const punctResponse = await llmClient.invoke([
+          {
+            role: 'system',
+            content: 'You are a text punctuation assistant. Add proper punctuation (periods, question marks, commas) to the English text. Do NOT change any words, only add punctuation marks. Keep the original text exactly as is, just add punctuation. Return ONLY the punctuated text without any explanation.'
+          },
+          {
+            role: 'user',
+            content: `Add punctuation to this English text. Keep all words exactly as they are, only add periods, question marks, exclamation marks, and commas where appropriate:\n\n${rawText}`
+          }
+        ], { temperature: 0.3 });
+        
+        rawText = punctResponse.content.trim();
+        console.log(`[提取文本] 添加标点后长度: ${rawText.length}`);
+      } catch (llmError) {
+        console.log(`[提取文本] LLM 添加标点失败: ${(llmError as Error).message}`);
+      }
+    }
+    
+    // 更新数据库
+    const { error: updateError } = await supabase
+      .from('sentence_files')
+      .update({
+        text_content: rawText,
+        status: 'text_ready',
+      })
+      .eq('id', id);
+    
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+    
+    res.json({
+      success: true,
+      text: rawText,
+      message: '文本提取成功',
+    });
+  } catch (error) {
+    console.error('[提取文本] 失败:', error);
+    res.status(500).json({ error: '提取失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * PUT /api/v1/sentence-files/:id/text
+ * 更新文本内容
+ * Body: { text: string }
+ */
+router.put('/:id/text', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { text } = req.body;
+    
+    if (text === undefined) {
+      return res.status(400).json({ error: '请提供文本内容' });
+    }
+    
+    const supabase = getSupabaseClient();
+    
+    const { error } = await supabase
+      .from('sentence_files')
+      .update({
+        text_content: text,
+        status: 'text_ready',
+      })
+      .eq('id', id);
+    
+    if (error) {
+      throw new Error(error.message);
+    }
+    
+    res.json({ success: true, message: '文本已更新' });
+  } catch (error) {
+    console.error('更新文本失败:', error);
+    res.status(500).json({ error: '更新失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * POST /api/v1/sentence-files/:id/split-sentences
+ * 按文本切分句子（按空行分割）
+ * Body: { }
+ */
+router.post('/:id/split-sentences', async (req: Request, res: Response) => {
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const supabase = getSupabaseClient();
+    
+    // 获取文件信息
+    const { data: file, error: fileError } = await supabase
+      .from('sentence_files')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (fileError || !file) {
+      return res.status(404).json({ error: '文件不存在' });
+    }
+    
+    if (!file.text_content) {
+      return res.status(400).json({ error: '请先提取或输入文本' });
+    }
+    
+    // 按空行分割句子
+    const sentences = file.text_content
+      .split(/\n\s*\n/)  // 按空行分割
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length > 0);
+    
+    console.log(`[切分句子] 共 ${sentences.length} 个句子`);
+    
+    // 删除旧句子
+    await supabase
+      .from('sentence_file_items')
+      .delete()
+      .eq('sentence_file_id', id);
+    
+    // 插入新句子（初始时间戳为0）
+    const sentencesData = sentences.map((text: string, index: number) => ({
+      sentence_file_id: parseInt(id),
+      sentence_index: index,
+      text,
+      start_time: 0,
+      end_time: 0,
+    }));
+    
+    const { error: insertError } = await supabase
+      .from('sentence_file_items')
+      .insert(sentencesData);
+    
+    if (insertError) {
+      throw new Error(insertError.message);
+    }
+    
+    // 更新文件状态
+    await supabase
+      .from('sentence_files')
+      .update({ status: 'completed' })
+      .eq('id', id);
+    
+    res.json({
+      success: true,
+      count: sentences.length,
+      message: `成功切分 ${sentences.length} 个句子`,
+    });
+  } catch (error) {
+    console.error('切分句子失败:', error);
+    res.status(500).json({ error: '切分失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * GET /api/v1/sentence-files/:id/sentences
+ * 获取句子的详细列表
+ */
+router.get('/:id/sentences', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const supabase = getSupabaseClient();
+    
+    const { data: sentences, error } = await supabase
+      .from('sentence_file_items')
+      .select('*')
+      .eq('sentence_file_id', id)
+      .order('sentence_index');
+    
+    if (error) {
+      throw new Error(error.message);
+    }
+    
+    res.json({ sentences: sentences || [] });
+  } catch (error) {
+    console.error('获取句子列表失败:', error);
+    res.status(500).json({ error: '获取失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * PUT /api/v1/sentence-files/:id/sentences/:sentenceId
+ * 更新单个句子的时间戳
+ * Body: { start_time: number, end_time: number, text?: string }
+ */
+router.put('/:id/sentences/:sentenceId', async (req: Request, res: Response) => {
+  try {
+    const { id, sentenceId } = req.params;
+    const { start_time, end_time, text } = req.body;
+    
+    const supabase = getSupabaseClient();
+    
+    const updateData: Record<string, any> = {};
+    if (start_time !== undefined) updateData.start_time = Math.round(start_time);
+    if (end_time !== undefined) updateData.end_time = Math.round(end_time);
+    if (text !== undefined) updateData.text = text;
+    
+    const { error } = await supabase
+      .from('sentence_file_items')
+      .update(updateData)
+      .eq('id', sentenceId)
+      .eq('sentence_file_id', id);
+    
+    if (error) {
+      throw new Error(error.message);
+    }
+    
+    res.json({ success: true, message: '句子已更新' });
+  } catch (error) {
+    console.error('更新句子失败:', error);
+    res.status(500).json({ error: '更新失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * DELETE /api/v1/sentence-files/:id
+ * 删除句库文件
+ */
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const supabase = getSupabaseClient();
+    
+    // 获取文件信息（用于删除对象存储中的文件）
+    const { data: file } = await supabase
+      .from('sentence_files')
+      .select('original_audio_url')
+      .eq('id', id)
+      .single();
+    
+    // 删除数据库记录（级联删除句子）
+    const { error } = await supabase
+      .from('sentence_files')
+      .delete()
+      .eq('id', id);
+    
+    if (error) {
+      throw new Error(error.message);
+    }
+    
+    res.json({ success: true, message: '文件已删除' });
+  } catch (error) {
+    console.error('删除文件失败:', error);
+    res.status(500).json({ error: '删除失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * GET /api/v1/sentence-files/:id/audio-url
+ * 获取音频签名URL
+ */
+router.get('/:id/audio-url', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const supabase = getSupabaseClient();
+    
+    const { data: file, error } = await supabase
+      .from('sentence_files')
+      .select('original_audio_url')
+      .eq('id', id)
+      .single();
+    
+    if (error || !file || !file.original_audio_url) {
+      return res.status(404).json({ error: '音频不存在' });
+    }
+    
+    const audioUrl = await storage.generatePresignedUrl({
+      key: file.original_audio_url,
+      expireTime: 86400,
+    });
+    
+    res.json({ audioUrl });
+  } catch (error) {
+    console.error('获取音频URL失败:', error);
+    res.status(500).json({ error: '获取失败', message: (error as Error).message });
+  }
+});
+
+export default router;
