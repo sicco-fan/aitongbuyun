@@ -10,6 +10,7 @@ import {
   Modal,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -68,7 +69,8 @@ export default function CreateSentenceFileScreen() {
     return status === 'granted';
   };
 
-  const pickAudioFile = async () => {
+  // 从相册选择（视频/图片）
+  const pickFromGallery = async () => {
     if (Platform.OS === 'web') {
       // Web 端使用原生 input 元素
       const input = document.createElement('input');
@@ -99,7 +101,7 @@ export default function CreateSentenceFileScreen() {
       return;
     }
 
-    // 移动端
+    // 从相册选择
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['videos', 'images'],
       allowsEditing: false,
@@ -123,6 +125,59 @@ export default function CreateSentenceFileScreen() {
         size: asset.fileSize || 0,
         mimeType,
       });
+    }
+  };
+
+  // 从文件系统选择（支持所有文档类型）
+  const pickFromFileSystem = async () => {
+    if (Platform.OS === 'web') {
+      // Web 端使用原生 input 元素，支持音频文件
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = ALL_FORMATS.map(f => `.${f}`).join(',') + ',audio/*,video/*';
+      
+      input.onchange = async (e: any) => {
+        const selectedFile = e.target?.files?.[0];
+        if (selectedFile) {
+          setFile({
+            uri: URL.createObjectURL(selectedFile),
+            name: selectedFile.name,
+            size: selectedFile.size,
+            mimeType: selectedFile.type || 'application/octet-stream',
+            file: selectedFile,
+          });
+        }
+      };
+      
+      input.click();
+      return;
+    }
+
+    // 移动端使用 DocumentPicker
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'audio/*',
+          'video/*',
+          ...AUDIO_FORMATS.map(f => `audio/${f}`),
+          ...VIDEO_FORMATS.map(f => `video/${f}`),
+          'application/octet-stream',
+        ],
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        setFile({
+          uri: asset.uri,
+          name: asset.name,
+          size: asset.size || 0,
+          mimeType: asset.mimeType || 'application/octet-stream',
+        });
+      }
+    } catch (error) {
+      console.error('文件选择失败:', error);
+      setErrorDialog({ visible: true, message: '文件选择失败，请重试' });
     }
   };
 
@@ -350,15 +405,31 @@ export default function CreateSentenceFileScreen() {
                   </TouchableOpacity>
                 </View>
               ) : (
-                <TouchableOpacity style={styles.uploadButton} onPress={pickAudioFile}>
-                  <FontAwesome6 name="cloud-arrow-up" size={32} color={theme.primary} />
-                  <ThemedText variant="bodyMedium" color={theme.primary}>
-                    点击选择文件
-                  </ThemedText>
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    支持格式：{[...AUDIO_FORMATS.slice(0, 4), '...'].join(', ')}
-                  </ThemedText>
-                </TouchableOpacity>
+                <View style={styles.uploadOptionsContainer}>
+                  <TouchableOpacity style={styles.uploadOptionButton} onPress={pickFromGallery}>
+                    <View style={styles.uploadOptionIcon}>
+                      <FontAwesome6 name="images" size={28} color={theme.primary} />
+                    </View>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                      从相册选择
+                    </ThemedText>
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      视频、图片
+                    </ThemedText>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity style={styles.uploadOptionButton} onPress={pickFromFileSystem}>
+                    <View style={styles.uploadOptionIcon}>
+                      <FontAwesome6 name="folder-open" size={28} color={theme.accent} />
+                    </View>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                      从文件选择
+                    </ThemedText>
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      音频、视频
+                    </ThemedText>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           ) : (
