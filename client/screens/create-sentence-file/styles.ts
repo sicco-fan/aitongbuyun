@@ -230,8 +230,20 @@ export const createStyles = (theme: Theme) => {
     // 操作按钮
     actionButtons: {
       flexDirection: 'row',
-      gap: Spacing.md,
+      gap: Spacing.sm,
       marginBottom: Spacing.lg,
+    },
+    deleteButton: {
+      flex: 0.8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: Spacing.sm,
+      backgroundColor: theme.backgroundDefault,
+      borderWidth: 1,
+      borderColor: theme.error,
+      paddingVertical: Spacing.lg,
+      borderRadius: BorderRadius.lg,
     },
     secondaryButton: {
       flex: 1,

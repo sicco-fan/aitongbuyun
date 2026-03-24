@@ -45,6 +45,89 @@ export const createStyles = (theme: Theme) => {
       paddingVertical: Spacing.md,
       borderRadius: BorderRadius.lg,
     },
+    // 音频播放器卡片 - 完整版
+    audioCard: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.lg,
+      marginBottom: Spacing.lg,
+    },
+    // 音频播放器卡片 - 紧凑版
+    audioCardCompact: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.md,
+      marginBottom: Spacing.sm,
+    },
+    audioHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: Spacing.sm,
+    },
+    audioIconContainer: {
+      width: 40,
+      height: 40,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.primary + '15',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: Spacing.md,
+    },
+    audioInfo: {
+      flex: 1,
+    },
+    // 播放进度
+    progressContainer: {
+      marginBottom: Spacing.md,
+    },
+    progressBarBg: {
+      width: '100%',
+      height: 4,
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.sm,
+      overflow: 'hidden',
+    },
+    progressBarFill: {
+      height: '100%',
+      borderRadius: BorderRadius.sm,
+    },
+    timeRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: Spacing.xs,
+    },
+    // 播放控制
+    playbackControls: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: Spacing.md,
+    },
+    controlButtonSmall: {
+      width: 36,
+      height: 36,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.backgroundTertiary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    playButton: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: theme.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    playButtonCompact: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: theme.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // 文件信息卡片
     fileInfoCard: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.xl,
@@ -145,6 +228,7 @@ export const createStyles = (theme: Theme) => {
       borderWidth: 1,
       borderColor: theme.primary,
     },
+    // 文件列表
     fileListSection: {
       marginBottom: Spacing.xl,
     },
@@ -153,6 +237,23 @@ export const createStyles = (theme: Theme) => {
       justifyContent: 'space-between',
       alignItems: 'center',
       marginBottom: Spacing.md,
+    },
+    fileItemWrapper: {
+      marginBottom: Spacing.sm,
+    },
+    fileItemActions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: Spacing.xs,
+      gap: Spacing.md,
+    },
+    fileItemActionButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.xs,
+      paddingVertical: Spacing.xs,
+      paddingHorizontal: Spacing.sm,
     },
     fileItemCard: {
       flexDirection: 'row',

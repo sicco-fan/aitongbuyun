@@ -47,16 +47,30 @@ router.get('/', async (req: Request, res: Response) => {
       throw new Error(error.message);
     }
     
-    // 获取每个文件的句子数量
+    // 获取每个文件的句子数量和签名 URL
     const filesWithCount = await Promise.all((files || []).map(async (file) => {
       const { count } = await supabase
         .from('sentence_file_items')
         .select('*', { count: 'exact', head: true })
         .eq('sentence_file_id', file.id);
       
+      // 生成原始音频的签名 URL
+      let original_audio_signed_url = null;
+      if (file.original_audio_url) {
+        try {
+          original_audio_signed_url = await storage.generatePresignedUrl({
+            key: file.original_audio_url,
+            expireTime: 86400 * 7, // 7天有效
+          });
+        } catch (e) {
+          console.error('生成签名URL失败:', e);
+        }
+      }
+      
       return {
         ...file,
         sentences_count: count || 0,
+        original_audio_signed_url,
       };
     }));
     
@@ -93,9 +107,23 @@ router.get('/:id', async (req: Request, res: Response) => {
       .eq('sentence_file_id', id)
       .order('sentence_index');
     
+    // 生成原始音频的签名 URL
+    let original_audio_signed_url = null;
+    if (file.original_audio_url) {
+      try {
+        original_audio_signed_url = await storage.generatePresignedUrl({
+          key: file.original_audio_url,
+          expireTime: 86400 * 7, // 7天有效
+        });
+      } catch (e) {
+        console.error('生成签名URL失败:', e);
+      }
+    }
+    
     res.json({
       file: {
         ...file,
+        original_audio_signed_url,
         sentences: sentences || [],
       },
     });

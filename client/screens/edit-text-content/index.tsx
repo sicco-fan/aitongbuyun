@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   ScrollView,
   TouchableOpacity,
@@ -7,7 +7,12 @@ import {
   ActivityIndicator,
   FlatList,
   Alert,
+  Platform,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as WebBrowser from 'expo-web-browser';
+import { Audio } from 'expo-av';
+import * as Sharing from 'expo-sharing';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useFocusEffect } from 'expo-router';
 import { useTheme } from '@/hooks/useTheme';
@@ -25,6 +30,8 @@ interface SentenceFile {
   id: number;
   title: string;
   original_audio_url: string;
+  original_audio_signed_url?: string;
+  original_duration?: number;
   text_content: string | null;
   status: string;
   created_at: string;
@@ -51,6 +58,15 @@ export default function EditTextContentScreen() {
   const [textContent, setTextContent] = useState('');
   const [sentences, setSentences] = useState<Sentence[]>([]);
   
+  // 音频播放状态
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackPosition, setPlaybackPosition] = useState(0);
+  const [playbackDuration, setPlaybackDuration] = useState(0);
+  const soundRef = useRef<Audio.Sound | null>(null);
+  
+  // 当前播放的文件ID（用于列表页）
+  const [playingFileId, setPlayingFileId] = useState<number | null>(null);
+  
   const [errorDialog, setErrorDialog] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: '',
@@ -61,10 +77,31 @@ export default function EditTextContentScreen() {
     message: '',
   });
 
+  // 删除确认
+  const [deleteConfirm, setDeleteConfirm] = useState<{ visible: boolean; fileId: number | null }>({
+    visible: false,
+    fileId: null,
+  });
+  const [deleting, setDeleting] = useState(false);
+
+  // 清理音频资源
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    };
+  }, []);
+
   // 加载文件列表
   const loadFileList = async () => {
     setLoading(true);
     try {
+      /**
+       * 服务端文件：server/src/routes/sentence-files.ts
+       * 接口：GET /api/v1/sentence-files
+       */
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`);
       const result = await response.json();
       
@@ -92,6 +129,11 @@ export default function EditTextContentScreen() {
   const loadFile = async (fileId: number) => {
     setLoading(true);
     try {
+      /**
+       * 服务端文件：server/src/routes/sentence-files.ts
+       * 接口：GET /api/v1/sentence-files/:id
+       * Path 参数：id: number
+       */
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${fileId}`);
       const result = await response.json();
       
@@ -203,6 +245,155 @@ export default function EditTextContentScreen() {
     parseSentences(text);
   };
 
+  // ===== 音频播放功能 =====
+  
+  // 播放/暂停音频
+  const togglePlayback = async (audioUrl: string, fileId?: number) => {
+    if (!audioUrl) return;
+
+    try {
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+      });
+
+      if (soundRef.current) {
+        if (isPlaying) {
+          await soundRef.current.pauseAsync();
+          setIsPlaying(false);
+        } else {
+          const status = await soundRef.current.getStatusAsync();
+          if (status.isLoaded && status.positionMillis >= (status.durationMillis || 0)) {
+            await soundRef.current.setPositionAsync(0);
+          }
+          await soundRef.current.playAsync();
+          setIsPlaying(true);
+        }
+      } else {
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: audioUrl },
+          { shouldPlay: true, isLooping: false },
+          (status) => {
+            if (status.isLoaded) {
+              setPlaybackPosition(status.positionMillis);
+              setPlaybackDuration(status.durationMillis || 0);
+              if (status.didJustFinish) {
+                setIsPlaying(false);
+                setPlaybackPosition(0);
+                setPlayingFileId(null);
+              }
+            }
+          }
+        );
+        soundRef.current = sound;
+        setIsPlaying(true);
+        if (fileId) setPlayingFileId(fileId);
+      }
+    } catch (error) {
+      console.error('播放失败:', error);
+      setErrorDialog({ visible: true, message: '音频播放失败' });
+    }
+  };
+
+  // 停止播放
+  const stopPlayback = async () => {
+    if (soundRef.current) {
+      await soundRef.current.stopAsync();
+      await soundRef.current.setPositionAsync(0);
+      setIsPlaying(false);
+      setPlaybackPosition(0);
+      setPlayingFileId(null);
+    }
+  };
+
+  // 下载音频
+  const handleDownload = async (audioUrl: string, fileName: string) => {
+    if (!audioUrl) return;
+
+    try {
+      if (Platform.OS === 'web') {
+        const link = document.createElement('a');
+        link.href = audioUrl;
+        link.download = `${fileName}.mp3`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        if (await Sharing.isAvailableAsync()) {
+          const cacheDir = (FileSystem as any).cacheDirectory || '';
+          const downloadPath = `${cacheDir}${fileName}.mp3`;
+          const downloadResult = await (FileSystem as any).downloadAsync(
+            audioUrl,
+            downloadPath
+          );
+          
+          if (downloadResult.uri) {
+            await Sharing.shareAsync(downloadResult.uri);
+          }
+        } else {
+          await WebBrowser.openBrowserAsync(audioUrl);
+        }
+      }
+    } catch (error) {
+      console.error('下载失败:', error);
+      setErrorDialog({ visible: true, message: '下载失败，请重试' });
+    }
+  };
+
+  // 删除文件
+  const handleDelete = async () => {
+    const fileId = deleteConfirm.fileId;
+    if (!fileId) return;
+    
+    setDeleting(true);
+    try {
+      // 停止播放
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+      
+      /**
+       * 服务端文件：server/src/routes/sentence-files.ts
+       * 接口：DELETE /api/v1/sentence-files/:id
+       * Path 参数：id: number
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${fileId}`, {
+        method: 'DELETE',
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // 如果在详情页删除，返回列表页
+        if (file && file.id === fileId) {
+          setFile(null);
+          setTextContent('');
+          setSentences([]);
+          loadFileList();
+        } else {
+          // 刷新列表
+          loadFileList();
+        }
+      } else {
+        throw new Error(result.error || '删除失败');
+      }
+    } catch (error) {
+      setErrorDialog({ visible: true, message: `删除失败：${(error as Error).message}` });
+    } finally {
+      setDeleting(false);
+      setDeleteConfirm({ visible: false, fileId: null });
+    }
+  };
+
+  // 格式化时长
+  const formatDuration = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
   // 渲染句子项
   const renderSentenceItem = ({ item, index }: { item: Sentence; index: number }) => (
     <View style={styles.sentenceItem}>
@@ -217,13 +408,114 @@ export default function EditTextContentScreen() {
     </View>
   );
 
+  // 渲染音频播放器卡片
+  const renderAudioPlayer = (audioFile: SentenceFile, compact: boolean = false) => {
+    const audioUrl = audioFile.original_audio_signed_url;
+    
+    return (
+      <View style={compact ? styles.audioCardCompact : styles.audioCard}>
+        <View style={styles.audioHeader}>
+          <View style={styles.audioIconContainer}>
+            <FontAwesome6 name="music" size={compact ? 20 : 24} color={theme.primary} />
+          </View>
+          <View style={styles.audioInfo}>
+            <ThemedText variant={compact ? "smallMedium" : "bodyMedium"} color={theme.textPrimary} numberOfLines={1}>
+              {audioFile.title}
+            </ThemedText>
+            {audioFile.original_duration ? (
+              <ThemedText variant="caption" color={theme.textMuted}>
+                {formatDuration(audioFile.original_duration)}
+              </ThemedText>
+            ) : null}
+          </View>
+        </View>
+
+        {/* 播放进度 - 仅详情页显示 */}
+        {!compact && playbackDuration > 0 && (
+          <View style={styles.progressContainer}>
+            <View style={styles.progressBarBg}>
+              <View 
+                style={[
+                  styles.progressBarFill, 
+                  { 
+                    width: `${(playbackPosition / playbackDuration) * 100}%`,
+                    backgroundColor: theme.primary 
+                  }
+                ]} 
+              />
+            </View>
+            <View style={styles.timeRow}>
+              <ThemedText variant="caption" color={theme.textMuted}>
+                {formatDuration(playbackPosition)}
+              </ThemedText>
+              <ThemedText variant="caption" color={theme.textMuted}>
+                {formatDuration(playbackDuration)}
+              </ThemedText>
+            </View>
+          </View>
+        )}
+
+        {/* 播放控制 */}
+        <View style={styles.playbackControls}>
+          {!compact && (
+            <TouchableOpacity 
+              style={styles.controlButtonSmall} 
+              onPress={stopPlayback}
+              disabled={!isPlaying && playbackPosition === 0}
+            >
+              <FontAwesome6 
+                name="stop" 
+                size={16} 
+                color={(!isPlaying && playbackPosition === 0) ? theme.textMuted : theme.textPrimary} 
+              />
+            </TouchableOpacity>
+          )}
+          
+          <TouchableOpacity 
+            style={compact ? styles.playButtonCompact : styles.playButton} 
+            onPress={() => togglePlayback(audioUrl!, audioFile.id)}
+          >
+            <FontAwesome6 
+              name={isPlaying && (playingFileId === audioFile.id || file?.id === audioFile.id) ? "pause" : "play"} 
+              size={compact ? 20 : 28} 
+              color={theme.buttonPrimaryText} 
+            />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.controlButtonSmall} 
+            onPress={() => handleDownload(audioUrl!, audioFile.title)}
+          >
+            <FontAwesome6 name="download" size={16} color={theme.textPrimary} />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.controlButtonSmall} 
+            onPress={() => setDeleteConfirm({ visible: true, fileId: audioFile.id })}
+          >
+            <FontAwesome6 name="trash" size={16} color={theme.error} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <ThemedView level="root" style={styles.header}>
           <View style={styles.headerRow}>
-            <TouchableOpacity onPress={() => router.back()}>
+            <TouchableOpacity onPress={() => {
+              if (file) {
+                setFile(null);
+                setTextContent('');
+                setSentences([]);
+                loadFileList();
+              } else {
+                router.back();
+              }
+            }}>
               <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
             </TouchableOpacity>
             <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
@@ -245,20 +537,8 @@ export default function EditTextContentScreen() {
           </View>
         ) : file ? (
           <>
-            {/* File Info */}
-            <View style={styles.fileInfoCard}>
-              <View style={styles.fileInfoHeader}>
-                <FontAwesome6 name="file-audio" size={24} color={theme.primary} />
-                <View style={styles.fileInfoContent}>
-                  <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-                    {file.title}
-                  </ThemedText>
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    状态: {file.status}
-                  </ThemedText>
-                </View>
-              </View>
-            </View>
+            {/* 音频播放器 */}
+            {file.original_audio_signed_url && renderAudioPlayer(file)}
 
             {/* Extract Button */}
             <TouchableOpacity
@@ -384,37 +664,23 @@ export default function EditTextContentScreen() {
                 </View>
               ) : (
                 fileList.map((item) => (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.fileItemCard}
-                    onPress={() => loadFile(item.id)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.fileItemIcon}>
-                      <FontAwesome6 name="file-audio" size={20} color={theme.primary} />
-                    </View>
-                    <View style={styles.fileItemContent}>
-                      <ThemedText variant="bodyMedium" color={theme.textPrimary} numberOfLines={1}>
-                        {item.title}
-                      </ThemedText>
-                      <View style={styles.fileItemMeta}>
-                        <ThemedText variant="caption" color={theme.textMuted}>
-                          {item.status === 'audio_ready' ? '待提取文本' : 
-                           item.status === 'text_ready' ? '待剪辑语音' :
-                           item.status === 'completed' ? '已完成' : item.status}
+                  <View key={item.id} style={styles.fileItemWrapper}>
+                    {/* 音频播放器 - 紧凑版 */}
+                    {item.original_audio_signed_url && renderAudioPlayer(item, true)}
+                    
+                    {/* 操作按钮 */}
+                    <View style={styles.fileItemActions}>
+                      <TouchableOpacity
+                        style={styles.fileItemActionButton}
+                        onPress={() => loadFile(item.id)}
+                      >
+                        <FontAwesome6 name="pen-to-square" size={14} color={theme.primary} />
+                        <ThemedText variant="small" color={theme.primary}>
+                          编辑文本
                         </ThemedText>
-                        {item.text_content && (
-                          <View style={styles.hasTextBadge}>
-                            <FontAwesome6 name="check" size={10} color={theme.success} />
-                            <ThemedText variant="tiny" color={theme.success}>
-                              有文本
-                            </ThemedText>
-                          </View>
-                        )}
-                      </View>
+                      </TouchableOpacity>
                     </View>
-                    <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
-                  </TouchableOpacity>
+                  </View>
                 ))
               )}
             </View>
@@ -440,6 +706,17 @@ export default function EditTextContentScreen() {
         confirmText="确定"
         onConfirm={() => setSuccessDialog({ visible: false, message: '' })}
         onCancel={() => setSuccessDialog({ visible: false, message: '' })}
+      />
+
+      {/* Delete Confirm Dialog */}
+      <ConfirmDialog
+        visible={deleteConfirm.visible}
+        title="确认删除"
+        message="确定要删除这个文件吗？删除后将无法恢复。"
+        confirmText="删除"
+        cancelText="取消"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteConfirm({ visible: false, fileId: null })}
       />
     </Screen>
   );

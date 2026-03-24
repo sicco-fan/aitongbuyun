@@ -436,6 +436,53 @@ export default function CreateSentenceFileScreen() {
     setPlaybackDuration(0);
   };
 
+  // 删除文件
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteDialog, setConfirmDeleteDialog] = useState(false);
+
+  const handleDelete = async () => {
+    if (!uploadedFile) return;
+    
+    setDeleting(true);
+    try {
+      // 停止播放
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+      
+      /**
+       * 服务端文件：server/src/routes/sentence-files.ts
+       * 接口：DELETE /api/v1/sentence-files/:id
+       * Path 参数：id: number
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${uploadedFile.id}`, {
+        method: 'DELETE',
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // 重置状态
+        setUploadedFile(null);
+        setTitle('');
+        setDescription('');
+        setFile(null);
+        setLinkUrl('');
+        setIsPlaying(false);
+        setPlaybackPosition(0);
+        setPlaybackDuration(0);
+      } else {
+        throw new Error(result.error || '删除失败');
+      }
+    } catch (error) {
+      setErrorDialog({ visible: true, message: `删除失败：${(error as Error).message}` });
+    } finally {
+      setDeleting(false);
+      setConfirmDeleteDialog(false);
+    }
+  };
+
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -554,12 +601,23 @@ export default function CreateSentenceFileScreen() {
           {/* 操作按钮 */}
           <View style={styles.actionButtons}>
             <TouchableOpacity 
+              style={styles.deleteButton} 
+              onPress={() => setConfirmDeleteDialog(true)}
+              disabled={deleting}
+            >
+              <FontAwesome6 name="trash" size={18} color={theme.error} />
+              <ThemedText variant="bodyMedium" color={theme.error}>
+                删除
+              </ThemedText>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
               style={styles.secondaryButton} 
               onPress={handleDownload}
             >
               <FontAwesome6 name="download" size={18} color={theme.primary} />
               <ThemedText variant="bodyMedium" color={theme.primary}>
-                下载音频
+                下载
               </ThemedText>
             </TouchableOpacity>
             
@@ -569,7 +627,7 @@ export default function CreateSentenceFileScreen() {
             >
               <FontAwesome6 name="arrow-right" size={18} color={theme.buttonPrimaryText} />
               <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-                继续下一步
+                继续
               </ThemedText>
             </TouchableOpacity>
           </View>
@@ -591,6 +649,17 @@ export default function CreateSentenceFileScreen() {
           confirmText="确定"
           onConfirm={() => setErrorDialog({ visible: false, message: '' })}
           onCancel={() => setErrorDialog({ visible: false, message: '' })}
+        />
+
+        {/* Delete Confirm Dialog */}
+        <ConfirmDialog
+          visible={confirmDeleteDialog}
+          title="确认删除"
+          message="确定要删除这个文件吗？删除后将无法恢复。"
+          confirmText="删除"
+          cancelText="取消"
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmDeleteDialog(false)}
         />
       </Screen>
     );
