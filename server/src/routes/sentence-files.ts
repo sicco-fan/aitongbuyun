@@ -111,13 +111,20 @@ router.get('/:id', async (req: Request, res: Response) => {
  * Body: FormData { file: audio/video file, title: string, description?: string }
  */
 router.post('/', upload.single('file'), async (req: Request, res: Response) => {
+  console.log('===== POST /api/v1/sentence-files =====');
+  console.log('Request headers:', JSON.stringify(req.headers['content-type']));
+  
   try {
     if (!req.file) {
+      console.log('错误: 没有文件');
       return res.status(400).json({ error: '请上传音频或视频文件' });
     }
 
     const { title, description } = req.body;
+    console.log('请求参数:', { title, description, hasFile: !!req.file });
+    
     if (!title) {
+      console.log('错误: 没有标题');
       return res.status(400).json({ error: '请提供标题' });
     }
 

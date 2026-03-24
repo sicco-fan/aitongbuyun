@@ -201,6 +201,11 @@ export default function CreateSentenceFileScreen() {
     setUploadProgress(0);
     setUploadStatus('准备上传...');
 
+    console.log('===== 开始上传 =====');
+    console.log('importMode:', importMode);
+    console.log('file:', file ? { name: file.name, size: file.size, mimeType: file.mimeType } : null);
+    console.log('title:', title);
+
     try {
       if (importMode === 'link') {
         // 链接导入
@@ -248,8 +253,12 @@ export default function CreateSentenceFileScreen() {
           }
         } else {
           // 移动端上传 - 使用 FileSystem.uploadAsync
+          const uploadUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`;
+          console.log('移动端上传 URL:', uploadUrl);
+          console.log('文件 URI:', file!.uri);
+          
           const uploadResult = await (FileSystem as any).uploadAsync(
-            `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`,
+            uploadUrl,
             file!.uri,
             {
               httpMethod: 'POST',
@@ -258,6 +267,8 @@ export default function CreateSentenceFileScreen() {
               parameters: { title, description },
             }
           );
+          
+          console.log('上传结果:', uploadResult.body?.substring(0, 200));
           
           const result = JSON.parse(uploadResult.body);
           

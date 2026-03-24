@@ -871,7 +871,7 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     
     // 计算总时长（优先使用 ffprobe 获取的实际时长）
     const lastSentenceEndTime = sentences.length > 0 ? sentences[sentences.length - 1].end_time : 0;
-    const totalDuration = duration || lastSentenceEndTime || sentences.length * 2000;
+    const totalDuration = Math.round(duration || lastSentenceEndTime || sentences.length * 2000);
     
     console.log(`\n时长计算: FFprobe=${duration}, 最后句结束=${lastSentenceEndTime}, 最终=${totalDuration}`);
     console.log(`生成 ${sentences.length} 个句子，示例:`, sentences.slice(0, 3));
