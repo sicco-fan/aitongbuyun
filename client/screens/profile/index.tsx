@@ -221,6 +221,24 @@ export default function ProfileScreen() {
 
         <TouchableOpacity 
           style={styles.adminCard}
+          onPress={() => router.push('/sentence-workshop')}
+        >
+          <View style={[styles.adminIcon, { backgroundColor: theme.accent + '15' }]}>
+            <FontAwesome6 name="wand-magic-sparkles" size={24} color={theme.accent} />
+          </View>
+          <View style={styles.adminContent}>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+              句库制作
+            </ThemedText>
+            <ThemedText variant="small" color={theme.textMuted}>
+              上传素材、提取文本、制作语音片段
+            </ThemedText>
+          </View>
+          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.adminCard}
           onPress={() => router.push('/admin')}
         >
           <View style={styles.adminIcon}>

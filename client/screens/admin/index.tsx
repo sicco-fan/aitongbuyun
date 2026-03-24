@@ -222,46 +222,26 @@ export default function AdminScreen() {
           </ThemedText>
         </ThemedView>
 
-        {/* Quick Actions */}
-        <View style={{ gap: Spacing.md, marginBottom: Spacing.lg }}>
-          <TouchableOpacity 
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: theme.accent,
-              padding: Spacing.lg,
-              borderRadius: BorderRadius.lg,
-              gap: Spacing.sm,
-            }}
-            onPress={() => router.push('/sentence-workshop')}
-            activeOpacity={0.8}
-          >
-            <FontAwesome6 name="wand-magic-sparkles" size={20} color={theme.buttonPrimaryText} />
-            <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-              句库制作
-            </ThemedText>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: theme.primary,
-              padding: Spacing.lg,
-              borderRadius: BorderRadius.lg,
-              gap: Spacing.sm,
-            }}
-            onPress={handleAddMaterial}
-            activeOpacity={0.8}
-          >
-            <FontAwesome6 name="plus" size={20} color={theme.buttonPrimaryText} />
-            <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-              上传新素材（旧）
-            </ThemedText>
-          </TouchableOpacity>
-        </View>
+        {/* Upload Section */}
+        <TouchableOpacity 
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: theme.primary,
+            padding: Spacing.lg,
+            borderRadius: BorderRadius.lg,
+            marginBottom: Spacing.lg,
+            gap: Spacing.sm,
+          }}
+          onPress={handleAddMaterial}
+          activeOpacity={0.8}
+        >
+          <FontAwesome6 name="plus" size={20} color={theme.buttonPrimaryText} />
+          <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
+            上传新素材
+          </ThemedText>
+        </TouchableOpacity>
 
         {/* Search */}
         <View style={styles.searchSection}>
