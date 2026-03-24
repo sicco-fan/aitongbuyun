@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   ScrollView,
   TouchableOpacity,
@@ -15,6 +15,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Audio } from 'expo-av';
 import * as Sharing from 'expo-sharing';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
+import { useFocusEffect } from 'expo-router';
 import { useTheme } from '@/hooks/useTheme';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
@@ -37,6 +38,18 @@ interface FileInfo {
   size: number;
   mimeType: string;
   file?: File; // Web 端使用
+}
+
+interface SentenceFile {
+  id: number;
+  title: string;
+  description: string;
+  original_audio_url: string;
+  original_audio_signed_url: string;
+  original_duration: number;
+  text_content: string | null;
+  status: string;
+  sentences_count: number;
 }
 
 interface UploadedFile {
@@ -67,16 +80,28 @@ export default function CreateSentenceFileScreen() {
   // 上传成功后的文件信息
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   
+  // 已创建的文件列表
+  const [fileList, setFileList] = useState<SentenceFile[]>([]);
+  const [loadingList, setLoadingList] = useState(false);
+  
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPosition, setPlaybackPosition] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(0);
+  const [playingFileId, setPlayingFileId] = useState<number | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   
   const [errorDialog, setErrorDialog] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: '',
   });
+
+  // 删除确认
+  const [deleteConfirm, setDeleteConfirm] = useState<{ visible: boolean; fileId: number | null }>({
+    visible: false,
+    fileId: null,
+  });
+  const [deleting, setDeleting] = useState(false);
 
   // 清理音频资源
   useEffect(() => {
@@ -87,6 +112,34 @@ export default function CreateSentenceFileScreen() {
       }
     };
   }, []);
+
+  // 页面获得焦点时加载文件列表
+  useFocusEffect(
+    useCallback(() => {
+      loadFileList();
+    }, [])
+  );
+
+  // 加载文件列表
+  const loadFileList = async () => {
+    setLoadingList(true);
+    try {
+      /**
+       * 服务端文件：server/src/routes/sentence-files.ts
+       * 接口：GET /api/v1/sentence-files
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`);
+      const result = await response.json();
+      
+      if (result.files) {
+        setFileList(result.files);
+      }
+    } catch (error) {
+      console.error('加载文件列表失败:', error);
+    } finally {
+      setLoadingList(false);
+    }
+  };
 
   const requestPermissions = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -245,6 +298,7 @@ export default function CreateSentenceFileScreen() {
         if (result.success && result.file) {
           setUploadedFile(result.file);
           setUploadProgress(100);
+          loadFileList(); // 刷新列表
         } else {
           throw new Error(result.error || '导入失败');
         }
@@ -273,6 +327,7 @@ export default function CreateSentenceFileScreen() {
           if (result.success && result.file) {
             setUploadProgress(100);
             setUploadedFile(result.file);
+            loadFileList(); // 刷新列表
           } else {
             throw new Error(result.error || '上传失败');
           }
@@ -300,6 +355,7 @@ export default function CreateSentenceFileScreen() {
           if (result.success && result.file) {
             setUploadProgress(100);
             setUploadedFile(result.file);
+            loadFileList(); // 刷新列表
           } else {
             throw new Error(result.error || '上传失败');
           }
@@ -314,8 +370,8 @@ export default function CreateSentenceFileScreen() {
   };
 
   // 播放/暂停音频
-  const togglePlayback = async () => {
-    if (!uploadedFile?.original_audio_signed_url) return;
+  const togglePlayback = async (audioUrl: string, fileId: number) => {
+    if (!audioUrl) return;
 
     try {
       // 设置音频模式
@@ -324,13 +380,12 @@ export default function CreateSentenceFileScreen() {
         staysActiveInBackground: true,
       });
 
-      if (soundRef.current) {
+      // 如果当前正在播放这个文件
+      if (soundRef.current && playingFileId === fileId) {
         if (isPlaying) {
-          // 暂停
           await soundRef.current.pauseAsync();
           setIsPlaying(false);
         } else {
-          // 继续播放或重新播放
           const status = await soundRef.current.getStatusAsync();
           if (status.isLoaded && status.positionMillis >= (status.durationMillis || 0)) {
             await soundRef.current.setPositionAsync(0);
@@ -339,9 +394,14 @@ export default function CreateSentenceFileScreen() {
           setIsPlaying(true);
         }
       } else {
-        // 首次播放，创建音频
+        // 播放新文件
+        if (soundRef.current) {
+          await soundRef.current.unloadAsync();
+          soundRef.current = null;
+        }
+
         const { sound } = await Audio.Sound.createAsync(
-          { uri: uploadedFile.original_audio_signed_url },
+          { uri: audioUrl },
           { shouldPlay: true, isLooping: false },
           (status) => {
             if (status.isLoaded) {
@@ -350,12 +410,14 @@ export default function CreateSentenceFileScreen() {
               if (status.didJustFinish) {
                 setIsPlaying(false);
                 setPlaybackPosition(0);
+                setPlayingFileId(null);
               }
             }
           }
         );
         soundRef.current = sound;
         setIsPlaying(true);
+        setPlayingFileId(fileId);
       }
     } catch (error) {
       console.error('播放失败:', error);
@@ -370,19 +432,20 @@ export default function CreateSentenceFileScreen() {
       await soundRef.current.setPositionAsync(0);
       setIsPlaying(false);
       setPlaybackPosition(0);
+      setPlayingFileId(null);
     }
   };
 
   // 下载音频
-  const handleDownload = async () => {
-    if (!uploadedFile?.original_audio_signed_url) return;
+  const handleDownload = async (audioUrl: string, fileName: string) => {
+    if (!audioUrl) return;
 
     try {
       if (Platform.OS === 'web') {
         // Web 端直接打开链接下载
         const link = document.createElement('a');
-        link.href = uploadedFile.original_audio_signed_url;
-        link.download = `${uploadedFile.title}.mp3`;
+        link.href = audioUrl;
+        link.download = `${fileName}.mp3`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -391,9 +454,9 @@ export default function CreateSentenceFileScreen() {
         if (await Sharing.isAvailableAsync()) {
           // 先下载到本地
           const cacheDir = (FileSystem as any).cacheDirectory || '';
-          const downloadPath = `${cacheDir}${uploadedFile.title}.mp3`;
+          const downloadPath = `${cacheDir}${fileName}.mp3`;
           const downloadResult = await (FileSystem as any).downloadAsync(
-            uploadedFile.original_audio_signed_url,
+            audioUrl,
             downloadPath
           );
           
@@ -402,7 +465,7 @@ export default function CreateSentenceFileScreen() {
           }
         } else {
           // 分享不可用时，直接打开浏览器
-          await WebBrowser.openBrowserAsync(uploadedFile.original_audio_signed_url);
+          await WebBrowser.openBrowserAsync(audioUrl);
         }
       }
     } catch (error) {
@@ -437,11 +500,9 @@ export default function CreateSentenceFileScreen() {
   };
 
   // 删除文件
-  const [deleting, setDeleting] = useState(false);
-  const [confirmDeleteDialog, setConfirmDeleteDialog] = useState(false);
-
   const handleDelete = async () => {
-    if (!uploadedFile) return;
+    const fileId = deleteConfirm.fileId;
+    if (!fileId) return;
     
     setDeleting(true);
     try {
@@ -456,22 +517,26 @@ export default function CreateSentenceFileScreen() {
        * 接口：DELETE /api/v1/sentence-files/:id
        * Path 参数：id: number
        */
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${uploadedFile.id}`, {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${fileId}`, {
         method: 'DELETE',
       });
       
       const result = await response.json();
       
       if (result.success) {
-        // 重置状态
-        setUploadedFile(null);
-        setTitle('');
-        setDescription('');
-        setFile(null);
-        setLinkUrl('');
-        setIsPlaying(false);
-        setPlaybackPosition(0);
-        setPlaybackDuration(0);
+        // 如果删除的是当前上传的文件
+        if (uploadedFile && uploadedFile.id === fileId) {
+          setUploadedFile(null);
+          setTitle('');
+          setDescription('');
+          setFile(null);
+          setLinkUrl('');
+          setIsPlaying(false);
+          setPlaybackPosition(0);
+          setPlaybackDuration(0);
+        }
+        // 刷新列表
+        loadFileList();
       } else {
         throw new Error(result.error || '删除失败');
       }
@@ -479,7 +544,7 @@ export default function CreateSentenceFileScreen() {
       setErrorDialog({ visible: true, message: `删除失败：${(error as Error).message}` });
     } finally {
       setDeleting(false);
-      setConfirmDeleteDialog(false);
+      setDeleteConfirm({ visible: false, fileId: null });
     }
   };
 
@@ -494,6 +559,75 @@ export default function CreateSentenceFileScreen() {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // 渲染文件列表项
+  const renderFileItem = (item: SentenceFile) => {
+    const audioUrl = item.original_audio_signed_url;
+    const isCurrentPlaying = playingFileId === item.id && isPlaying;
+    
+    return (
+      <View key={item.id} style={styles.fileListItem}>
+        <View style={styles.fileListItemHeader}>
+          <View style={styles.fileListItemIcon}>
+            <FontAwesome6 name="music" size={16} color={theme.primary} />
+          </View>
+          <View style={styles.fileListItemInfo}>
+            <ThemedText variant="smallMedium" color={theme.textPrimary} numberOfLines={1}>
+              {item.title}
+            </ThemedText>
+            <View style={styles.fileListItemMeta}>
+              {item.original_duration > 0 && (
+                <ThemedText variant="tiny" color={theme.textMuted}>
+                  {formatDuration(item.original_duration)}
+                </ThemedText>
+              )}
+              <ThemedText variant="tiny" color={theme.textMuted}>
+                {item.status === 'audio_ready' ? '待提取文本' : 
+                 item.status === 'text_ready' ? '待剪辑语音' :
+                 item.status === 'completed' ? '已完成' : item.status}
+              </ThemedText>
+            </View>
+          </View>
+        </View>
+        
+        <View style={styles.fileListItemActions}>
+          <TouchableOpacity 
+            style={styles.fileListActionButton}
+            onPress={() => togglePlayback(audioUrl, item.id)}
+          >
+            <FontAwesome6 
+              name={isCurrentPlaying ? "pause" : "play"} 
+              size={14} 
+              color={theme.buttonPrimaryText} 
+            />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.fileListActionButton}
+            onPress={() => handleDownload(audioUrl, item.title)}
+          >
+            <FontAwesome6 name="download" size={14} color={theme.textPrimary} />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.fileListActionButton, styles.fileListActionDelete]}
+            onPress={() => setDeleteConfirm({ visible: true, fileId: item.id })}
+          >
+            <FontAwesome6 name="trash" size={14} color={theme.error} />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.fileListEditButton}
+            onPress={() => router.push('/edit-text-content', { fileId: item.id })}
+          >
+            <ThemedText variant="small" color={theme.primary}>
+              编辑
+            </ThemedText>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
   };
 
   // 如果已上传成功，显示音频播放器
@@ -584,15 +718,15 @@ export default function CreateSentenceFileScreen() {
                 />
               </TouchableOpacity>
               
-              <TouchableOpacity style={styles.playButton} onPress={togglePlayback}>
+              <TouchableOpacity style={styles.playButton} onPress={() => togglePlayback(uploadedFile.original_audio_signed_url, uploadedFile.id)}>
                 <FontAwesome6 
-                  name={isPlaying ? "pause" : "play"} 
+                  name={isPlaying && playingFileId === uploadedFile.id ? "pause" : "play"} 
                   size={28} 
                   color={theme.buttonPrimaryText} 
                 />
               </TouchableOpacity>
               
-              <TouchableOpacity style={styles.controlButton} onPress={handleDownload}>
+              <TouchableOpacity style={styles.controlButton} onPress={() => handleDownload(uploadedFile.original_audio_signed_url, uploadedFile.title)}>
                 <FontAwesome6 name="download" size={20} color={theme.textPrimary} />
               </TouchableOpacity>
             </View>
@@ -602,7 +736,7 @@ export default function CreateSentenceFileScreen() {
           <View style={styles.actionButtons}>
             <TouchableOpacity 
               style={styles.deleteButton} 
-              onPress={() => setConfirmDeleteDialog(true)}
+              onPress={() => setDeleteConfirm({ visible: true, fileId: uploadedFile.id })}
               disabled={deleting}
             >
               <FontAwesome6 name="trash" size={18} color={theme.error} />
@@ -613,7 +747,7 @@ export default function CreateSentenceFileScreen() {
             
             <TouchableOpacity 
               style={styles.secondaryButton} 
-              onPress={handleDownload}
+              onPress={() => handleDownload(uploadedFile.original_audio_signed_url, uploadedFile.title)}
             >
               <FontAwesome6 name="download" size={18} color={theme.primary} />
               <ThemedText variant="bodyMedium" color={theme.primary}>
@@ -636,7 +770,7 @@ export default function CreateSentenceFileScreen() {
           <View style={styles.tipCard}>
             <FontAwesome6 name="circle-info" size={16} color={theme.textMuted} />
             <ThemedText variant="small" color={theme.textMuted}>
-              点击「继续下一步」进入文本编辑页面，可以提取文本或手动输入句子内容。
+              点击「继续」进入文本编辑页面，可以提取文本或手动输入句子内容。
             </ThemedText>
           </View>
         </ScrollView>
@@ -653,13 +787,13 @@ export default function CreateSentenceFileScreen() {
 
         {/* Delete Confirm Dialog */}
         <ConfirmDialog
-          visible={confirmDeleteDialog}
+          visible={deleteConfirm.visible}
           title="确认删除"
           message="确定要删除这个文件吗？删除后将无法恢复。"
           confirmText="删除"
           cancelText="取消"
           onConfirm={handleDelete}
-          onCancel={() => setConfirmDeleteDialog(false)}
+          onCancel={() => setDeleteConfirm({ visible: false, fileId: null })}
         />
       </Screen>
     );
@@ -864,6 +998,33 @@ export default function CreateSentenceFileScreen() {
             </>
           )}
         </TouchableOpacity>
+
+        {/* 已创建的文件列表 */}
+        <View style={styles.fileListSection}>
+          <View style={styles.fileListHeader}>
+            <ThemedText variant="smallMedium" color={theme.textSecondary}>
+              已创建的文件
+            </ThemedText>
+            <ThemedText variant="caption" color={theme.textMuted}>
+              {fileList.length} 个
+            </ThemedText>
+          </View>
+          
+          {loadingList ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={theme.primary} />
+            </View>
+          ) : fileList.length === 0 ? (
+            <View style={styles.emptyFileList}>
+              <FontAwesome6 name="folder-open" size={32} color={theme.textMuted} />
+              <ThemedText variant="small" color={theme.textMuted}>
+                暂无文件
+              </ThemedText>
+            </View>
+          ) : (
+            fileList.map(renderFileItem)
+          )}
+        </View>
       </ScrollView>
 
       {/* Error Dialog */}
@@ -874,6 +1035,17 @@ export default function CreateSentenceFileScreen() {
         confirmText="确定"
         onConfirm={() => setErrorDialog({ visible: false, message: '' })}
         onCancel={() => setErrorDialog({ visible: false, message: '' })}
+      />
+
+      {/* Delete Confirm Dialog */}
+      <ConfirmDialog
+        visible={deleteConfirm.visible}
+        title="确认删除"
+        message="确定要删除这个文件吗？删除后将无法恢复。"
+        confirmText="删除"
+        cancelText="取消"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteConfirm({ visible: false, fileId: null })}
       />
     </Screen>
   );

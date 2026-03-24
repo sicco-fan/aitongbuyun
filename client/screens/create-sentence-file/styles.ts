@@ -276,5 +276,83 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.lg,
       padding: Spacing.lg,
     },
+    // 文件列表区域
+    fileListSection: {
+      marginTop: Spacing.xl,
+      paddingTop: Spacing.lg,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+    },
+    fileListHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.md,
+    },
+    loadingContainer: {
+      paddingVertical: Spacing.xl,
+      alignItems: 'center',
+    },
+    emptyFileList: {
+      paddingVertical: Spacing['2xl'],
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    // 文件列表项
+    fileListItem: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.md,
+      marginBottom: Spacing.sm,
+    },
+    fileListItemHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    fileListItemIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.primary + '15',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: Spacing.sm,
+    },
+    fileListItemInfo: {
+      flex: 1,
+    },
+    fileListItemMeta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      marginTop: 2,
+    },
+    fileListItemActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      gap: Spacing.sm,
+      marginTop: Spacing.sm,
+      paddingTop: Spacing.sm,
+      borderTopWidth: 1,
+      borderTopColor: theme.borderLight,
+    },
+    fileListActionButton: {
+      width: 32,
+      height: 32,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    fileListActionDelete: {
+      backgroundColor: theme.backgroundTertiary,
+    },
+    fileListEditButton: {
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.xs,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.primary + '15',
+    },
   });
 };
