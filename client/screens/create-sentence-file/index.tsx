@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   ScrollView,
   TouchableOpacity,
@@ -6,12 +6,14 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
-  Animated,
-  Modal,
+  Linking,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as WebBrowser from 'expo-web-browser';
+import { Audio } from 'expo-av';
+import * as Sharing from 'expo-sharing';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
 import { Screen } from '@/components/Screen';
@@ -37,6 +39,16 @@ interface FileInfo {
   file?: File; // Web 端使用
 }
 
+interface UploadedFile {
+  id: number;
+  title: string;
+  description: string;
+  original_audio_url: string;
+  original_audio_signed_url: string;
+  original_duration: number;
+  status: string;
+}
+
 export default function CreateSentenceFileScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -52,17 +64,29 @@ export default function CreateSentenceFileScreen() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState('');
   
-  const [successDialog, setSuccessDialog] = useState<{ visible: boolean; fileId: number }>({
-    visible: false,
-    fileId: 0,
-  });
+  // 上传成功后的文件信息
+  const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
+  
+  // 音频播放状态
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackPosition, setPlaybackPosition] = useState(0);
+  const [playbackDuration, setPlaybackDuration] = useState(0);
+  const soundRef = useRef<Audio.Sound | null>(null);
   
   const [errorDialog, setErrorDialog] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: '',
   });
 
-  const progressAnim = useRef(new Animated.Value(0)).current;
+  // 清理音频资源
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    };
+  }, []);
 
   const requestPermissions = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -219,7 +243,8 @@ export default function CreateSentenceFileScreen() {
         const result = await response.json();
         
         if (result.success && result.file) {
-          setSuccessDialog({ visible: true, fileId: result.file.id });
+          setUploadedFile(result.file);
+          setUploadProgress(100);
         } else {
           throw new Error(result.error || '导入失败');
         }
@@ -247,7 +272,7 @@ export default function CreateSentenceFileScreen() {
           
           if (result.success && result.file) {
             setUploadProgress(100);
-            setSuccessDialog({ visible: true, fileId: result.file.id });
+            setUploadedFile(result.file);
           } else {
             throw new Error(result.error || '上传失败');
           }
@@ -274,7 +299,7 @@ export default function CreateSentenceFileScreen() {
           
           if (result.success && result.file) {
             setUploadProgress(100);
-            setSuccessDialog({ visible: true, fileId: result.file.id });
+            setUploadedFile(result.file);
           } else {
             throw new Error(result.error || '上传失败');
           }
@@ -288,10 +313,127 @@ export default function CreateSentenceFileScreen() {
     }
   };
 
-  const handleSuccessConfirm = () => {
-    setSuccessDialog({ visible: false, fileId: 0 });
-    // 跳转到文本编辑页面
-    router.push('/edit-text-content', { fileId: successDialog.fileId });
+  // 播放/暂停音频
+  const togglePlayback = async () => {
+    if (!uploadedFile?.original_audio_signed_url) return;
+
+    try {
+      // 设置音频模式
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+      });
+
+      if (soundRef.current) {
+        if (isPlaying) {
+          // 暂停
+          await soundRef.current.pauseAsync();
+          setIsPlaying(false);
+        } else {
+          // 继续播放或重新播放
+          const status = await soundRef.current.getStatusAsync();
+          if (status.isLoaded && status.positionMillis >= (status.durationMillis || 0)) {
+            await soundRef.current.setPositionAsync(0);
+          }
+          await soundRef.current.playAsync();
+          setIsPlaying(true);
+        }
+      } else {
+        // 首次播放，创建音频
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: uploadedFile.original_audio_signed_url },
+          { shouldPlay: true, isLooping: false },
+          (status) => {
+            if (status.isLoaded) {
+              setPlaybackPosition(status.positionMillis);
+              setPlaybackDuration(status.durationMillis || 0);
+              if (status.didJustFinish) {
+                setIsPlaying(false);
+                setPlaybackPosition(0);
+              }
+            }
+          }
+        );
+        soundRef.current = sound;
+        setIsPlaying(true);
+      }
+    } catch (error) {
+      console.error('播放失败:', error);
+      setErrorDialog({ visible: true, message: '音频播放失败' });
+    }
+  };
+
+  // 停止播放
+  const stopPlayback = async () => {
+    if (soundRef.current) {
+      await soundRef.current.stopAsync();
+      await soundRef.current.setPositionAsync(0);
+      setIsPlaying(false);
+      setPlaybackPosition(0);
+    }
+  };
+
+  // 下载音频
+  const handleDownload = async () => {
+    if (!uploadedFile?.original_audio_signed_url) return;
+
+    try {
+      if (Platform.OS === 'web') {
+        // Web 端直接打开链接下载
+        const link = document.createElement('a');
+        link.href = uploadedFile.original_audio_signed_url;
+        link.download = `${uploadedFile.title}.mp3`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        // 移动端使用分享功能
+        if (await Sharing.isAvailableAsync()) {
+          // 先下载到本地
+          const cacheDir = (FileSystem as any).cacheDirectory || '';
+          const downloadPath = `${cacheDir}${uploadedFile.title}.mp3`;
+          const downloadResult = await (FileSystem as any).downloadAsync(
+            uploadedFile.original_audio_signed_url,
+            downloadPath
+          );
+          
+          if (downloadResult.uri) {
+            await Sharing.shareAsync(downloadResult.uri);
+          }
+        } else {
+          // 分享不可用时，直接打开浏览器
+          await WebBrowser.openBrowserAsync(uploadedFile.original_audio_signed_url);
+        }
+      }
+    } catch (error) {
+      console.error('下载失败:', error);
+      setErrorDialog({ visible: true, message: '下载失败，请重试' });
+    }
+  };
+
+  // 继续下一步
+  const handleContinue = () => {
+    if (uploadedFile) {
+      router.push('/edit-text-content', { fileId: uploadedFile.id });
+    }
+  };
+
+  // 重新上传
+  const handleReset = async () => {
+    // 停止播放
+    if (soundRef.current) {
+      await soundRef.current.unloadAsync();
+      soundRef.current = null;
+    }
+    
+    setUploadedFile(null);
+    setTitle('');
+    setDescription('');
+    setFile(null);
+    setLinkUrl('');
+    setIsPlaying(false);
+    setPlaybackPosition(0);
+    setPlaybackDuration(0);
   };
 
   const formatFileSize = (bytes: number) => {
@@ -300,6 +442,161 @@ export default function CreateSentenceFileScreen() {
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   };
 
+  const formatDuration = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // 如果已上传成功，显示音频播放器
+  if (uploadedFile) {
+    return (
+      <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* Header */}
+          <ThemedView level="root" style={styles.header}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity onPress={handleReset}>
+                <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
+              </TouchableOpacity>
+              <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
+                文件已创建
+              </ThemedText>
+              <View style={{ width: 20 }} />
+            </View>
+          </ThemedView>
+
+          {/* 成功提示 */}
+          <View style={styles.successCard}>
+            <View style={styles.successIcon}>
+              <FontAwesome6 name="circle-check" size={48} color={theme.success} />
+            </View>
+            <ThemedText variant="h4" color={theme.textPrimary} style={styles.successTitle}>
+              创建成功
+            </ThemedText>
+            <ThemedText variant="body" color={theme.textMuted}>
+              原始音频文件已生成，可以播放或下载
+            </ThemedText>
+          </View>
+
+          {/* 文件信息 */}
+          <View style={styles.audioCard}>
+            <View style={styles.audioHeader}>
+              <View style={styles.audioIconContainer}>
+                <FontAwesome6 name="music" size={24} color={theme.primary} />
+              </View>
+              <View style={styles.audioInfo}>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary} numberOfLines={1}>
+                  {uploadedFile.title}
+                </ThemedText>
+                <ThemedText variant="small" color={theme.textMuted}>
+                  {uploadedFile.original_duration > 0 
+                    ? `时长: ${formatDuration(uploadedFile.original_duration)}` 
+                    : '时长未知'}
+                </ThemedText>
+              </View>
+            </View>
+
+            {/* 播放进度 */}
+            {playbackDuration > 0 && (
+              <View style={styles.progressContainer}>
+                <View style={styles.progressBarBg}>
+                  <View 
+                    style={[
+                      styles.progressBarFill, 
+                      { 
+                        width: `${(playbackPosition / playbackDuration) * 100}%`,
+                        backgroundColor: theme.primary 
+                      }
+                    ]} 
+                  />
+                </View>
+                <View style={styles.timeRow}>
+                  <ThemedText variant="caption" color={theme.textMuted}>
+                    {formatDuration(playbackPosition)}
+                  </ThemedText>
+                  <ThemedText variant="caption" color={theme.textMuted}>
+                    {formatDuration(playbackDuration)}
+                  </ThemedText>
+                </View>
+              </View>
+            )}
+
+            {/* 播放控制 */}
+            <View style={styles.playbackControls}>
+              <TouchableOpacity 
+                style={styles.controlButton} 
+                onPress={stopPlayback}
+                disabled={!isPlaying && playbackPosition === 0}
+              >
+                <FontAwesome6 
+                  name="stop" 
+                  size={20} 
+                  color={(!isPlaying && playbackPosition === 0) ? theme.textMuted : theme.textPrimary} 
+                />
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.playButton} onPress={togglePlayback}>
+                <FontAwesome6 
+                  name={isPlaying ? "pause" : "play"} 
+                  size={28} 
+                  color={theme.buttonPrimaryText} 
+                />
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.controlButton} onPress={handleDownload}>
+                <FontAwesome6 name="download" size={20} color={theme.textPrimary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* 操作按钮 */}
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={styles.secondaryButton} 
+              onPress={handleDownload}
+            >
+              <FontAwesome6 name="download" size={18} color={theme.primary} />
+              <ThemedText variant="bodyMedium" color={theme.primary}>
+                下载音频
+              </ThemedText>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.primaryButton} 
+              onPress={handleContinue}
+            >
+              <FontAwesome6 name="arrow-right" size={18} color={theme.buttonPrimaryText} />
+              <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
+                继续下一步
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+
+          {/* 提示信息 */}
+          <View style={styles.tipCard}>
+            <FontAwesome6 name="circle-info" size={16} color={theme.textMuted} />
+            <ThemedText variant="small" color={theme.textMuted}>
+              点击「继续下一步」进入文本编辑页面，可以提取文本或手动输入句子内容。
+            </ThemedText>
+          </View>
+        </ScrollView>
+
+        {/* Error Dialog */}
+        <ConfirmDialog
+          visible={errorDialog.visible}
+          title="错误"
+          message={errorDialog.message}
+          confirmText="确定"
+          onConfirm={() => setErrorDialog({ visible: false, message: '' })}
+          onCancel={() => setErrorDialog({ visible: false, message: '' })}
+        />
+      </Screen>
+    );
+  }
+
+  // 正常的上传界面
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -499,16 +796,6 @@ export default function CreateSentenceFileScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
-
-      {/* Success Dialog */}
-      <ConfirmDialog
-        visible={successDialog.visible}
-        title="创建成功"
-        message="句库文件已创建，现在可以提取文本内容"
-        confirmText="继续编辑"
-        onConfirm={handleSuccessConfirm}
-        onCancel={() => setSuccessDialog({ visible: false, fileId: 0 })}
-      />
 
       {/* Error Dialog */}
       <ConfirmDialog

@@ -240,9 +240,18 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     
     console.log(`句库文件创建成功: ID=${file.id}, 标题=${title}`);
     
+    // 生成原始音频的签名 URL 供前端播放和下载
+    const originalAudioSignedUrl = await storage.generatePresignedUrl({
+      key: fileKey,
+      expireTime: 86400 * 7, // 7天有效
+    });
+    
     res.json({
       success: true,
-      file,
+      file: {
+        ...file,
+        original_audio_signed_url: originalAudioSignedUrl,
+      },
       message: '句库文件创建成功',
     });
   } catch (error) {
@@ -375,9 +384,18 @@ router.post('/from-link', async (req: Request, res: Response) => {
       throw new Error(fileError?.message || '创建失败');
     }
     
+    // 生成原始音频的签名 URL 供前端播放和下载
+    const originalAudioSignedUrl = await storage.generatePresignedUrl({
+      key: fileKey,
+      expireTime: 86400 * 7, // 7天有效
+    });
+    
     res.json({
       success: true,
-      file,
+      file: {
+        ...file,
+        original_audio_signed_url: originalAudioSignedUrl,
+      },
       message: '从链接创建成功',
     });
   } catch (error) {

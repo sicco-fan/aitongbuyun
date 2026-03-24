@@ -146,5 +146,123 @@ export const createStyles = (theme: Theme) => {
     submitButtonDisabled: {
       opacity: 0.6,
     },
+    // 成功页面样式
+    successCard: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.xl,
+      padding: Spacing['2xl'],
+      alignItems: 'center',
+      marginBottom: Spacing.xl,
+    },
+    successIcon: {
+      marginBottom: Spacing.lg,
+    },
+    successTitle: {
+      marginBottom: Spacing.sm,
+    },
+    // 音频播放器卡片
+    audioCard: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.lg,
+      marginBottom: Spacing.xl,
+    },
+    audioHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: Spacing.lg,
+    },
+    audioIconContainer: {
+      width: 48,
+      height: 48,
+      borderRadius: BorderRadius.lg,
+      backgroundColor: theme.primary + '15',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: Spacing.md,
+    },
+    audioInfo: {
+      flex: 1,
+    },
+    // 播放进度
+    progressContainer: {
+      marginBottom: Spacing.md,
+    },
+    progressBarBg: {
+      width: '100%',
+      height: 4,
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.sm,
+      overflow: 'hidden',
+    },
+    progressBarFill: {
+      height: '100%',
+      borderRadius: BorderRadius.sm,
+    },
+    timeRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: Spacing.xs,
+    },
+    // 播放控制
+    playbackControls: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: Spacing.xl,
+    },
+    controlButton: {
+      width: 48,
+      height: 48,
+      borderRadius: BorderRadius.lg,
+      backgroundColor: theme.backgroundTertiary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    playButton: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      backgroundColor: theme.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // 操作按钮
+    actionButtons: {
+      flexDirection: 'row',
+      gap: Spacing.md,
+      marginBottom: Spacing.lg,
+    },
+    secondaryButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: Spacing.sm,
+      backgroundColor: theme.backgroundDefault,
+      borderWidth: 1,
+      borderColor: theme.primary,
+      paddingVertical: Spacing.lg,
+      borderRadius: BorderRadius.lg,
+    },
+    primaryButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: Spacing.sm,
+      backgroundColor: theme.primary,
+      paddingVertical: Spacing.lg,
+      borderRadius: BorderRadius.lg,
+    },
+    // 提示卡片
+    tipCard: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: Spacing.sm,
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.lg,
+    },
   });
 };
