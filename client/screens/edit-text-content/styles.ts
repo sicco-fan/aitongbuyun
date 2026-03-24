@@ -145,5 +145,49 @@ export const createStyles = (theme: Theme) => {
       borderWidth: 1,
       borderColor: theme.primary,
     },
+    fileListSection: {
+      marginBottom: Spacing.xl,
+    },
+    fileListHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.md,
+    },
+    fileItemCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.lg,
+      marginBottom: Spacing.sm,
+      gap: Spacing.md,
+    },
+    fileItemIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.primary + '15',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    fileItemContent: {
+      flex: 1,
+    },
+    fileItemMeta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      marginTop: 2,
+    },
+    hasTextBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: theme.success + '15',
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: 2,
+      borderRadius: BorderRadius.sm,
+    },
   });
 };

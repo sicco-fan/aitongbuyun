@@ -24,7 +24,7 @@ const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL ||
 interface SentenceFile {
   id: number;
   title: string;
-  audio_url: string;
+  original_audio_url: string;
   text_content: string | null;
   status: string;
   created_at: string;
@@ -46,6 +46,7 @@ export default function EditTextContentScreen() {
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
   
+  const [fileList, setFileList] = useState<SentenceFile[]>([]);
   const [file, setFile] = useState<SentenceFile | null>(null);
   const [textContent, setTextContent] = useState('');
   const [sentences, setSentences] = useState<Sentence[]>([]);
@@ -60,10 +61,30 @@ export default function EditTextContentScreen() {
     message: '',
   });
 
+  // 加载文件列表
+  const loadFileList = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`);
+      const result = await response.json();
+      
+      if (result.files) {
+        setFileList(result.files);
+      }
+    } catch (error) {
+      console.error('加载文件列表失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 如果有fileId参数，直接加载该文件
   useEffect(() => {
     if (params.fileId) {
       loadFile(params.fileId);
+    } else {
+      // 没有fileId时加载文件列表
+      loadFileList();
     }
   }, [params.fileId]);
 
@@ -74,7 +95,7 @@ export default function EditTextContentScreen() {
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${fileId}`);
       const result = await response.json();
       
-      if (result.success && result.file) {
+      if (result.file) {
         setFile(result.file);
         if (result.file.text_content) {
           setTextContent(result.file.text_content);
@@ -332,20 +353,72 @@ export default function EditTextContentScreen() {
             </View>
           </>
         ) : (
-          <View style={styles.emptyContainer}>
-            <FontAwesome6 name="folder-open" size={48} color={theme.textMuted} />
-            <ThemedText variant="body" color={theme.textMuted}>
-              请先创建句库文件
-            </ThemedText>
-            <TouchableOpacity
-              style={styles.createButton}
-              onPress={() => router.push('/create-sentence-file')}
-            >
-              <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-                创建文件
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
+          <>
+            {/* 文件列表 */}
+            <View style={styles.fileListSection}>
+              <View style={styles.fileListHeader}>
+                <ThemedText variant="smallMedium" color={theme.textSecondary}>
+                  已上传的文件
+                </ThemedText>
+                <TouchableOpacity onPress={() => router.push('/create-sentence-file')}>
+                  <ThemedText variant="smallMedium" color={theme.primary}>
+                    + 新建
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
+              
+              {fileList.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <FontAwesome6 name="folder-open" size={48} color={theme.textMuted} />
+                  <ThemedText variant="body" color={theme.textMuted}>
+                    暂无文件，请先上传
+                  </ThemedText>
+                  <TouchableOpacity
+                    style={styles.createButton}
+                    onPress={() => router.push('/create-sentence-file')}
+                  >
+                    <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
+                      上传文件
+                    </ThemedText>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                fileList.map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.fileItemCard}
+                    onPress={() => loadFile(item.id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.fileItemIcon}>
+                      <FontAwesome6 name="file-audio" size={20} color={theme.primary} />
+                    </View>
+                    <View style={styles.fileItemContent}>
+                      <ThemedText variant="bodyMedium" color={theme.textPrimary} numberOfLines={1}>
+                        {item.title}
+                      </ThemedText>
+                      <View style={styles.fileItemMeta}>
+                        <ThemedText variant="caption" color={theme.textMuted}>
+                          {item.status === 'audio_ready' ? '待提取文本' : 
+                           item.status === 'text_ready' ? '待剪辑语音' :
+                           item.status === 'completed' ? '已完成' : item.status}
+                        </ThemedText>
+                        {item.text_content && (
+                          <View style={styles.hasTextBadge}>
+                            <FontAwesome6 name="check" size={10} color={theme.success} />
+                            <ThemedText variant="tiny" color={theme.success}>
+                              有文本
+                            </ThemedText>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                    <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          </>
         )}
       </ScrollView>
 
