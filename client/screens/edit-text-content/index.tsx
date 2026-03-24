@@ -181,12 +181,18 @@ export default function EditTextContentScreen() {
       
       const result = await response.json();
       
-      if (result.success && result.text_content) {
-        setTextContent(result.text_content);
-        parseSentences(result.text_content);
-        setSuccessDialog({ visible: true, message: '文本提取成功' });
+      if (result.success) {
+        // 后端返回的是 text 字段
+        const extractedText = result.text || result.text_content || '';
+        if (extractedText) {
+          setTextContent(extractedText);
+          parseSentences(extractedText);
+          setSuccessDialog({ visible: true, message: '文本提取成功' });
+        } else {
+          throw new Error('提取的文本为空');
+        }
       } else {
-        throw new Error(result.error || '提取失败');
+        throw new Error(result.error || result.message || '提取失败');
       }
     } catch (error) {
       setErrorDialog({ visible: true, message: `提取失败：${(error as Error).message}` });
