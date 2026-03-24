@@ -262,7 +262,7 @@ export default function CreateSentenceFileScreen() {
             file!.uri,
             {
               httpMethod: 'POST',
-              uploadType: 2, // MULTIPART
+              uploadType: 1, // MULTIPART (0 = BINARY_CONTENT, 1 = MULTIPART)
               fieldName: 'file',
               parameters: { title, description },
             }
