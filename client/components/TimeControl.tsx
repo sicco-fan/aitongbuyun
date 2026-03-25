@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -11,7 +11,7 @@ import { FontAwesome6 } from '@expo/vector-icons';
 interface TimeControlProps {
   value: number; // 当前时间值（毫秒）
   onChange: (delta: number) => void; // 变化量回调
-  onPlay?: () => void; // 播放回调
+  onPlay?: () => void; // 播放回调（播放整个片段）
   label: string; // 标签（如"开始"）
   color?: string;
 }
@@ -25,6 +25,10 @@ export function TimeControl({
 }: TimeControlProps) {
   const lastAngle = useSharedValue(0);
   const accumulatedDelta = useSharedValue(0);
+  
+  // 长按相关
+  const longPressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isLongPressRef = useRef(false);
 
   // 格式化时间显示
   const formatTime = (ms: number) => {
@@ -40,9 +44,46 @@ export function TimeControl({
   }, [onChange]);
 
   const handlePlay = useCallback(() => {
-    console.log(`[TimeControl] 点击播放: ${label}, 时间: ${value}ms`);
-    onPlay?.();
-  }, [onPlay, label, value]);
+    if (!isLongPressRef.current) {
+      console.log(`[TimeControl] 点击播放片段: ${label}`);
+      onPlay?.();
+    }
+  }, [onPlay, label]);
+
+  // 开始长按
+  const startLongPress = useCallback((delta: number) => {
+    isLongPressRef.current = false;
+    
+    // 立即执行一次
+    onChange(delta);
+    
+    // 设置定时器连续执行
+    longPressTimerRef.current = setInterval(() => {
+      isLongPressRef.current = true;
+      onChange(delta);
+    }, 50); // 每50ms执行一次
+  }, [onChange]);
+
+  // 停止长按
+  const stopLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearInterval(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    // 延迟重置，避免触发 onClick
+    setTimeout(() => {
+      isLongPressRef.current = false;
+    }, 100);
+  }, []);
+
+  // 组件卸载时清理
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearInterval(longPressTimerRef.current);
+      }
+    };
+  }, []);
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
@@ -66,7 +107,7 @@ export function TimeControl({
 
   return (
     <View style={styles.container}>
-      {/* 时间显示行 - 点击播放，滑动微调 */}
+      {/* 时间显示行 - 点击播放片段，滑动微调 */}
       <GestureDetector gesture={panGesture}>
         <Animated.View style={animatedStyle}>
           <TouchableOpacity 
@@ -85,42 +126,46 @@ export function TimeControl({
         </Animated.View>
       </GestureDetector>
       
-      {/* 调整按钮行 */}
+      {/* 调整按钮行 - 支持长按连续调整 */}
       <View style={styles.buttonRow}>
         <TouchableOpacity 
           style={[styles.adjustBtn, { backgroundColor: color + '20', borderColor: color }]}
-          onPress={() => onChange(-100)}
+          onPressIn={() => startLongPress(-100)}
+          onPressOut={stopLongPress}
         >
           <FontAwesome6 name="angles-left" size={16} color={color} />
-          <Text style={[styles.btnText, { color }]}>-100ms</Text>
+          <Text style={[styles.btnText, { color }]}>-100</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={[styles.adjustBtn, { backgroundColor: color + '20', borderColor: color }]}
-          onPress={() => onChange(-10)}
+          onPressIn={() => startLongPress(-10)}
+          onPressOut={stopLongPress}
         >
           <FontAwesome6 name="angle-left" size={16} color={color} />
-          <Text style={[styles.btnText, { color }]}>-10ms</Text>
+          <Text style={[styles.btnText, { color }]}>-10</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={[styles.adjustBtn, { backgroundColor: color + '20', borderColor: color }]}
-          onPress={() => onChange(10)}
+          onPressIn={() => startLongPress(10)}
+          onPressOut={stopLongPress}
         >
           <FontAwesome6 name="angle-right" size={16} color={color} />
-          <Text style={[styles.btnText, { color }]}>+10ms</Text>
+          <Text style={[styles.btnText, { color }]}>+10</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={[styles.adjustBtn, { backgroundColor: color + '20', borderColor: color }]}
-          onPress={() => onChange(100)}
+          onPressIn={() => startLongPress(100)}
+          onPressOut={stopLongPress}
         >
           <FontAwesome6 name="angles-right" size={16} color={color} />
-          <Text style={[styles.btnText, { color }]}>+100ms</Text>
+          <Text style={[styles.btnText, { color }]}>+100</Text>
         </TouchableOpacity>
       </View>
       
-      <Text style={styles.hint}>点击时间播放 | ← 滑动微调 →</Text>
+      <Text style={styles.hint}>点击时间播放片段 | ← 滑动微调 → | 长按快调</Text>
     </View>
   );
 }

@@ -215,36 +215,66 @@ export default function EditSentenceAudioScreen() {
   // 播放完整句子（开始时间到结束时间）
   const playFullSentence = async () => {
     console.log('[playFullSentence] 开始执行');
+    console.log('[playFullSentence] currentSentence:', currentSentence?.text);
+    console.log('[playFullSentence] start_time:', currentSentence?.start_time);
+    console.log('[playFullSentence] end_time:', currentSentence?.end_time);
 
     // 加载音频
     if (!soundRef.current) {
       const loadedDuration = await loadAudio();
       if (!loadedDuration) {
         console.log('[playFullSentence] 音频加载失败');
+        setErrorDialog({ visible: true, message: '音频加载失败，请检查网络连接' });
         return;
       }
     }
 
-    if (!soundRef.current || !currentSentence?.start_time || !currentSentence?.end_time) {
-      console.log('[playFullSentence] 检查失败');
+    if (!soundRef.current) {
+      console.log('[playFullSentence] soundRef 为空');
       return;
     }
 
     await handleStopPlaying();
 
     const status = await soundRef.current.getStatusAsync();
-    if (!status.isLoaded) return;
+    if (!status.isLoaded) {
+      console.log('[playFullSentence] 音频未加载');
+      return;
+    }
 
-    // 时间转换为毫秒
-    let startMs = currentSentence.start_time * 1000;
-    let endMs = currentSentence.end_time * 1000;
     const actualDurationMs = status.durationMillis || 0;
+    let startMs: number;
+    let endMs: number;
+
+    // 根据是否有时间戳决定播放范围
+    if (currentSentence?.start_time !== null && currentSentence?.start_time !== undefined &&
+        currentSentence?.end_time !== null && currentSentence?.end_time !== undefined) {
+      // 有时间戳：播放从开始到结束的片段
+      startMs = currentSentence.start_time * 1000;
+      endMs = currentSentence.end_time * 1000;
+      console.log('[playFullSentence] 播放片段:', startMs, 'ms -', endMs, 'ms');
+    } else {
+      // 没有时间戳：从上一个句子结束位置或音频开头播放一小段
+      if (currentIndex > 0 && sentences[currentIndex - 1]?.end_time) {
+        startMs = sentences[currentIndex - 1].end_time! * 1000;
+      } else {
+        startMs = 0;
+      }
+      // 默认播放3秒
+      endMs = Math.min(startMs + 3000, actualDurationMs);
+      console.log('[playFullSentence] 无时间戳，从', startMs, 'ms 播放 3 秒');
+    }
 
     // 确保时间戳在有效范围内
     startMs = Math.max(0, Math.min(startMs, actualDurationMs - 100));
     endMs = Math.max(startMs + 100, Math.min(endMs, actualDurationMs));
 
-    if (endMs <= startMs) return;
+    if (endMs <= startMs) {
+      console.log('[playFullSentence] 无效时间范围');
+      return;
+    }
+
+    console.log('[playFullSentence] 最终播放范围:', startMs, 'ms -', endMs, 'ms');
 
     try {
       await soundRef.current.setPositionAsync(startMs);
@@ -261,6 +291,7 @@ export default function EditSentenceAudioScreen() {
           await soundRef.current.pauseAsync();
           setIsPlaying(false);
           clearInterval(checkInterval);
+          console.log('[playFullSentence] 播放结束');
         }
       }, 50);
     } catch (e) {
@@ -649,7 +680,7 @@ export default function EditSentenceAudioScreen() {
         <TimeControl
           value={(currentSentence?.start_time || 0) * 1000} // 转换为毫秒
           onChange={handleStartTimeChange}
-          onPlay={playFromStart}
+          onPlay={playFullSentence}
           label="开始"
           color="#00ff88"
         />
@@ -670,7 +701,7 @@ export default function EditSentenceAudioScreen() {
         <TimeControl
           value={(currentSentence?.end_time || 0) * 1000} // 转换为毫秒
           onChange={handleEndTimeChange}
-          onPlay={playFromEnd}
+          onPlay={playFullSentence}
           label="结束"
           color="#ff8800"
         />
