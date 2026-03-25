@@ -272,6 +272,28 @@ export const createStyles = (theme: Theme) => {
     },
     
     // 文本编辑器 - 固定高度避免测量错误
+    textEditorContainer: {
+      marginBottom: Spacing.sm,
+    },
+    textEditorToolbar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: Spacing.xs,
+      marginBottom: Spacing.sm,
+    },
+    lockButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.xs,
+      backgroundColor: theme.backgroundTertiary,
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: Spacing.xs,
+      borderRadius: BorderRadius.sm,
+    },
+    lockButtonActive: {
+      backgroundColor: theme.primary,
+    },
     textEditor: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
@@ -281,7 +303,6 @@ export const createStyles = (theme: Theme) => {
       color: theme.textPrimary,
       borderWidth: 1,
       borderColor: theme.border,
-      marginBottom: Spacing.sm,
     },
     
     // 段落统计

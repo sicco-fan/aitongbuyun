@@ -57,6 +57,9 @@ export default function EditTextContentScreen() {
   
   const [textContent, setTextContent] = useState('');
   
+  // 键盘锁定状态 - 锁定后点击文本框不会弹出键盘，方便移动光标
+  const [keyboardLocked, setKeyboardLocked] = useState(false);
+  
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPosition, setPlaybackPosition] = useState(0);
@@ -679,18 +682,44 @@ export default function EditTextContentScreen() {
               )}
             </TouchableOpacity>
             
-            {/* 文本编辑器 */}
-            <TextInput
-              style={styles.textEditor}
-              value={textContent}
-              onChangeText={setTextContent}
-              placeholder="输入或粘贴文本内容，空行分隔段落"
-              placeholderTextColor={theme.textMuted}
-              multiline
-              textAlignVertical="top"
-              autoCapitalize="sentences"
-              autoCorrect={false}
-            />
+            {/* 文本编辑器 + 键盘锁定控制 */}
+            <View style={styles.textEditorContainer}>
+              {/* 工具栏 */}
+              <View style={styles.textEditorToolbar}>
+                <TouchableOpacity 
+                  style={[styles.lockButton, keyboardLocked && styles.lockButtonActive]}
+                  onPress={() => setKeyboardLocked(!keyboardLocked)}
+                >
+                  <FontAwesome6 
+                    name={keyboardLocked ? "keyboard" : "lock"} 
+                    size={14} 
+                    color={keyboardLocked ? theme.buttonPrimaryText : theme.textMuted} 
+                  />
+                  <ThemedText variant="tiny" color={keyboardLocked ? theme.buttonPrimaryText : theme.textMuted}>
+                    {keyboardLocked ? '点击输入' : '锁定键盘'}
+                  </ThemedText>
+                </TouchableOpacity>
+                {keyboardLocked && (
+                  <ThemedText variant="tiny" color={theme.textMuted}>
+                    已锁定 · 可自由移动光标
+                  </ThemedText>
+                )}
+              </View>
+              
+              {/* 文本输入框 */}
+              <TextInput
+                style={styles.textEditor}
+                value={textContent}
+                onChangeText={setTextContent}
+                placeholder="输入或粘贴文本内容，空行分隔段落"
+                placeholderTextColor={theme.textMuted}
+                multiline
+                textAlignVertical="top"
+                autoCapitalize="sentences"
+                autoCorrect={false}
+                showSoftInputOnFocus={!keyboardLocked}
+              />
+            </View>
             
             {/* 保存按钮 */}
             <TouchableOpacity
