@@ -120,11 +120,18 @@ router.get('/:id', async (req: Request, res: Response) => {
       }
     }
     
+    // 转换句子时间戳：数据库存毫秒，前端用秒
+    const processedSentences = (sentences || []).map((s: any) => ({
+      ...s,
+      start_time: s.start_time !== null ? s.start_time / 1000 : null,
+      end_time: s.end_time !== null ? s.end_time / 1000 : null,
+    }));
+    
     res.json({
       file: {
         ...file,
         original_audio_signed_url,
-        sentences: sentences || [],
+        sentences: processedSentences,
       },
     });
   } catch (error) {
@@ -708,6 +715,56 @@ router.get('/:id/sentences', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('获取句子列表失败:', error);
     res.status(500).json({ error: '获取失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * POST /api/v1/sentence-files/:id/sentences
+ * 批量保存句子（包括时间戳）
+ * Body: { sentences: Array<{ id?: number, text: string, order_number: number, start_time?: number, end_time?: number }> }
+ */
+router.post('/:id/sentences', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { sentences } = req.body;
+    
+    if (!sentences || !Array.isArray(sentences)) {
+      return res.status(400).json({ error: '请提供句子数据' });
+    }
+    
+    console.log(`[保存句子] 文件 ${id}, 句子数量: ${sentences.length}`);
+    
+    const supabase = getSupabaseClient();
+    
+    // 先删除旧句子
+    await supabase
+      .from('sentence_file_items')
+      .delete()
+      .eq('sentence_file_id', id);
+    
+    // 批量插入新句子
+    const fileIdNum = parseInt(Array.isArray(id) ? id[0] : id);
+    const sentencesData = sentences.map((s: any, index: number) => ({
+      sentence_file_id: fileIdNum,
+      sentence_index: index,
+      text: s.text,
+      // 时间戳单位：前端传秒，数据库存毫秒
+      start_time: s.start_time !== null && s.start_time !== undefined ? Math.round(s.start_time * 1000) : null,
+      end_time: s.end_time !== null && s.end_time !== undefined ? Math.round(s.end_time * 1000) : null,
+    }));
+    
+    const { error: insertError } = await supabase
+      .from('sentence_file_items')
+      .insert(sentencesData);
+    
+    if (insertError) {
+      throw new Error(insertError.message);
+    }
+    
+    res.json({ success: true, message: '句子保存成功' });
+  } catch (error) {
+    console.error('保存句子失败:', error);
+    res.status(500).json({ error: '保存失败', message: (error as Error).message });
   }
 });
 

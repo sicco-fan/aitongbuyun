@@ -88,6 +88,7 @@ export default function EditSentenceAudioScreen() {
   // 加载文件和句子数据
   const loadFile = async (fileId: number) => {
     setLoading(true);
+    console.log('[loadFile] 开始加载文件, fileId:', fileId);
     try {
       /**
        * 服务端文件：server/src/routes/sentence-files.ts
@@ -97,15 +98,19 @@ export default function EditSentenceAudioScreen() {
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${fileId}`);
       const result = await response.json();
 
+      console.log('[loadFile] API 返回结果:', JSON.stringify(result, null, 2).substring(0, 500));
+
       if (result.file) {
         setFile(result.file);
+        console.log('[loadFile] 音频 URL:', result.file.original_audio_signed_url);
+        console.log('[loadFile] 音频时长:', result.file.original_duration);
 
         // 如果已经有句子数据，加载它们
         if (result.file.sentences && result.file.sentences.length > 0) {
           setSentences(result.file.sentences);
-          // 设置音频时长
-          if (result.file.duration) {
-            setDuration(result.file.duration);
+          // 设置音频时长（后端字段是 original_duration，单位是毫秒）
+          if (result.file.original_duration) {
+            setDuration(result.file.original_duration / 1000); // 转换为秒
           }
         } else if (result.file.text_content) {
           // 否则从文本内容创建句子
@@ -123,11 +128,13 @@ export default function EditSentenceAudioScreen() {
               audio_url: null,
             }));
           setSentences(newSentences);
+          console.log('[loadFile] 从文本创建句子:', newSentences.length, '个');
         }
       } else {
         throw new Error(result.error || '加载失败');
       }
     } catch (error) {
+      console.error('[loadFile] 加载失败:', error);
       setErrorDialog({ visible: true, message: `加载失败：${(error as Error).message}` });
     } finally {
       setLoading(false);
@@ -136,7 +143,13 @@ export default function EditSentenceAudioScreen() {
 
   // 加载音频
   const loadAudio = async () => {
-    if (!file?.original_audio_signed_url) return null;
+    console.log('[loadAudio] 开始加载音频');
+    console.log('[loadAudio] file?.original_audio_signed_url:', file?.original_audio_signed_url ? '有值' : '无值');
+
+    if (!file?.original_audio_signed_url) {
+      console.error('[loadAudio] 没有音频 URL');
+      return null;
+    }
 
     try {
       await Audio.setAudioModeAsync({
@@ -153,6 +166,7 @@ export default function EditSentenceAudioScreen() {
         await soundRef.current.unloadAsync();
       }
 
+      console.log('[loadAudio] 正在创建音频实例...');
       const { sound, status } = await Audio.Sound.createAsync(
         { uri: file.original_audio_signed_url },
         { shouldPlay: false },
@@ -160,15 +174,17 @@ export default function EditSentenceAudioScreen() {
       );
 
       soundRef.current = sound;
+      console.log('[loadAudio] 音频实例创建成功');
 
       if (status.isLoaded) {
         const realDuration = (status.durationMillis || 0) / 1000; // 转换为秒
         setDuration(realDuration);
+        console.log('[loadAudio] 音频时长:', realDuration, '秒');
         return realDuration;
       }
       return null;
     } catch (error) {
-      console.error('加载音频失败:', error);
+      console.error('[loadAudio] 加载音频失败:', error);
       return null;
     }
   };
@@ -252,44 +268,88 @@ export default function EditSentenceAudioScreen() {
     }
   };
 
-  // 播放从开始时间位置开始
+  // 播放从开始时间位置开始（如果没有开始时间，从音频开头播放）
   const playFromStart = async () => {
-    if (!currentSentence?.start_time) return;
+    console.log('[playFromStart] 开始执行');
+    console.log('[playFromStart] currentSentence:', currentSentence?.text);
+    console.log('[playFromStart] start_time:', currentSentence?.start_time);
 
+    // 加载音频
     if (!soundRef.current) {
-      await loadAudio();
+      const loadedDuration = await loadAudio();
+      if (!loadedDuration) {
+        console.log('[playFromStart] 音频加载失败');
+        setErrorDialog({ visible: true, message: '音频加载失败，请检查网络连接' });
+        return;
+      }
     }
 
-    if (!soundRef.current) return;
+    if (!soundRef.current) {
+      console.log('[playFromStart] soundRef 为空');
+      return;
+    }
 
     await handleStopPlaying();
 
     const status = await soundRef.current.getStatusAsync();
-    if (!status.isLoaded) return;
+    if (!status.isLoaded) {
+      console.log('[playFromStart] 音频未加载');
+      return;
+    }
 
-    const startMs = currentSentence.start_time * 1000;
+    // 如果有开始时间，从开始时间播放；否则从上一个句子的结束位置或音频开头播放
+    let startMs = 0;
+    if (currentSentence?.start_time !== null && currentSentence?.start_time !== undefined) {
+      startMs = currentSentence.start_time * 1000;
+    } else if (currentIndex > 0 && sentences[currentIndex - 1]?.end_time) {
+      // 如果没有开始时间，使用上一句的结束时间
+      startMs = sentences[currentIndex - 1].end_time! * 1000;
+    }
+
+    console.log('[playFromStart] 播放位置:', startMs, 'ms');
     await soundRef.current.setPositionAsync(startMs);
     await soundRef.current.playAsync();
     setIsPlaying(true);
   };
 
-  // 播放从结束时间位置开始
+  // 播放从结束时间位置开始（用于预览结束位置）
   const playFromEnd = async () => {
-    if (!currentSentence?.end_time) return;
+    console.log('[playFromEnd] 开始执行');
+    console.log('[playFromEnd] end_time:', currentSentence?.end_time);
 
+    // 加载音频
     if (!soundRef.current) {
-      await loadAudio();
+      const loadedDuration = await loadAudio();
+      if (!loadedDuration) {
+        console.log('[playFromEnd] 音频加载失败');
+        setErrorDialog({ visible: true, message: '音频加载失败，请检查网络连接' });
+        return;
+      }
     }
 
-    if (!soundRef.current) return;
+    if (!soundRef.current) {
+      console.log('[playFromEnd] soundRef 为空');
+      return;
+    }
 
     await handleStopPlaying();
 
     const status = await soundRef.current.getStatusAsync();
-    if (!status.isLoaded) return;
+    if (!status.isLoaded) {
+      console.log('[playFromEnd] 音频未加载');
+      return;
+    }
 
-    const endMs = currentSentence.end_time * 1000;
-    await soundRef.current.setPositionAsync(endMs);
+    // 如果有结束时间，从结束时间播放；否则从开始时间播放
+    let positionMs = 0;
+    if (currentSentence?.end_time !== null && currentSentence?.end_time !== undefined) {
+      positionMs = currentSentence.end_time * 1000;
+    } else if (currentSentence?.start_time !== null && currentSentence?.start_time !== undefined) {
+      positionMs = currentSentence.start_time * 1000;
+    }
+
+    console.log('[playFromEnd] 播放位置:', positionMs, 'ms');
+    await soundRef.current.setPositionAsync(positionMs);
     await soundRef.current.playAsync();
     setIsPlaying(true);
   };
