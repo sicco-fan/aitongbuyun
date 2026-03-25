@@ -294,15 +294,42 @@ export const createStyles = (theme: Theme) => {
     lockButtonActive: {
       backgroundColor: theme.primary,
     },
+    textEditorWrapper: {
+      position: 'relative',
+      height: 400,
+    },
     textEditor: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
       padding: Spacing.lg,
-      height: 400,  // 使用固定高度，避免 minHeight 导致的测量错误
+      height: 400,
       fontSize: 16,
       color: theme.textPrimary,
       borderWidth: 1,
       borderColor: theme.border,
+    },
+    // 锁定时的文本覆盖层
+    textOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    textOverlayScroll: {
+      flex: 1,
+    },
+    textOverlayContent: {
+      padding: Spacing.lg,
+    },
+    selectableText: {
+      fontSize: 16,
+      color: theme.textPrimary,
+      lineHeight: 24,
     },
     
     // 段落统计

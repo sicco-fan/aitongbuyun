@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   TouchableWithoutFeedback,
+  Text,
 } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Audio } from 'expo-av';
@@ -688,7 +689,13 @@ export default function EditTextContentScreen() {
               <View style={styles.textEditorToolbar}>
                 <TouchableOpacity 
                   style={[styles.lockButton, keyboardLocked && styles.lockButtonActive]}
-                  onPress={() => setKeyboardLocked(!keyboardLocked)}
+                  onPress={() => {
+                    setKeyboardLocked(!keyboardLocked);
+                    if (!keyboardLocked) {
+                      // 锁定时立即关闭键盘
+                      Keyboard.dismiss();
+                    }
+                  }}
                 >
                   <FontAwesome6 
                     name={keyboardLocked ? "keyboard" : "lock"} 
@@ -701,24 +708,44 @@ export default function EditTextContentScreen() {
                 </TouchableOpacity>
                 {keyboardLocked && (
                   <ThemedText variant="tiny" color={theme.textMuted}>
-                    已锁定 · 可自由移动光标
+                    锁定中 · 可选择/复制文本
                   </ThemedText>
                 )}
               </View>
               
-              {/* 文本输入框 */}
-              <TextInput
-                style={styles.textEditor}
-                value={textContent}
-                onChangeText={setTextContent}
-                placeholder="输入或粘贴文本内容，空行分隔段落"
-                placeholderTextColor={theme.textMuted}
-                multiline
-                textAlignVertical="top"
-                autoCapitalize="sentences"
-                autoCorrect={false}
-                showSoftInputOnFocus={!keyboardLocked}
-              />
+              {/* 文本编辑区域 */}
+              <View style={styles.textEditorWrapper}>
+                {/* 文本输入框 - 始终存在但可能被遮挡 */}
+                <TextInput
+                  style={styles.textEditor}
+                  value={textContent}
+                  onChangeText={setTextContent}
+                  placeholder="输入或粘贴文本内容，空行分隔段落"
+                  placeholderTextColor={theme.textMuted}
+                  multiline
+                  textAlignVertical="top"
+                  autoCapitalize="sentences"
+                  autoCorrect={false}
+                  pointerEvents={keyboardLocked ? 'none' : 'auto'}
+                />
+                
+                {/* 锁定时显示可选择文本的覆盖层 */}
+                {keyboardLocked && (
+                  <View style={styles.textOverlay} pointerEvents="auto">
+                    <ScrollView 
+                      style={styles.textOverlayScroll}
+                      contentContainerStyle={styles.textOverlayContent}
+                    >
+                      <Text 
+                        style={styles.selectableText}
+                        selectable
+                      >
+                        {textContent || '输入或粘贴文本内容，空行分隔段落'}
+                      </Text>
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
             </View>
             
             {/* 保存按钮 */}
