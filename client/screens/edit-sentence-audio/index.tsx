@@ -35,7 +35,7 @@ interface SentenceItem {
 interface SentenceFile {
   id: number;
   title: string;
-  audio_url: string;
+  original_audio_signed_url?: string;  // 原始音频签名URL
   text_content: string | null;
   status: string;
 }
@@ -77,15 +77,20 @@ export default function EditSentenceAudioScreen() {
   const loadFile = async (fileId: number) => {
     setLoading(true);
     try {
+      /**
+       * 服务端文件：server/src/routes/sentence-files.ts
+       * 接口：GET /api/v1/sentence-files/:id
+       * Path 参数：id: number
+       */
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${fileId}`);
       const result = await response.json();
       
-      if (result.success && result.file) {
+      if (result.file) {
         setFile(result.file);
         
         // 如果已经有句子数据，加载它们
-        if (result.sentences && result.sentences.length > 0) {
-          setSentences(result.sentences);
+        if (result.file.sentences && result.file.sentences.length > 0) {
+          setSentences(result.file.sentences);
         } else if (result.file.text_content) {
           // 否则从文本内容创建句子
           const lines = result.file.text_content.split(/\n\s*\n/);
@@ -345,7 +350,7 @@ export default function EditSentenceAudioScreen() {
                 音频播放器
               </ThemedText>
               <AudioPlayer
-                uri={file.audio_url}
+                uri={file.original_audio_signed_url || ''}
                 onTimeUpdate={setCurrentPlayTime}
                 onDurationLoad={setDuration}
               />
