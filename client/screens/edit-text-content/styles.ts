@@ -271,18 +271,17 @@ export const createStyles = (theme: Theme) => {
       marginBottom: Spacing.md,
     },
     
-    // 文本编辑器
+    // 文本编辑器 - 固定高度避免测量错误
     textEditor: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
       padding: Spacing.lg,
-      minHeight: 400,  // 增加高度，方便查看段落
-      fontSize: 16,    // 字体大小
+      height: 400,  // 使用固定高度，避免 minHeight 导致的测量错误
+      fontSize: 16,
       color: theme.textPrimary,
       borderWidth: 1,
       borderColor: theme.border,
       marginBottom: Spacing.sm,
-      // 注意：Android 上 multiline TextInput 使用 lineHeight 会导致输入跳动
     },
     
     // 段落统计
