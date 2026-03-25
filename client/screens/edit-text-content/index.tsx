@@ -516,180 +516,119 @@ export default function EditTextContentScreen() {
   if (currentFile) {
     return (
       <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Header */}
-          <ThemedView level="root" style={styles.header}>
-            <View style={styles.headerRow}>
-              <TouchableOpacity onPress={handleExitEdit}>
-                <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
+        {/* 固定的音频播放器 - 始终在顶部 */}
+        {currentFile.original_audio_signed_url && (
+          <View style={styles.stickyAudioPlayer}>
+            <View style={styles.audioPlayerRow}>
+              <TouchableOpacity 
+                style={styles.playButtonSmall}
+                onPress={() => togglePlayback(currentFile.original_audio_signed_url!, currentFile.id)}
+              >
+                <FontAwesome6 
+                  name={isPlaying && playingFileId === currentFile.id ? "pause" : "play"} 
+                  size={16} 
+                  color={theme.buttonPrimaryText} 
+                />
               </TouchableOpacity>
-              <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
-                编辑文本
-              </ThemedText>
-              <View style={{ width: 20 }} />
-            </View>
-          </ThemedView>
-
-          {/* 输入端：原始音频文件 */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleRow}>
-                <View style={[styles.sectionIcon, styles.sectionIconInput]}>
-                  <FontAwesome6 name="arrow-right-to-bracket" size={14} color={theme.primary} />
-                </View>
-                <ThemedText variant="smallMedium" color={theme.textSecondary}>
-                  输入端 · 原始音频
+              <View style={styles.audioPlayerInfoCompact}>
+                <ThemedText variant="small" color={theme.textPrimary} numberOfLines={1}>
+                  {currentFile.title}
                 </ThemedText>
+                {playbackDuration > 0 && (
+                  <ThemedText variant="tiny" color={theme.textMuted}>
+                    {formatDuration(playbackPosition)} / {formatDuration(playbackDuration)}
+                  </ThemedText>
+                )}
               </View>
+              <TouchableOpacity 
+                style={styles.seekButtonSmall}
+                onPress={seekBackward}
+              >
+                <FontAwesome6 name="rotate-left" size={12} color={theme.textMuted} />
+                <ThemedText variant="tiny" color={theme.textMuted}>5s</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.seekButtonSmall}
+                onPress={seekForward}
+              >
+                <FontAwesome6 name="rotate-right" size={12} color={theme.textMuted} />
+                <ThemedText variant="tiny" color={theme.textMuted}>5s</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleExitEdit}>
+                <FontAwesome6 name="xmark" size={16} color={theme.textMuted} />
+              </TouchableOpacity>
             </View>
             
-            {currentFile.original_audio_signed_url && (
-              <View style={styles.audioPlayerCard}>
-                <View style={styles.audioPlayerHeader}>
-                  <View style={styles.audioPlayerIcon}>
-                    <FontAwesome6 name="music" size={20} color={theme.primary} />
-                  </View>
-                  <View style={styles.audioPlayerInfo}>
-                    <ThemedText variant="smallMedium" color={theme.textPrimary} numberOfLines={1}>
-                      {currentFile.title}
-                    </ThemedText>
-                    {currentFile.original_duration ? (
-                      <ThemedText variant="tiny" color={theme.textMuted}>
-                        时长: {formatDuration(currentFile.original_duration)}
-                      </ThemedText>
-                    ) : null}
-                  </View>
+            {/* 进度条 */}
+            {playbackDuration > 0 && (
+              <TouchableOpacity 
+                style={styles.progressBarCompact}
+                onPress={handleProgressPress}
+                onLayout={(event) => setProgressBarWidth(event.nativeEvent.layout.width)}
+              >
+                <View style={styles.progressBarBgSmall}>
+                  <View 
+                    style={[
+                      styles.progressBarFillSmall, 
+                      { width: `${(playbackPosition / playbackDuration) * 100}%`, backgroundColor: theme.primary }
+                    ]} 
+                  />
                 </View>
-                
-                {/* 播放进度 - 可点击跳转 */}
-                {playbackDuration > 0 && (
-                  <TouchableOpacity 
-                    style={styles.progressContainer}
-                    onPress={handleProgressPress}
-                    activeOpacity={0.8}
-                    onLayout={(event) => setProgressBarWidth(event.nativeEvent.layout.width)}
-                  >
-                    <View style={styles.progressBarBg}>
-                      <View 
-                        style={[
-                          styles.progressBarFill, 
-                          { width: `${(playbackPosition / playbackDuration) * 100}%`, backgroundColor: theme.primary }
-                        ]} 
-                      />
-                    </View>
-                    <View style={styles.timeRow}>
-                      <ThemedText variant="small" color={theme.textMuted}>
-                        {formatDuration(playbackPosition)}
-                      </ThemedText>
-                      <ThemedText variant="small" color={theme.textMuted}>
-                        {formatDuration(playbackDuration)}
-                      </ThemedText>
-                    </View>
-                  </TouchableOpacity>
-                )}
-                
-                {/* 控制按钮 */}
-                <View style={styles.audioPlayerControls}>
-                  {/* 后退5秒 */}
-                  <TouchableOpacity 
-                    style={styles.seekButton}
-                    onPress={seekBackward}
-                  >
-                    <FontAwesome6 name="rotate-left" size={14} color={theme.textPrimary} />
-                    <ThemedText variant="tiny" color={theme.textMuted}>5s</ThemedText>
-                  </TouchableOpacity>
-                  
-                  {/* 播放/暂停 */}
-                  <TouchableOpacity 
-                    style={styles.playButton}
-                    onPress={() => togglePlayback(currentFile.original_audio_signed_url!, currentFile.id)}
-                    activeOpacity={0.7}
-                  >
-                    <FontAwesome6 
-                      name={isPlaying && playingFileId === currentFile.id ? "pause" : "play"} 
-                      size={24} 
-                      color={theme.buttonPrimaryText} 
-                    />
-                  </TouchableOpacity>
-                  
-                  {/* 前进5秒 */}
-                  <TouchableOpacity 
-                    style={styles.seekButton}
-                    onPress={seekForward}
-                  >
-                    <FontAwesome6 name="rotate-right" size={14} color={theme.textPrimary} />
-                    <ThemedText variant="tiny" color={theme.textMuted}>5s</ThemedText>
-                  </TouchableOpacity>
-                </View>
-              </View>
+              </TouchableOpacity>
             )}
           </View>
+        )}
 
-          {/* 编辑端：文本提取和编辑 */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleRow}>
-                <View style={[styles.sectionIcon, styles.sectionIconEdit]}>
-                  <FontAwesome6 name="pen-to-square" size={14} color={theme.accent} />
-                </View>
-                <ThemedText variant="smallMedium" color={theme.textSecondary}>
-                  编辑端 · 文本内容
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+
+          {/* 提取按钮 */}
+          <TouchableOpacity
+            style={styles.extractButton}
+            onPress={handleExtractText}
+            disabled={extracting}
+          >
+            {extracting ? (
+              <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
+            ) : (
+              <>
+                <FontAwesome6 name="wand-magic-sparkles" size={14} color={theme.buttonPrimaryText} />
+                <ThemedText variant="small" color={theme.buttonPrimaryText}>
+                  提取文本
                 </ThemedText>
-              </View>
-              <ThemedText variant="tiny" color={theme.textMuted}>
-                {textContent.split(/\n\s*\n/).filter(p => p.trim()).length} 个段落
-              </ThemedText>
-            </View>
-            
-            {/* 提取按钮 */}
-            <TouchableOpacity
-              style={styles.extractButton}
-              onPress={handleExtractText}
-              disabled={extracting}
-            >
-              {extracting ? (
-                <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
-              ) : (
-                <>
-                  <FontAwesome6 name="wand-magic-sparkles" size={14} color={theme.buttonPrimaryText} />
-                  <ThemedText variant="small" color={theme.buttonPrimaryText}>
-                    提取文本
-                  </ThemedText>
-                </>
-              )}
-            </TouchableOpacity>
-            
-            {/* 文本编辑器 */}
-            <TextInput
-              style={styles.textEditor}
-              value={textContent}
-              onChangeText={setTextContent}
-              placeholder="输入或粘贴文本内容，空行分隔段落"
-              placeholderTextColor={theme.textMuted}
-              multiline
-              textAlignVertical="top"
-              autoCapitalize="sentences"
-              autoCorrect={false}
-            />
-            
-            {/* 保存按钮 */}
-            <TouchableOpacity
-              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-              onPress={handleSave}
-              disabled={saving}
-            >
-              {saving ? (
-                <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
-              ) : (
-                <>
-                  <FontAwesome6 name="floppy-disk" size={16} color={theme.buttonPrimaryText} />
-                  <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
-                    保存并归档
-                  </ThemedText>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
+              </>
+            )}
+          </TouchableOpacity>
+          
+          {/* 文本编辑器 */}
+          <TextInput
+            style={styles.textEditor}
+            value={textContent}
+            onChangeText={setTextContent}
+            placeholder="输入或粘贴文本内容，空行分隔段落"
+            placeholderTextColor={theme.textMuted}
+            multiline
+            textAlignVertical="top"
+            autoCapitalize="sentences"
+            autoCorrect={false}
+          />
+          
+          {/* 保存按钮 */}
+          <TouchableOpacity
+            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+            onPress={handleSave}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
+            ) : (
+              <>
+                <FontAwesome6 name="floppy-disk" size={16} color={theme.buttonPrimaryText} />
+                <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
+                  保存并归档
+                </ThemedText>
+              </>
+            )}
+          </TouchableOpacity>
 
           {/* 输出端提示 */}
           <View style={styles.outputHint}>

@@ -6,8 +6,52 @@ export const createStyles = (theme: Theme) => {
     scrollContent: {
       flexGrow: 1,
       paddingHorizontal: Spacing.lg,
-      paddingTop: Spacing['2xl'],
+      paddingTop: Spacing.lg,  // 减小，因为固定播放器在外面
       paddingBottom: Spacing['5xl'],
+    },
+    
+    // 固定的音频播放器 - 始终在顶部
+    stickyAudioPlayer: {
+      backgroundColor: theme.backgroundDefault,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.borderLight,
+    },
+    audioPlayerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    audioPlayerInfoCompact: {
+      flex: 1,
+    },
+    playButtonSmall: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: theme.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    seekButtonSmall: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: Spacing.xs,
+    },
+    progressBarCompact: {
+      marginTop: Spacing.sm,
+    },
+    progressBarBgSmall: {
+      width: '100%',
+      height: 4,
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.sm,
+      overflow: 'hidden',
+    },
+    progressBarFillSmall: {
+      height: '100%',
+      borderRadius: BorderRadius.sm,
     },
     header: {
       marginBottom: Spacing.md,  // 减小
