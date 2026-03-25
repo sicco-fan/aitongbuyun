@@ -3,29 +3,38 @@ import { Spacing, BorderRadius, Theme } from '@/constants/theme';
 
 export const createStyles = (theme: Theme) => {
   return StyleSheet.create({
+    container: {
+      flex: 1,
+    },
     scrollContent: {
       flexGrow: 1,
-      paddingBottom: Spacing['3xl'],
+      paddingHorizontal: Spacing.lg,
+      paddingTop: Spacing.xl,
+      paddingBottom: Spacing['5xl'],
     },
+    
+    // Header
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
       paddingHorizontal: Spacing.lg,
-      paddingTop: Spacing.lg,
-      paddingBottom: Spacing.md,
+      paddingVertical: Spacing.md,
+      backgroundColor: theme.backgroundDefault,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.borderLight,
     },
     backBtn: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: theme.backgroundDefault,
+      width: 36,
+      height: 36,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.backgroundTertiary,
       justifyContent: 'center',
       alignItems: 'center',
     },
     headerInfo: {
       flex: 1,
       alignItems: 'center',
+      paddingHorizontal: Spacing.md,
     },
     headerControls: {
       flexDirection: 'row',
@@ -34,163 +43,85 @@ export const createStyles = (theme: Theme) => {
     smallControlBtn: {
       width: 36,
       height: 36,
-      borderRadius: 18,
-      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.backgroundTertiary,
       justifyContent: 'center',
       alignItems: 'center',
     },
     smallControlBtnActive: {
-      backgroundColor: theme.primary + '20',
+      backgroundColor: theme.primary + '15',
     },
+    
+    // Progress
     progressContainer: {
       paddingHorizontal: Spacing.lg,
       paddingVertical: Spacing.sm,
+      backgroundColor: theme.backgroundDefault,
     },
     progressBar: {
-      height: 4,
-      backgroundColor: theme.border,
-      borderRadius: 2,
+      height: 3,
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.full,
       overflow: 'hidden',
     },
     progressFill: {
       height: '100%',
       backgroundColor: theme.primary,
-      borderRadius: 2,
+      borderRadius: BorderRadius.full,
     },
-    sentenceCard: {
-      marginHorizontal: Spacing.lg,
-      marginTop: Spacing.lg,
-      padding: Spacing.xl,
-      backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.xl,
-    },
-    wordContainer: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'center',
-      alignItems: 'center',
-      gap: Spacing.xs,
-    },
-    wordWrapper: {
-      marginHorizontal: 2,
-    },
-    wordBox: {
-      flexDirection: 'row',
-    },
-    char: {
-      fontFamily: 'System',
-    },
-    hiddenChar: {
-      color: theme.textMuted,
-    },
-    errorChar: {
-      color: theme.error,
-    },
-    inputSection: {
-      paddingHorizontal: Spacing.lg,
-      marginTop: Spacing.xl,
-    },
-    inputWrapper: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.lg,
-      borderWidth: 2,
-      borderColor: theme.border,
-      paddingHorizontal: Spacing.lg,
-    },
-    input: {
-      flex: 1,
-      fontSize: 18,
-      paddingVertical: Spacing.lg,
-      color: theme.textPrimary,
-    },
-    inputVoiceBtn: {
-      padding: Spacing.md,
-    },
-    translationCard: {
-      marginHorizontal: Spacing.lg,
-      marginTop: Spacing.lg,
-      padding: Spacing.lg,
-      backgroundColor: theme.accent + '15',
-      borderRadius: BorderRadius.lg,
-    },
-    navButtons: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: Spacing.xl,
-      paddingVertical: Spacing.lg,
-      paddingBottom: Spacing.xl,
-      borderTopWidth: 1,
-      borderTopColor: theme.border,
-    },
-    navBtn: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      backgroundColor: theme.primary + '20',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    navBtnDisabled: {
-      opacity: 0.3,
-    },
+    
+    // Audio Settings Panel (弹出面板)
     audioSettingsPanel: {
       paddingHorizontal: Spacing.lg,
       paddingVertical: Spacing.md,
       backgroundColor: theme.backgroundDefault,
       borderBottomWidth: 1,
-      borderBottomColor: theme.border,
+      borderBottomColor: theme.borderLight,
     },
     settingRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginVertical: Spacing.xs,
+      gap: Spacing.sm,
+      paddingVertical: Spacing.xs,
     },
     settingIcon: {
-      width: 24,
+      width: 20,
     },
     settingLabel: {
-      width: 40,
+      width: 35,
+      textAlign: 'center',
     },
     sliderContainer: {
       flex: 1,
-      position: 'relative',
       height: 24,
-      marginHorizontal: Spacing.sm,
+      position: 'relative',
+      justifyContent: 'center',
     },
     sliderTrack: {
-      position: 'absolute',
-      top: 10,
-      left: 0,
-      right: 0,
       height: 4,
-      backgroundColor: theme.border,
-      borderRadius: 2,
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.full,
+      overflow: 'visible',
     },
     sliderFill: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      bottom: 0,
-      height: 4,
+      height: '100%',
       backgroundColor: theme.primary,
-      borderRadius: 2,
+      borderRadius: BorderRadius.full,
     },
     sliderThumb: {
       position: 'absolute',
-      top: 6,
+      top: -4,
       width: 12,
       height: 12,
-      backgroundColor: theme.primary,
       borderRadius: 6,
+      backgroundColor: theme.primary,
       marginLeft: -6,
     },
     sliderTouchArea: {
       position: 'absolute',
-      top: 0,
       left: 0,
       right: 0,
+      top: 0,
       bottom: 0,
       flexDirection: 'row',
     },
@@ -199,12 +130,118 @@ export const createStyles = (theme: Theme) => {
       height: '100%',
     },
     currentSpeedBadge: {
-      backgroundColor: theme.primary,
+      minWidth: 40,
       paddingHorizontal: Spacing.sm,
       paddingVertical: 2,
       borderRadius: BorderRadius.sm,
-      minWidth: 48,
+      backgroundColor: theme.primary,
       alignItems: 'center',
+      justifyContent: 'center',
+    },
+    
+    // Sentence Card
+    sentenceCard: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.xl,
+      marginBottom: Spacing.xl,
+      borderWidth: 1,
+      borderColor: theme.borderLight,
+      shadowColor: theme.primary,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.03,
+      shadowRadius: 6,
+      elevation: 1,
+    },
+    wordContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: Spacing.sm,
+      alignItems: 'flex-end',
+    },
+    wordWrapper: {
+      marginBottom: Spacing.xs,
+    },
+    wordBox: {
+      flexDirection: 'row',
+    },
+    char: {
+      fontSize: 26,
+      fontWeight: '600',
+      letterSpacing: 1,
+    },
+    hiddenChar: {
+      opacity: 0.35,
+    },
+    errorChar: {
+      // 错误字符由 color 控制，无需额外样式
+    },
+    
+    // Input Section
+    inputSection: {
+      alignItems: 'center',
+      marginBottom: Spacing.xl,
+    },
+    inputWrapper: {
+      width: '80%',
+      position: 'relative',
+    },
+    input: {
+      width: '100%',
+      backgroundColor: '#E8F5E9',
+      borderRadius: BorderRadius.xl,
+      borderWidth: 2,
+      borderColor: '#A5D6A7',
+      paddingHorizontal: Spacing.xl,
+      paddingVertical: Spacing.lg,
+      fontSize: 28,
+      color: theme.textPrimary,
+      fontWeight: '600',
+      textAlign: 'center',
+      paddingRight: 56, // 为语音按钮留空间
+    },
+    inputVoiceBtn: {
+      position: 'absolute',
+      right: 8,
+      top: '50%',
+      marginTop: -20,
+      width: 40,
+      height: 40,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.primary + '15',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    
+    // Translation Card
+    translationCard: {
+      backgroundColor: theme.primary + '10',
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.xl,
+      marginBottom: Spacing.xl,
+      borderWidth: 1,
+      borderColor: theme.primary + '30',
+    },
+    
+    // Navigation Buttons (Fixed at bottom)
+    navButtons: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: Spacing['2xl'],
+      paddingVertical: Spacing.lg,
+      backgroundColor: theme.backgroundRoot,
+    },
+    navBtn: {
+      width: 48,
+      height: 48,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.primary + '10',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    navBtnDisabled: {
+      backgroundColor: theme.backgroundTertiary,
     },
   });
 };

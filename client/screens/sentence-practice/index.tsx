@@ -18,6 +18,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { Spacing, BorderRadius } from '@/constants/theme';
+import { createFormDataFile } from '@/utils';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
@@ -82,8 +83,21 @@ export default function SentencePracticeScreen() {
   // 错误闪烁动画
   const errorAnimRef = useRef<Animated.Value>(new Animated.Value(0));
 
+  // 语音输入
+  const [isRecording, setIsRecording] = useState(false);
+  const [hasRecordingPermission, setHasRecordingPermission] = useState(false);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
+
+  // 初始化录音权限
+  useEffect(() => {
+    (async () => {
+      const { status } = await Audio.requestPermissionsAsync();
+      setHasRecordingPermission(status === 'granted');
+    })();
+  }, []);
 
   // 加载可学习的句子
   const fetchSentences = useCallback(async () => {
@@ -511,11 +525,77 @@ export default function SentencePracticeScreen() {
     }
   }, [currentIndex, sentences.length, stopPlayback, router]);
 
+  // 开始语音输入
+  const startRecording = useCallback(async () => {
+    if (!hasRecordingPermission) {
+      Alert.alert('权限不足', '需要麦克风权限才能使用语音输入');
+      return;
+    }
+
+    if (isPlaying) {
+      await pauseAudio();
+    }
+
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+      );
+
+      recordingRef.current = recording;
+      setIsRecording(true);
+    } catch (error) {
+      console.error('开始录音失败:', error);
+      Alert.alert('录音失败', '无法启动录音');
+    }
+  }, [hasRecordingPermission, isPlaying, pauseAudio]);
+
+  // 停止语音输入并识别
+  const stopRecordingAndRecognize = useCallback(async () => {
+    if (!recordingRef.current) return;
+
+    setIsRecording(false);
+
+    try {
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
+
+      if (uri) {
+        const fileData = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
+        const formData = new FormData();
+        formData.append('audio', fileData as any);
+
+        const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech/recognize`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await response.json();
+
+        if (data.text) {
+          // 追加识别结果
+          const newText = currentInput ? `${currentInput} ${data.text.toLowerCase()}` : data.text.toLowerCase();
+          handleInputChange(newText);
+        }
+      }
+    } catch (error) {
+      console.error('语音识别失败:', error);
+    }
+  }, [currentInput, handleInputChange]);
+
   // 清理
   useEffect(() => {
     return () => {
       if (soundRef.current) {
         soundRef.current.unloadAsync();
+      }
+      if (recordingRef.current) {
+        recordingRef.current.stopAndUnloadAsync();
       }
     };
   }, []);
@@ -569,6 +649,7 @@ export default function SentencePracticeScreen() {
             {currentIndex + 1} / {sentences.length}
           </ThemedText>
         </View>
+        {/* 右侧小控制按钮 */}
         <View style={styles.headerControls}>
           <TouchableOpacity
             style={[styles.smallControlBtn, showAudioSettings && styles.smallControlBtnActive]}
@@ -588,6 +669,7 @@ export default function SentencePracticeScreen() {
       {/* Audio Settings Panel */}
       {showAudioSettings && (
         <View style={styles.audioSettingsPanel}>
+          {/* Volume Control */}
           <View style={styles.settingRow}>
             <FontAwesome6 name="volume-low" size={14} color={theme.textMuted} style={styles.settingIcon} />
             <View style={styles.sliderContainer}>
@@ -600,7 +682,9 @@ export default function SentencePracticeScreen() {
                   <TouchableOpacity
                     key={i}
                     style={styles.sliderTouchPoint}
-                    onPress={() => updateVolume(i / 10)}
+                    onPress={() => {
+                      updateVolume(i / 10);
+                    }}
                   />
                 ))}
               </View>
@@ -608,6 +692,7 @@ export default function SentencePracticeScreen() {
             <FontAwesome6 name="volume-high" size={14} color={theme.textMuted} />
           </View>
 
+          {/* Speed Control */}
           <View style={styles.settingRow}>
             <ThemedText variant="caption" color={theme.textMuted} style={styles.settingLabel}>0.5x</ThemedText>
             <View style={styles.sliderContainer}>
@@ -620,7 +705,9 @@ export default function SentencePracticeScreen() {
                   <TouchableOpacity
                     key={rate}
                     style={styles.sliderTouchPoint}
-                    onPress={() => updatePlaybackRate(rate)}
+                    onPress={() => {
+                      updatePlaybackRate(rate);
+                    }}
                   />
                 ))}
               </View>
@@ -701,6 +788,17 @@ export default function SentencePracticeScreen() {
               autoCorrect={false}
               autoFocus
             />
+            <TouchableOpacity
+              style={styles.inputVoiceBtn}
+              onPressIn={startRecording}
+              onPressOut={stopRecordingAndRecognize}
+            >
+              <FontAwesome6
+                name={isRecording ? "stop" : "microphone"}
+                size={18}
+                color={isRecording ? theme.error : theme.primary}
+              />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -714,7 +812,7 @@ export default function SentencePracticeScreen() {
         )}
       </ScrollView>
 
-      {/* Navigation Buttons */}
+      {/* Navigation Buttons (Fixed at bottom) */}
       <View style={styles.navButtons}>
         <TouchableOpacity
           style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
