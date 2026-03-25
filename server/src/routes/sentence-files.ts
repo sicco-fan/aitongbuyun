@@ -49,10 +49,19 @@ router.get('/', async (req: Request, res: Response) => {
     
     // 获取每个文件的句子数量和签名 URL
     const filesWithCount = await Promise.all((files || []).map(async (file) => {
-      const { count } = await supabase
+      // 获取总句子数
+      const { count: totalCount } = await supabase
         .from('sentence_file_items')
         .select('*', { count: 'exact', head: true })
         .eq('sentence_file_id', file.id);
+      
+      // 获取有时间戳的句子数（start_time 和 end_time 都不为 null）
+      const { count: readyCount } = await supabase
+        .from('sentence_file_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('sentence_file_id', file.id)
+        .not('start_time', 'is', null)
+        .not('end_time', 'is', null);
       
       // 生成原始音频的签名 URL
       let original_audio_signed_url = null;
@@ -69,7 +78,8 @@ router.get('/', async (req: Request, res: Response) => {
       
       return {
         ...file,
-        sentences_count: count || 0,
+        sentences_count: totalCount || 0,
+        ready_sentences_count: readyCount || 0, // 有时间戳可学习的句子数
         original_audio_signed_url,
       };
     }));
@@ -137,6 +147,76 @@ router.get('/:id', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('获取句库文件详情失败:', error);
     res.status(500).json({ error: '获取详情失败', message: (error as Error).message });
+  }
+});
+
+/**
+ * GET /api/v1/sentence-files/:id/learnable
+ * 获取可学习的句子（只返回有时间戳的句子）
+ */
+router.get('/:id/learnable', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const supabase = getSupabaseClient();
+    
+    const { data: file, error } = await supabase
+      .from('sentence_files')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error || !file) {
+      return res.status(404).json({ error: '文件不存在' });
+    }
+    
+    // 只获取有时间戳的句子
+    const { data: sentences, error: sentencesError } = await supabase
+      .from('sentence_file_items')
+      .select('*')
+      .eq('sentence_file_id', id)
+      .not('start_time', 'is', null)
+      .not('end_time', 'is', null)
+      .order('sentence_index');
+    
+    if (sentencesError) {
+      throw new Error(sentencesError.message);
+    }
+    
+    // 生成原始音频的签名 URL
+    let original_audio_signed_url = null;
+    if (file.original_audio_url) {
+      try {
+        original_audio_signed_url = await storage.generatePresignedUrl({
+          key: file.original_audio_url,
+          expireTime: 86400 * 7,
+        });
+      } catch (e) {
+        console.error('生成签名URL失败:', e);
+      }
+    }
+    
+    // 转换句子时间戳：数据库存毫秒，前端用秒
+    const processedSentences = (sentences || []).map((s: any) => ({
+      id: s.id,
+      text: s.text,
+      sentence_index: s.sentence_index,
+      start_time: s.start_time / 1000,
+      end_time: s.end_time / 1000,
+    }));
+    
+    res.json({
+      file: {
+        id: file.id,
+        title: file.title,
+        original_audio_signed_url,
+        original_duration: file.original_duration,
+      },
+      sentences: processedSentences,
+      total_count: processedSentences.length,
+    });
+  } catch (error) {
+    console.error('获取可学习句子失败:', error);
+    res.status(500).json({ error: '获取失败', message: (error as Error).message });
   }
 });
 

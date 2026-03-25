@@ -1,5 +1,5 @@
-import React, { useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useCallback, useRef, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -26,9 +26,10 @@ export function TimeControl({
   const lastAngle = useSharedValue(0);
   const accumulatedDelta = useSharedValue(0);
   
-  // 长按相关
+  // 长按相关 - 使用 ref 和 state 结合
   const longPressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isLongPressRef = useRef(false);
+  const longPressDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isLongPressing, setIsLongPressing] = useState(false);
 
   // 格式化时间显示
   const formatTime = (ms: number) => {
@@ -44,41 +45,45 @@ export function TimeControl({
   }, [onChange]);
 
   const handlePlay = useCallback(() => {
-    if (!isLongPressRef.current) {
-      console.log(`[TimeControl] 点击播放片段: ${label}`);
-      onPlay?.();
-    }
+    console.log(`[TimeControl] 点击播放片段: ${label}`);
+    onPlay?.();
   }, [onPlay, label]);
 
-  // 开始长按
+  // 开始长按 - 先延迟200ms再开始连续触发
   const startLongPress = useCallback((delta: number) => {
-    isLongPressRef.current = false;
-    
     // 立即执行一次
     onChange(delta);
     
-    // 设置定时器连续执行
-    longPressTimerRef.current = setInterval(() => {
-      isLongPressRef.current = true;
-      onChange(delta);
-    }, 50); // 每50ms执行一次
+    // 200ms 后开始连续触发
+    longPressDelayRef.current = setTimeout(() => {
+      setIsLongPressing(true);
+      longPressTimerRef.current = setInterval(() => {
+        onChange(delta);
+      }, 80); // 每80ms执行一次
+    }, 200);
   }, [onChange]);
 
   // 停止长按
   const stopLongPress = useCallback(() => {
+    // 清除延迟定时器
+    if (longPressDelayRef.current) {
+      clearTimeout(longPressDelayRef.current);
+      longPressDelayRef.current = null;
+    }
+    // 清除连续触发定时器
     if (longPressTimerRef.current) {
       clearInterval(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
-    // 延迟重置，避免触发 onClick
-    setTimeout(() => {
-      isLongPressRef.current = false;
-    }, 100);
+    setIsLongPressing(false);
   }, []);
 
   // 组件卸载时清理
   useEffect(() => {
     return () => {
+      if (longPressDelayRef.current) {
+        clearTimeout(longPressDelayRef.current);
+      }
       if (longPressTimerRef.current) {
         clearInterval(longPressTimerRef.current);
       }
@@ -105,6 +110,24 @@ export function TimeControl({
     transform: [{ translateX: accumulatedDelta.value * 0.15 }],
   }));
 
+  // 渲染调整按钮
+  const renderAdjustButton = (delta: number, icon: string, text: string) => (
+    <TouchableOpacity 
+      style={[
+        styles.adjustBtn, 
+        { backgroundColor: color + '20', borderColor: color },
+        isLongPressing && styles.adjustBtnActive,
+      ]}
+      onPressIn={() => startLongPress(delta)}
+      onPressOut={stopLongPress}
+      onPress={() => {}} // 防止 onPressIn 不触发时的回退
+      activeOpacity={0.7}
+    >
+      <FontAwesome6 name={icon} size={16} color={color} />
+      <Text style={[styles.btnText, { color }]}>{text}</Text>
+    </TouchableOpacity>
+  );
+
   return (
     <View style={styles.container}>
       {/* 时间显示行 - 点击播放片段，滑动微调 */}
@@ -128,44 +151,13 @@ export function TimeControl({
       
       {/* 调整按钮行 - 支持长按连续调整 */}
       <View style={styles.buttonRow}>
-        <TouchableOpacity 
-          style={[styles.adjustBtn, { backgroundColor: color + '20', borderColor: color }]}
-          onPressIn={() => startLongPress(-100)}
-          onPressOut={stopLongPress}
-        >
-          <FontAwesome6 name="angles-left" size={16} color={color} />
-          <Text style={[styles.btnText, { color }]}>-100</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.adjustBtn, { backgroundColor: color + '20', borderColor: color }]}
-          onPressIn={() => startLongPress(-10)}
-          onPressOut={stopLongPress}
-        >
-          <FontAwesome6 name="angle-left" size={16} color={color} />
-          <Text style={[styles.btnText, { color }]}>-10</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.adjustBtn, { backgroundColor: color + '20', borderColor: color }]}
-          onPressIn={() => startLongPress(10)}
-          onPressOut={stopLongPress}
-        >
-          <FontAwesome6 name="angle-right" size={16} color={color} />
-          <Text style={[styles.btnText, { color }]}>+10</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.adjustBtn, { backgroundColor: color + '20', borderColor: color }]}
-          onPressIn={() => startLongPress(100)}
-          onPressOut={stopLongPress}
-        >
-          <FontAwesome6 name="angles-right" size={16} color={color} />
-          <Text style={[styles.btnText, { color }]}>+100</Text>
-        </TouchableOpacity>
+        {renderAdjustButton(-100, 'angles-left', '-100')}
+        {renderAdjustButton(-10, 'angle-left', '-10')}
+        {renderAdjustButton(10, 'angle-right', '+10')}
+        {renderAdjustButton(100, 'angles-right', '+100')}
       </View>
       
-      <Text style={styles.hint}>点击时间播放片段 | ← 滑动微调 → | 长按快调</Text>
+      <Text style={styles.hint}>点击播放 | 滑动微调 | 长按快调</Text>
     </View>
   );
 }
@@ -216,6 +208,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     borderWidth: 1,
+  },
+  adjustBtnActive: {
+    opacity: 0.7,
   },
   btnText: {
     fontSize: 12,

@@ -28,6 +28,15 @@ interface Material {
   created_at: string;
 }
 
+interface SentenceFile {
+  id: number;
+  title: string;
+  sentences_count: number;
+  ready_sentences_count: number;
+  status: string;
+  original_duration: number;
+}
+
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
 export default function HomeScreen() {
@@ -35,27 +44,35 @@ export default function HomeScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
   const [materials, setMaterials] = useState<Material[]>([]);
+  const [sentenceFiles, setSentenceFiles] = useState<SentenceFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchMaterials = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
-      /**
-       * 服务端文件：server/src/routes/materials.ts
-       * 接口：GET /api/v1/materials
-       */
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials`);
-      const data = await response.json();
-      
-      if (data.materials) {
-        // 只显示已准备好的素材
-        const readyMaterials = data.materials.filter((m: Material) => {
+      // 并行获取学习材料和句库文件
+      const [materialsRes, sentenceFilesRes] = await Promise.all([
+        fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials`),
+        fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`),
+      ]);
+
+      const materialsData = await materialsRes.json();
+      const sentenceFilesData = await sentenceFilesRes.json();
+
+      if (materialsData.materials) {
+        const readyMaterials = materialsData.materials.filter((m: Material) => {
           return m.sentences_count > 0 && m.status === 'ready';
         });
         setMaterials(readyMaterials);
       }
+
+      if (sentenceFilesData.files) {
+        // 只显示有可学习句子的文件
+        const filesWithReady = sentenceFilesData.files.filter((f: SentenceFile) => f.ready_sentences_count > 0);
+        setSentenceFiles(filesWithReady);
+      }
     } catch (error) {
-      console.error('获取材料列表失败:', error);
+      console.error('获取数据失败:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -64,17 +81,21 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      fetchMaterials();
-    }, [fetchMaterials])
+      fetchData();
+    }, [fetchData])
   );
 
   const handleRefresh = () => {
     setRefreshing(true);
-    fetchMaterials();
+    fetchData();
   };
 
   const handleMaterialPress = (material: Material) => {
     router.push('/practice', { materialId: material.id, title: material.title });
+  };
+
+  const handleSentenceFilePress = (file: SentenceFile) => {
+    router.push('/sentence-practice', { fileId: file.id, title: file.title });
   };
 
   const formatDuration = (ms: number) => {
@@ -116,6 +137,57 @@ export default function HomeScreen() {
           </ThemedText>
         </ThemedView>
 
+        {/* 句库学习 Section */}
+        {sentenceFiles.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <ThemedText variant="h4" color={theme.textPrimary}>
+                句库学习
+              </ThemedText>
+              <ThemedText variant="caption" color={theme.textMuted}>
+                {sentenceFiles.reduce((sum, f) => sum + f.ready_sentences_count, 0)} 句可学
+              </ThemedText>
+            </View>
+
+            {sentenceFiles.map((file) => (
+              <TouchableOpacity
+                key={`sentence-${file.id}`}
+                style={styles.materialCard}
+                onPress={() => handleSentenceFilePress(file)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.materialHeader}>
+                  <View style={[styles.materialIconContainer, { backgroundColor: theme.accent + '20' }]}>
+                    <FontAwesome6 name="book-open" size={20} color={theme.accent} />
+                  </View>
+                  <View style={styles.materialInfo}>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.materialTitle}>
+                      {file.title}
+                    </ThemedText>
+                    <View style={styles.materialMeta}>
+                      <View style={styles.metaTag}>
+                        <FontAwesome6 name="clock" size={10} color={theme.textMuted} />
+                        <ThemedText variant="tiny" color={theme.textMuted}>
+                          {formatDuration(file.original_duration)}
+                        </ThemedText>
+                      </View>
+                      <View style={styles.metaTag}>
+                        <FontAwesome6 name="circle-check" size={10} color={theme.success} />
+                        <ThemedText variant="tiny" color={theme.textMuted}>
+                          {file.ready_sentences_count} 句可学
+                        </ThemedText>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.materialArrow}>
+                    <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
+
         {/* Materials List */}
         <View style={styles.sectionHeader}>
           <ThemedText variant="h4" color={theme.textPrimary}>
@@ -126,7 +198,7 @@ export default function HomeScreen() {
           </ThemedText>
         </View>
 
-        {materials.length === 0 ? (
+        {materials.length === 0 && sentenceFiles.length === 0 ? (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconContainer}>
               <FontAwesome6 name="headphones" size={32} color={theme.primary} />
@@ -138,7 +210,7 @@ export default function HomeScreen() {
               请先在后台管理中添加素材
             </ThemedText>
           </View>
-        ) : (
+        ) : materials.length === 0 ? null : (
           materials.map((material) => {
             const progress = getProgress(material);
             return (
