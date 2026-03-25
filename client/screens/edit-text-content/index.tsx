@@ -7,10 +7,6 @@ import {
   ActivityIndicator,
   Platform,
   Linking,
-  KeyboardAvoidingView,
-  Keyboard,
-  TouchableWithoutFeedback,
-  Text,
 } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Audio } from 'expo-av';
@@ -57,9 +53,6 @@ export default function EditTextContentScreen() {
   const [currentFile, setCurrentFile] = useState<SentenceFile | null>(null); // 当前编辑
   
   const [textContent, setTextContent] = useState('');
-  
-  // 键盘锁定状态 - 锁定后点击文本框不会弹出键盘，方便移动光标
-  const [keyboardLocked, setKeyboardLocked] = useState(false);
   
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
@@ -523,29 +516,19 @@ export default function EditTextContentScreen() {
   if (currentFile) {
     return (
       <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
-        <KeyboardAvoidingView 
-          style={{ flex: 1 }} 
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <ScrollView 
-              contentContainerStyle={styles.scrollContent}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="interactive"
-            >
-              {/* Header */}
-              <ThemedView level="root" style={styles.header}>
-                <View style={styles.headerRow}>
-                  <TouchableOpacity onPress={handleExitEdit}>
-                    <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
-                  </TouchableOpacity>
-                  <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
-                    编辑文本
-                  </ThemedText>
-                  <View style={{ width: 20 }} />
-                </View>
-              </ThemedView>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* Header */}
+          <ThemedView level="root" style={styles.header}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity onPress={handleExitEdit}>
+                <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
+              </TouchableOpacity>
+              <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
+                编辑文本
+              </ThemedText>
+              <View style={{ width: 20 }} />
+            </View>
+          </ThemedView>
 
           {/* 输入端：原始音频文件 */}
           <View style={styles.section}>
@@ -638,13 +621,6 @@ export default function EditTextContentScreen() {
                     <ThemedText variant="tiny" color={theme.textMuted}>5s</ThemedText>
                   </TouchableOpacity>
                 </View>
-                
-                {/* 提示 */}
-                <View style={styles.playerHint}>
-                  <ThemedText variant="tiny" color={theme.textMuted}>
-                    点击进度条可跳转 · 播放时文本核对更方便
-                  </ThemedText>
-                </View>
               </View>
             )}
           </View>
@@ -675,78 +651,26 @@ export default function EditTextContentScreen() {
                 <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
               ) : (
                 <>
-                  <FontAwesome6 name="wand-magic-sparkles" size={16} color={theme.buttonPrimaryText} />
-                  <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
-                    从音频提取文本
+                  <FontAwesome6 name="wand-magic-sparkles" size={14} color={theme.buttonPrimaryText} />
+                  <ThemedText variant="small" color={theme.buttonPrimaryText}>
+                    提取文本
                   </ThemedText>
                 </>
               )}
             </TouchableOpacity>
             
-            {/* 文本编辑器 + 键盘锁定控制 */}
-            <View style={styles.textEditorContainer}>
-              {/* 工具栏 */}
-              <View style={styles.textEditorToolbar}>
-                <TouchableOpacity 
-                  style={[styles.lockButton, keyboardLocked && styles.lockButtonActive]}
-                  onPress={() => {
-                    setKeyboardLocked(!keyboardLocked);
-                    if (!keyboardLocked) {
-                      // 锁定时立即关闭键盘
-                      Keyboard.dismiss();
-                    }
-                  }}
-                >
-                  <FontAwesome6 
-                    name={keyboardLocked ? "keyboard" : "lock"} 
-                    size={14} 
-                    color={keyboardLocked ? theme.buttonPrimaryText : theme.textMuted} 
-                  />
-                  <ThemedText variant="tiny" color={keyboardLocked ? theme.buttonPrimaryText : theme.textMuted}>
-                    {keyboardLocked ? '点击输入' : '锁定键盘'}
-                  </ThemedText>
-                </TouchableOpacity>
-                {keyboardLocked && (
-                  <ThemedText variant="tiny" color={theme.textMuted}>
-                    锁定中 · 可选择/复制文本
-                  </ThemedText>
-                )}
-              </View>
-              
-              {/* 文本编辑区域 */}
-              <View style={styles.textEditorWrapper}>
-                {/* 文本输入框 - 始终存在但可能被遮挡 */}
-                <TextInput
-                  style={styles.textEditor}
-                  value={textContent}
-                  onChangeText={setTextContent}
-                  placeholder="输入或粘贴文本内容，空行分隔段落"
-                  placeholderTextColor={theme.textMuted}
-                  multiline
-                  textAlignVertical="top"
-                  autoCapitalize="sentences"
-                  autoCorrect={false}
-                  pointerEvents={keyboardLocked ? 'none' : 'auto'}
-                />
-                
-                {/* 锁定时显示可选择文本的覆盖层 */}
-                {keyboardLocked && (
-                  <View style={styles.textOverlay} pointerEvents="auto">
-                    <ScrollView 
-                      style={styles.textOverlayScroll}
-                      contentContainerStyle={styles.textOverlayContent}
-                    >
-                      <Text 
-                        style={styles.selectableText}
-                        selectable
-                      >
-                        {textContent || '输入或粘贴文本内容，空行分隔段落'}
-                      </Text>
-                    </ScrollView>
-                  </View>
-                )}
-              </View>
-            </View>
+            {/* 文本编辑器 */}
+            <TextInput
+              style={styles.textEditor}
+              value={textContent}
+              onChangeText={setTextContent}
+              placeholder="输入或粘贴文本内容，空行分隔段落"
+              placeholderTextColor={theme.textMuted}
+              multiline
+              textAlignVertical="top"
+              autoCapitalize="sentences"
+              autoCorrect={false}
+            />
             
             {/* 保存按钮 */}
             <TouchableOpacity
@@ -767,16 +691,14 @@ export default function EditTextContentScreen() {
             </TouchableOpacity>
           </View>
 
-              {/* 输出端提示 */}
-              <View style={styles.outputHint}>
-                <FontAwesome6 name="arrow-right-from-bracket" size={14} color={theme.textMuted} />
-                <ThemedText variant="small" color={theme.textMuted}>
-                  保存后，文件将移至「输出端」归档
-                </ThemedText>
-              </View>
-            </ScrollView>
-          </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
+          {/* 输出端提示 */}
+          <View style={styles.outputHint}>
+            <FontAwesome6 name="arrow-right-from-bracket" size={14} color={theme.textMuted} />
+            <ThemedText variant="small" color={theme.textMuted}>
+              保存后，文件将移至「输出端」归档
+            </ThemedText>
+          </View>
+        </ScrollView>
 
         {/* Dialogs */}
         <ConfirmDialog

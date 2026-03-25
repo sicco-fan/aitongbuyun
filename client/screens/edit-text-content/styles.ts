@@ -10,7 +10,7 @@ export const createStyles = (theme: Theme) => {
       paddingBottom: Spacing['5xl'],
     },
     header: {
-      marginBottom: Spacing.xl,
+      marginBottom: Spacing.md,  // 减小
     },
     headerRow: {
       flexDirection: 'row',
@@ -34,13 +34,13 @@ export const createStyles = (theme: Theme) => {
     
     // Section 样式
     section: {
-      marginBottom: Spacing.lg,
+      marginBottom: Spacing.md,  // 减小
     },
     sectionHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: Spacing.md,
+      marginBottom: Spacing.sm,  // 减小
     },
     sectionTitleRow: {
       flexDirection: 'row',
@@ -178,25 +178,26 @@ export const createStyles = (theme: Theme) => {
     
     // ===== 编辑端样式 =====
     
-    // 音频播放器卡片
+    // 音频播放器卡片 - 紧凑版
     audioPlayerCard: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
-      padding: Spacing.lg,
+      padding: Spacing.md,  // 减小 padding
+      marginBottom: Spacing.sm,  // 减小底部间距
     },
     audioPlayerHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: Spacing.md,
+      marginBottom: Spacing.sm,  // 减小间距
     },
     audioPlayerIcon: {
-      width: 40,
-      height: 40,
+      width: 36,  // 减小尺寸
+      height: 36,
       borderRadius: BorderRadius.md,
       backgroundColor: theme.primary + '15',
       alignItems: 'center',
       justifyContent: 'center',
-      marginRight: Spacing.md,
+      marginRight: Spacing.sm,
     },
     audioPlayerInfo: {
       flex: 1,
@@ -205,46 +206,40 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: Spacing.xl,
-      marginTop: Spacing.md,
+      gap: Spacing.lg,  // 减小间距
+      marginTop: Spacing.sm,
     },
-    // 后退/前进按钮
+    // 后退/前进按钮 - 更小
     seekButton: {
-      width: 48,
-      height: 48,
+      width: 40,
+      height: 40,
       borderRadius: BorderRadius.md,
       backgroundColor: theme.backgroundTertiary,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    // 大播放按钮
+    // 播放按钮 - 更小
     playButton: {
-      width: 64,
-      height: 64,
-      borderRadius: 32,
+      width: 52,
+      height: 52,
+      borderRadius: 26,
       backgroundColor: theme.primary,
       alignItems: 'center',
       justifyContent: 'center',
-      // 添加阴影让按钮更明显
-      shadowColor: theme.primary,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 4,
     },
-    // 播放器提示
+    // 播放器提示 - 移除，节省空间
     playerHint: {
       alignItems: 'center',
-      marginTop: Spacing.md,
+      marginTop: Spacing.xs,
     },
     
-    // 播放进度 - 更高的进度条，方便点击
+    // 播放进度
     progressContainer: {
-      marginBottom: Spacing.sm,
+      marginBottom: Spacing.xs,
     },
     progressBarBg: {
       width: '100%',
-      height: 8,  // 增加高度，方便点击
+      height: 6,  // 减小高度
       backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.md,
       overflow: 'hidden',
@@ -256,80 +251,32 @@ export const createStyles = (theme: Theme) => {
     timeRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginTop: Spacing.xs,
+      marginTop: 2,
     },
     
-    // 提取按钮
+    // 提取按钮 - 更紧凑
     extractButton: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: Spacing.sm,
+      gap: Spacing.xs,
       backgroundColor: theme.accent,
-      paddingVertical: Spacing.md,
+      paddingVertical: Spacing.sm,
       borderRadius: BorderRadius.md,
-      marginBottom: Spacing.md,
+      marginBottom: Spacing.sm,
     },
     
-    // 文本编辑器 - 固定高度避免测量错误
-    textEditorContainer: {
-      marginBottom: Spacing.sm,
-    },
-    textEditorToolbar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: Spacing.xs,
-      marginBottom: Spacing.sm,
-    },
-    lockButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: Spacing.xs,
-      backgroundColor: theme.backgroundTertiary,
-      paddingHorizontal: Spacing.sm,
-      paddingVertical: Spacing.xs,
-      borderRadius: BorderRadius.sm,
-    },
-    lockButtonActive: {
-      backgroundColor: theme.primary,
-    },
-    textEditorWrapper: {
-      position: 'relative',
-      height: 400,
-    },
+    // 文本编辑器 - 增大高度
     textEditor: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
-      padding: Spacing.lg,
-      height: 400,
+      padding: Spacing.md,
+      height: 500,  // 增大高度
       fontSize: 16,
       color: theme.textPrimary,
       borderWidth: 1,
       borderColor: theme.border,
-    },
-    // 锁定时的文本覆盖层
-    textOverlay: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.lg,
-      borderWidth: 1,
-      borderColor: theme.border,
-    },
-    textOverlayScroll: {
-      flex: 1,
-    },
-    textOverlayContent: {
-      padding: Spacing.lg,
-    },
-    selectableText: {
-      fontSize: 16,
-      color: theme.textPrimary,
-      lineHeight: 24,
+      marginBottom: Spacing.sm,
     },
     
     // 段落统计
