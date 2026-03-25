@@ -7,6 +7,9 @@ import {
   ActivityIndicator,
   Platform,
   Linking,
+  KeyboardAvoidingView,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Audio } from 'expo-av';
@@ -516,19 +519,29 @@ export default function EditTextContentScreen() {
   if (currentFile) {
     return (
       <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Header */}
-          <ThemedView level="root" style={styles.header}>
-            <View style={styles.headerRow}>
-              <TouchableOpacity onPress={handleExitEdit}>
-                <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
-              </TouchableOpacity>
-              <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
-                编辑文本
-              </ThemedText>
-              <View style={{ width: 20 }} />
-            </View>
-          </ThemedView>
+        <KeyboardAvoidingView 
+          style={{ flex: 1 }} 
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <ScrollView 
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+            >
+              {/* Header */}
+              <ThemedView level="root" style={styles.header}>
+                <View style={styles.headerRow}>
+                  <TouchableOpacity onPress={handleExitEdit}>
+                    <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
+                  </TouchableOpacity>
+                  <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
+                    编辑文本
+                  </ThemedText>
+                  <View style={{ width: 20 }} />
+                </View>
+              </ThemedView>
 
           {/* 输入端：原始音频文件 */}
           <View style={styles.section}>
@@ -698,14 +711,16 @@ export default function EditTextContentScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* 输出端提示 */}
-          <View style={styles.outputHint}>
-            <FontAwesome6 name="arrow-right-from-bracket" size={14} color={theme.textMuted} />
-            <ThemedText variant="small" color={theme.textMuted}>
-              保存后，文件将移至「输出端」归档
-            </ThemedText>
-          </View>
-        </ScrollView>
+              {/* 输出端提示 */}
+              <View style={styles.outputHint}>
+                <FontAwesome6 name="arrow-right-from-bracket" size={14} color={theme.textMuted} />
+                <ThemedText variant="small" color={theme.textMuted}>
+                  保存后，文件将移至「输出端」归档
+                </ThemedText>
+              </View>
+            </ScrollView>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
 
         {/* Dialogs */}
         <ConfirmDialog
