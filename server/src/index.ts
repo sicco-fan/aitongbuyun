@@ -20,14 +20,16 @@ app.get('/api/v1/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Routes - 文件上传路由放在 body parser 之前
+// Routes - 文件上传路由放在 body parser 之前，避免影响 multipart/form-data
 app.use('/api/v1/materials/download', videoDownloadRouter);
 app.use('/api/v1/materials', materialsRouter);
-app.use('/api/v1/sentence-files', sentenceFilesRouter);
 
-// Body parser - 放在文件上传路由之后，避免影响 multipart/form-data
+// Body parser - 放在文件上传路由之后
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// sentence-files 路由 - 放在 body parser 之后，因为有些接口需要解析 JSON body
+app.use('/api/v1/sentence-files', sentenceFilesRouter);
 
 // 其他 API 路由
 app.use('/api/v1/learning-records', learningRouter);

@@ -201,15 +201,15 @@ export default function EditTextContentScreen() {
     try {
       /**
        * 服务端文件：server/src/routes/sentence-files.ts
-       * 接口：PATCH /api/v1/sentence-files/:id
+       * 接口：PUT /api/v1/sentence-files/:id/text
        * Path 参数：id: number
-       * Body 参数：text_content: string
+       * Body 参数：text: string
        */
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${currentFile.id}`, {
-        method: 'PATCH',
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${currentFile.id}/text`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text_content: textContent,
+          text: textContent,
         }),
       });
       
@@ -218,7 +218,7 @@ export default function EditTextContentScreen() {
       if (result.success) {
         // 更新当前文件状态
         setCurrentFile(prev => prev ? { ...prev, status: 'text_ready', text_content: textContent } : null);
-        setSuccessDialog({ visible: true, message: '文本保存成功！文件已移至输出端。' });
+        setSuccessDialog({ visible: true, message: '文本保存成功！' });
       } else {
         throw new Error(result.error || '保存失败');
       }
@@ -240,19 +240,25 @@ export default function EditTextContentScreen() {
         staysActiveInBackground: true,
       });
 
+      // 如果正在播放的是同一个文件
       if (soundRef.current && playingFileId === fileId) {
-        if (isPlaying) {
-          await soundRef.current.pauseAsync();
-          setIsPlaying(false);
-        } else {
-          const status = await soundRef.current.getStatusAsync();
-          if (status.isLoaded && status.positionMillis >= (status.durationMillis || 0)) {
-            await soundRef.current.setPositionAsync(0);
+        const status = await soundRef.current.getStatusAsync();
+        if (status.isLoaded) {
+          if (status.isPlaying) {
+            // 正在播放，暂停
+            await soundRef.current.pauseAsync();
+            setIsPlaying(false);
+          } else {
+            // 已暂停，继续播放
+            if (status.positionMillis >= (status.durationMillis || 0)) {
+              await soundRef.current.setPositionAsync(0);
+            }
+            await soundRef.current.playAsync();
+            setIsPlaying(true);
           }
-          await soundRef.current.playAsync();
-          setIsPlaying(true);
         }
       } else {
+        // 播放新文件或重新加载
         if (soundRef.current) {
           await soundRef.current.unloadAsync();
           soundRef.current = null;
