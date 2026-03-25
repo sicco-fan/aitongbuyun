@@ -1,25 +1,22 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
-  ScrollView,
-  TouchableOpacity,
   View,
-  TextInput,
+  TouchableOpacity,
+  Text,
   ActivityIndicator,
+  StyleSheet,
   Alert,
-  Platform,
 } from 'react-native';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
-import { useFocusEffect } from 'expo-router';
 import { useTheme } from '@/hooks/useTheme';
 import { Screen } from '@/components/Screen';
-import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { Spacing, BorderRadius } from '@/constants/theme';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { AudioPlayer } from '@/components/AudioPlayer';
-import { createStyles } from './styles';
+import { TimeControl } from '@/components/TimeControl';
+import { Audio } from 'expo-av';
 
+// 后端服务地址
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
 interface SentenceItem {
@@ -27,50 +24,65 @@ interface SentenceItem {
   sentence_file_id: number;
   text: string;
   order_number: number;
-  start_time: number | null;
-  end_time: number | null;
+  start_time: number | null;  // 秒
+  end_time: number | null;    // 秒
   audio_url: string | null;
 }
 
 interface SentenceFile {
   id: number;
   title: string;
-  original_audio_signed_url?: string;  // 原始音频签名URL
+  original_audio_signed_url?: string;
   text_content: string | null;
   status: string;
+  duration?: number;  // 秒
 }
 
 export default function EditSentenceAudioScreen() {
-  const { theme, isDark } = useTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { theme } = useTheme();
   const router = useSafeRouter();
   const params = useSafeSearchParams<{ fileId?: number }>();
-  
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [processing, setProcessing] = useState(false);
-  
+
   const [file, setFile] = useState<SentenceFile | null>(null);
   const [sentences, setSentences] = useState<SentenceItem[]>([]);
-  const [selectedSentenceIndex, setSelectedSentenceIndex] = useState<number | null>(null);
-  const [currentPlayTime, setCurrentPlayTime] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [duration, setDuration] = useState(0);
-  
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const soundRef = useRef<Audio.Sound | null>(null);
+
   const [errorDialog, setErrorDialog] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: '',
   });
-  
-  const [successDialog, setSuccessDialog] = useState<{ visible: boolean; message: string }>({
+
+  const [successDialog, setSuccessDialog] = useState<{ visible: boolean; message: string; onConfirm?: () => void }>({
     visible: false,
     message: '',
   });
+
+  // 删除确认对话框状态
+  const [deleteConfirm, setDeleteConfirm] = useState<{ visible: boolean; sentenceId: number | null }>({
+    visible: false,
+    sentenceId: null,
+  });
+
+  const currentSentence = sentences[currentIndex];
 
   // 如果有fileId参数，直接加载该文件
   useEffect(() => {
     if (params.fileId) {
       loadFile(params.fileId);
     }
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
+    };
   }, [params.fileId]);
 
   // 加载文件和句子数据
@@ -84,13 +96,17 @@ export default function EditSentenceAudioScreen() {
        */
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${fileId}`);
       const result = await response.json();
-      
+
       if (result.file) {
         setFile(result.file);
-        
+
         // 如果已经有句子数据，加载它们
         if (result.file.sentences && result.file.sentences.length > 0) {
           setSentences(result.file.sentences);
+          // 设置音频时长
+          if (result.file.duration) {
+            setDuration(result.file.duration);
+          }
         } else if (result.file.text_content) {
           // 否则从文本内容创建句子
           const lines = result.file.text_content.split(/\n\s*\n/);
@@ -98,7 +114,7 @@ export default function EditSentenceAudioScreen() {
             .map((line: string) => line.trim())
             .filter((line: string) => line.length > 0)
             .map((line: string, index: number) => ({
-              id: 0, // 新句子没有ID
+              id: 0,
               sentence_file_id: fileId,
               text: line,
               order_number: index + 1,
@@ -118,24 +134,281 @@ export default function EditSentenceAudioScreen() {
     }
   };
 
-  // 更新句子的时间戳
-  const updateTimeStamp = (index: number, field: 'start_time' | 'end_time', value: number) => {
-    setSentences(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
-    });
+  // 加载音频
+  const loadAudio = async () => {
+    if (!file?.original_audio_signed_url) return null;
+
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        interruptionModeIOS: 1,
+        shouldDuckAndroid: true,
+        interruptionModeAndroid: 1,
+        playThroughEarpieceAndroid: false,
+        staysActiveInBackground: false,
+      });
+
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+      }
+
+      const { sound, status } = await Audio.Sound.createAsync(
+        { uri: file.original_audio_signed_url },
+        { shouldPlay: false },
+        onPlaybackStatusUpdate
+      );
+
+      soundRef.current = sound;
+
+      if (status.isLoaded) {
+        const realDuration = (status.durationMillis || 0) / 1000; // 转换为秒
+        setDuration(realDuration);
+        return realDuration;
+      }
+      return null;
+    } catch (error) {
+      console.error('加载音频失败:', error);
+      return null;
+    }
   };
 
-  // 设置开始时间为当前播放时间
-  const setStartTimeFromCurrent = (index: number) => {
-    updateTimeStamp(index, 'start_time', Math.floor(currentPlayTime * 100) / 100);
+  // 播放状态更新回调
+  const onPlaybackStatusUpdate = (status: any) => {
+    if (status.isLoaded && status.didJustFinish) {
+      setIsPlaying(false);
+    }
   };
 
-  // 设置结束时间为当前播放时间
-  const setEndTimeFromCurrent = (index: number) => {
-    updateTimeStamp(index, 'end_time', Math.floor(currentPlayTime * 100) / 100);
+  // 停止播放
+  const handleStopPlaying = useCallback(async () => {
+    try {
+      if (soundRef.current) {
+        const status = await soundRef.current.getStatusAsync();
+        if (status.isLoaded && status.isPlaying) {
+          await soundRef.current.pauseAsync();
+        }
+      }
+      setIsPlaying(false);
+    } catch (e) {
+      console.log('停止播放失败:', e);
+      setIsPlaying(false);
+    }
+  }, []);
+
+  // 播放完整句子（开始时间到结束时间）
+  const playFullSentence = async () => {
+    console.log('[playFullSentence] 开始执行');
+
+    // 加载音频
+    if (!soundRef.current) {
+      const loadedDuration = await loadAudio();
+      if (!loadedDuration) {
+        console.log('[playFullSentence] 音频加载失败');
+        return;
+      }
+    }
+
+    if (!soundRef.current || !currentSentence?.start_time || !currentSentence?.end_time) {
+      console.log('[playFullSentence] 检查失败');
+      return;
+    }
+
+    await handleStopPlaying();
+
+    const status = await soundRef.current.getStatusAsync();
+    if (!status.isLoaded) return;
+
+    // 时间转换为毫秒
+    let startMs = currentSentence.start_time * 1000;
+    let endMs = currentSentence.end_time * 1000;
+    const actualDurationMs = status.durationMillis || 0;
+
+    // 确保时间戳在有效范围内
+    startMs = Math.max(0, Math.min(startMs, actualDurationMs - 100));
+    endMs = Math.max(startMs + 100, Math.min(endMs, actualDurationMs));
+
+    if (endMs <= startMs) return;
+
+    try {
+      await soundRef.current.setPositionAsync(startMs);
+      await soundRef.current.playAsync();
+      setIsPlaying(true);
+
+      const checkInterval = setInterval(async () => {
+        if (!soundRef.current) {
+          clearInterval(checkInterval);
+          return;
+        }
+        const s = await soundRef.current.getStatusAsync();
+        if (s.isLoaded && s.positionMillis >= endMs) {
+          await soundRef.current.pauseAsync();
+          setIsPlaying(false);
+          clearInterval(checkInterval);
+        }
+      }, 50);
+    } catch (e) {
+      console.error('[playFullSentence] 播放失败:', e);
+    }
   };
+
+  // 播放从开始时间位置开始
+  const playFromStart = async () => {
+    if (!currentSentence?.start_time) return;
+
+    if (!soundRef.current) {
+      await loadAudio();
+    }
+
+    if (!soundRef.current) return;
+
+    await handleStopPlaying();
+
+    const status = await soundRef.current.getStatusAsync();
+    if (!status.isLoaded) return;
+
+    const startMs = currentSentence.start_time * 1000;
+    await soundRef.current.setPositionAsync(startMs);
+    await soundRef.current.playAsync();
+    setIsPlaying(true);
+  };
+
+  // 播放从结束时间位置开始
+  const playFromEnd = async () => {
+    if (!currentSentence?.end_time) return;
+
+    if (!soundRef.current) {
+      await loadAudio();
+    }
+
+    if (!soundRef.current) return;
+
+    await handleStopPlaying();
+
+    const status = await soundRef.current.getStatusAsync();
+    if (!status.isLoaded) return;
+
+    const endMs = currentSentence.end_time * 1000;
+    await soundRef.current.setPositionAsync(endMs);
+    await soundRef.current.playAsync();
+    setIsPlaying(true);
+  };
+
+  // 调整开始时间
+  const handleStartTimeChange = (deltaMs: number) => {
+    if (!currentSentence) return;
+
+    const deltaSeconds = deltaMs / 1000;
+    const newStartTime = Math.max(0, (currentSentence.start_time || 0) + deltaSeconds);
+
+    const newSentences = [...sentences];
+    newSentences[currentIndex] = {
+      ...newSentences[currentIndex],
+      start_time: newStartTime,
+    };
+    setSentences(newSentences);
+  };
+
+  // 调整结束时间
+  const handleEndTimeChange = (deltaMs: number) => {
+    if (!currentSentence) return;
+
+    const deltaSeconds = deltaMs / 1000;
+    const minEnd = (currentSentence.start_time || 0) + 0.01; // 最少10ms
+    const newEndTime = Math.max(minEnd, (currentSentence.end_time || 0) + deltaSeconds);
+
+    const newSentences = [...sentences];
+    newSentences[currentIndex] = {
+      ...newSentences[currentIndex],
+      end_time: newEndTime,
+    };
+    setSentences(newSentences);
+  };
+
+  // 确认并跳转下一句，同时自动调整下一句的开始时间
+  const confirmAndNext = () => {
+    if (currentIndex < sentences.length - 1) {
+      const nextIndex = currentIndex + 1;
+      const currentEnd = currentSentence?.end_time;
+
+      if (currentEnd) {
+        // 下一句的开始时间 = 当前句子的结束时间
+        const newSentences = [...sentences];
+        newSentences[nextIndex] = {
+          ...newSentences[nextIndex],
+          start_time: currentEnd,
+        };
+        setSentences(newSentences);
+        console.log(`自动设置第 ${nextIndex + 1} 句开始时间: ${currentEnd}s`);
+      }
+
+      setCurrentIndex(nextIndex);
+    } else {
+      setSuccessDialog({
+        visible: true,
+        message: '已完成所有句子的时间轴设置！\n\n点击「保存」保存进度\n点击「完成切分」生成语音片段',
+      });
+    }
+  };
+
+  // 上一句
+  const goToPrevious = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1);
+    }
+  };
+
+  // 下一句
+  const goToNext = () => {
+    if (currentIndex < sentences.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+    }
+  };
+
+  // 删除当前句子
+  const handleDeleteSentence = useCallback(() => {
+    if (!currentSentence) {
+      setErrorDialog({ visible: true, message: '没有选中要删除的句子' });
+      return;
+    }
+
+    setDeleteConfirm({ visible: true, sentenceId: currentSentence.id });
+  }, [currentSentence]);
+
+  // 执行删除操作
+  const executeDelete = useCallback(async () => {
+    if (!deleteConfirm.sentenceId || !file) return;
+
+    try {
+      // 如果句子有ID，调用后端删除
+      if (deleteConfirm.sentenceId > 0) {
+        const res = await fetch(
+          `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${file.id}/sentences/${deleteConfirm.sentenceId}`,
+          { method: 'DELETE' }
+        );
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || '删除失败');
+        }
+      }
+
+      // 从本地列表中移除
+      const newSentences = sentences.filter((_, idx) => idx !== currentIndex);
+      setSentences(newSentences);
+
+      // 调整当前索引
+      if (currentIndex >= newSentences.length) {
+        setCurrentIndex(Math.max(0, newSentences.length - 1));
+      }
+
+      setSuccessDialog({ visible: true, message: '句子已删除' });
+    } catch (e) {
+      setErrorDialog({ visible: true, message: `删除失败: ${(e as Error).message}` });
+    }
+
+    setDeleteConfirm({ visible: false, sentenceId: null });
+  }, [deleteConfirm.sentenceId, file, sentences, currentIndex]);
 
   // 保存时间戳数据
   const handleSave = async () => {
@@ -143,7 +416,7 @@ export default function EditSentenceAudioScreen() {
       setErrorDialog({ visible: true, message: '请先加载文件' });
       return;
     }
-    
+
     setSaving(true);
     try {
       /**
@@ -157,11 +430,13 @@ export default function EditSentenceAudioScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sentences }),
       });
-      
+
       const result = await response.json();
-      
+
       if (result.success) {
-        setSuccessDialog({ visible: true, message: '时间戳保存成功' });
+        // 重新加载数据以获取服务端生成的ID
+        loadFile(file.id);
+        setSuccessDialog({ visible: true, message: '保存成功！' });
       } else {
         throw new Error(result.error || '保存失败');
       }
@@ -173,21 +448,38 @@ export default function EditSentenceAudioScreen() {
   };
 
   // 生成句子语音片段
-  const handleGenerateAudio = async () => {
+  const handleFinalize = async () => {
     if (!file) {
       setErrorDialog({ visible: true, message: '请先加载文件' });
       return;
     }
-    
+
     // 检查是否所有句子都有时间戳
-    const hasMissingTimestamps = sentences.some(s => s.start_time === null || s.end_time === null);
-    if (hasMissingTimestamps) {
-      setErrorDialog({ visible: true, message: '请先为所有句子设置时间戳' });
+    const invalidSentences = sentences.filter(
+      s => s.start_time === null || s.end_time === null || s.end_time <= s.start_time
+    );
+    if (invalidSentences.length > 0) {
+      setErrorDialog({
+        visible: true,
+        message: `有 ${invalidSentences.length} 个句子时间戳无效，请先调整时间轴`,
+      });
       return;
     }
-    
+
     setProcessing(true);
     try {
+      // 先保存
+      const saveResponse = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${file.id}/sentences`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sentences }),
+      });
+      const saveResult = await saveResponse.json();
+      if (!saveResult.success) {
+        throw new Error(saveResult.error || '保存失败');
+      }
+
+      // 再生成音频
       /**
        * 服务端文件：server/src/routes/sentence-files.ts
        * 接口：POST /api/v1/sentence-files/:id/generate-audio
@@ -196,15 +488,15 @@ export default function EditSentenceAudioScreen() {
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${file.id}/generate-audio`, {
         method: 'POST',
       });
-      
+
       const result = await response.json();
-      
+
       if (result.success) {
-        setSuccessDialog({ visible: true, message: '语音片段生成成功！句库制作完成。' });
-        // 重新加载数据
-        if (file) {
-          loadFile(file.id);
-        }
+        setSuccessDialog({
+          visible: true,
+          message: `语音片段生成成功！\n成功处理 ${result.processedCount || sentences.length} 个句子\n\n句库制作完成！`,
+          onConfirm: () => router.back(),
+        });
       } else {
         throw new Error(result.error || '生成失败');
       }
@@ -215,245 +507,185 @@ export default function EditSentenceAudioScreen() {
     }
   };
 
-  // 格式化时间（秒 -> mm:ss.SS）
+  // 格式化时间（秒 -> m:ss.SS）
   const formatTime = (seconds: number | null) => {
-    if (seconds === null) return '--:--.--';
+    if (seconds === null) return '0:00.00';
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toFixed(2).padStart(5, '0')}`;
+    return `${mins}:${secs.toFixed(2).padStart(5, '0')}`;
   };
 
-  // 渲染句子编辑器
-  const renderSentenceEditor = (sentence: SentenceItem, index: number) => {
-    const isSelected = selectedSentenceIndex === index;
-    
+  // 计算时长
+  const sentenceDuration = currentSentence && currentSentence.start_time !== null && currentSentence.end_time !== null
+    ? currentSentence.end_time - currentSentence.start_time
+    : 0;
+
+  const hasValidTime = currentSentence && currentSentence.start_time !== null && currentSentence.end_time !== null && currentSentence.end_time > currentSentence.start_time;
+
+  // 加载中
+  if (loading) {
     return (
-      <TouchableOpacity
-        key={sentence.id || index}
-        style={[styles.sentenceCard, isSelected && styles.sentenceCardSelected]}
-        onPress={() => setSelectedSentenceIndex(index)}
-        activeOpacity={0.8}
-      >
-        <View style={styles.sentenceHeader}>
-          <View style={styles.sentenceNumber}>
-            <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
-              {sentence.order_number}
-            </ThemedText>
-          </View>
-          <ThemedText variant="caption" color={theme.textMuted}>
-            {formatTime(sentence.start_time)} - {formatTime(sentence.end_time)}
-          </ThemedText>
-        </View>
-        
-        <ThemedText variant="body" color={theme.textPrimary} style={styles.sentenceText}>
-          {sentence.text}
-        </ThemedText>
-        
-        <View style={styles.timeEditor}>
-          <TouchableOpacity
-            style={styles.timeButton}
-            onPress={() => setStartTimeFromCurrent(index)}
-          >
-            <FontAwesome6 name="backward" size={14} color={theme.textMuted} />
-            <ThemedText variant="small" color={theme.textMuted}>
-              设置开始
-            </ThemedText>
-          </TouchableOpacity>
-          
-          <TextInput
-            style={styles.timeInput}
-            value={sentence.start_time?.toString() || ''}
-            onChangeText={(text) => updateTimeStamp(index, 'start_time', parseFloat(text) || 0)}
-            placeholder="0.00"
-            placeholderTextColor={theme.textMuted}
-            keyboardType="numeric"
-          />
-          
-          <TextInput
-            style={styles.timeInput}
-            value={sentence.end_time?.toString() || ''}
-            onChangeText={(text) => updateTimeStamp(index, 'end_time', parseFloat(text) || 0)}
-            placeholder="0.00"
-            placeholderTextColor={theme.textMuted}
-            keyboardType="numeric"
-          />
-          
-          <TouchableOpacity
-            style={styles.timeButton}
-            onPress={() => setEndTimeFromCurrent(index)}
-          >
-            <FontAwesome6 name="forward" size={14} color={theme.textMuted} />
-            <ThemedText variant="small" color={theme.textMuted}>
-              设置结束
-            </ThemedText>
-          </TouchableOpacity>
-        </View>
-        
-        {sentence.audio_url && (
-          <View style={styles.audioStatus}>
-            <FontAwesome6 name="circle-check" size={14} color={theme.success} />
-            <ThemedText variant="small" color={theme.success}>
-              已生成语音
-            </ThemedText>
-          </View>
-        )}
-      </TouchableOpacity>
+      <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
+        <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a' }}>
+          <ActivityIndicator size="large" color="#00ff88" />
+          <Text style={{ color: '#888', marginTop: 16 }}>正在加载...</Text>
+        </ThemedView>
+      </Screen>
     );
-  };
+  }
+
+  // 没有文件
+  if (!file || sentences.length === 0) {
+    return (
+      <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
+        <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a' }}>
+          <FontAwesome6 name="folder-open" size={48} color="#666" />
+          <Text style={{ color: '#888', marginTop: 16 }}>没有找到文件</Text>
+          <TouchableOpacity style={{ marginTop: 24, padding: 16, backgroundColor: '#00ff88', borderRadius: 8 }} onPress={() => router.back()}>
+            <Text style={{ color: '#000', fontWeight: '600' }}>返回</Text>
+          </TouchableOpacity>
+        </ThemedView>
+      </Screen>
+    );
+  }
 
   return (
-    <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
-        <ThemedView level="root" style={styles.header}>
-          <View style={styles.headerRow}>
-            <TouchableOpacity onPress={() => router.back()}>
-              <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
-            </TouchableOpacity>
-            <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
-              剪辑句子语音
-            </ThemedText>
-            <View style={{ width: 20 }} />
+    <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
+      {/* 顶部状态栏 */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle}>时间轴编辑</Text>
+          <Text style={styles.headerInfo}>句子 {currentIndex + 1}/{sentences.length}</Text>
+        </View>
+        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+          <FontAwesome6 name="xmark" size={20} color="#888" />
+        </TouchableOpacity>
+      </View>
+
+      {/* 句子导航 */}
+      <View style={styles.navBar}>
+        <TouchableOpacity
+          style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
+          onPress={goToPrevious}
+        >
+          <FontAwesome6 name="chevron-left" size={16} color={currentIndex === 0 ? '#444' : '#00ff88'} />
+        </TouchableOpacity>
+
+        <View style={styles.sentenceBox}>
+          <Text style={styles.sentenceText}>{currentSentence?.text}</Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
+          onPress={goToNext}
+        >
+          <FontAwesome6 name="chevron-right" size={16} color={currentIndex === sentences.length - 1 ? '#444' : '#00ff88'} />
+        </TouchableOpacity>
+      </View>
+
+      {/* 时间调整区域 */}
+      <View style={styles.dialSection}>
+        {/* 开始时间 */}
+        <TimeControl
+          value={(currentSentence?.start_time || 0) * 1000} // 转换为毫秒
+          onChange={handleStartTimeChange}
+          onPlay={playFromStart}
+          label="开始"
+          color="#00ff88"
+        />
+
+        {/* 时长 */}
+        <View style={styles.durationRow}>
+          <View style={styles.durationDivider} />
+          <View style={styles.durationBox}>
+            <Text style={styles.durationLabel}>时长</Text>
+            <Text style={styles.durationValue}>
+              {hasValidTime ? formatTime(sentenceDuration) : '--:--.--'}
+            </Text>
           </View>
-          <ThemedText variant="body" color={theme.textMuted} style={styles.subtitle}>
-            为每个句子分配时间戳
-          </ThemedText>
-        </ThemedView>
+          <View style={styles.durationDivider} />
+        </View>
 
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={theme.primary} />
-            <ThemedText variant="body" color={theme.textMuted}>
-              加载中...
-            </ThemedText>
-          </View>
-        ) : file ? (
-          <>
-            {/* File Info */}
-            <View style={styles.fileInfoCard}>
-              <View style={styles.fileInfoHeader}>
-                <FontAwesome6 name="file-audio" size={24} color={theme.primary} />
-                <View style={styles.fileInfoContent}>
-                  <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-                    {file.title}
-                  </ThemedText>
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    {sentences.length} 个句子
-                  </ThemedText>
-                </View>
-              </View>
-            </View>
+        {/* 结束时间 */}
+        <TimeControl
+          value={(currentSentence?.end_time || 0) * 1000} // 转换为毫秒
+          onChange={handleEndTimeChange}
+          onPlay={playFromEnd}
+          label="结束"
+          color="#ff8800"
+        />
+      </View>
 
-            {/* Audio Player */}
-            <View style={styles.playerSection}>
-              <ThemedText variant="smallMedium" color={theme.textSecondary}>
-                音频播放器
-              </ThemedText>
-              <AudioPlayer
-                uri={file.original_audio_signed_url || ''}
-                onTimeUpdate={setCurrentPlayTime}
-                onDurationLoad={setDuration}
-              />
-              <View style={styles.currentTimeDisplay}>
-                <ThemedText variant="caption" color={theme.textMuted}>
-                  当前时间: {formatTime(currentPlayTime)} / 总时长: {formatTime(duration)}
-                </ThemedText>
-              </View>
-            </View>
+      {/* 音频时长提示 */}
+      <View style={styles.durationHint}>
+        <FontAwesome6 name="clock" size={14} color="#666" />
+        <Text style={styles.durationHintText}>
+          音频总时长: {formatTime(duration)}
+        </Text>
+      </View>
 
-            {/* Instructions */}
-            <View style={styles.instructions}>
-              <ThemedText variant="smallMedium" color={theme.textSecondary}>
-                操作说明
-              </ThemedText>
-              <View style={styles.instructionList}>
-                <View style={styles.instructionItem}>
-                  <FontAwesome6 name="1" size={14} color={theme.primary} />
-                  <ThemedText variant="small" color={theme.textMuted}>
-                    点击句子卡片选中
-                  </ThemedText>
-                </View>
-                <View style={styles.instructionItem}>
-                  <FontAwesome6 name="2" size={14} color={theme.primary} />
-                  <ThemedText variant="small" color={theme.textMuted}>
-                    播放音频定位到句子开始位置
-                  </ThemedText>
-                </View>
-                <View style={styles.instructionItem}>
-                  <FontAwesome6 name="3" size={14} color={theme.primary} />
-                  <ThemedText variant="small" color={theme.textMuted}>
-                    点击「设置开始/结束」按钮记录时间
-                  </ThemedText>
-                </View>
-              </View>
-            </View>
+      {/* 底部操作栏 */}
+      <View style={styles.bottomBar}>
+        <TouchableOpacity
+          style={styles.deleteBtn}
+          onPress={handleDeleteSentence}
+        >
+          <FontAwesome6 name="trash" size={16} color="#ff4444" />
+          <Text style={styles.deleteBtnText}>删除</Text>
+        </TouchableOpacity>
 
-            {/* Sentences List */}
-            <View style={styles.sentencesSection}>
-              <ThemedText variant="smallMedium" color={theme.textSecondary}>
-                句子列表
-              </ThemedText>
-              <View style={styles.sentencesList}>
-                {sentences.map((sentence, index) => renderSentenceEditor(sentence, index))}
-              </View>
-            </View>
+        <TouchableOpacity
+          style={[styles.stopBtn, isPlaying && styles.stopBtnActive]}
+          onPress={handleStopPlaying}
+          disabled={!isPlaying}
+        >
+          <FontAwesome6 name="stop" size={16} color={isPlaying ? '#fff' : '#444'} />
+          <Text style={[styles.stopBtnText, isPlaying && styles.stopBtnTextActive]}>停止</Text>
+        </TouchableOpacity>
 
-            {/* Action Buttons */}
-            <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-                onPress={handleSave}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator color={theme.buttonPrimaryText} />
-                ) : (
-                  <>
-                    <FontAwesome6 name="floppy-disk" size={18} color={theme.buttonPrimaryText} />
-                    <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-                      保存时间戳
-                    </ThemedText>
-                  </>
-                )}
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.generateButton, processing && styles.generateButtonDisabled]}
-                onPress={handleGenerateAudio}
-                disabled={processing}
-              >
-                {processing ? (
-                  <ActivityIndicator color={theme.buttonPrimaryText} />
-                ) : (
-                  <>
-                    <FontAwesome6 name="wand-magic-sparkles" size={18} color={theme.buttonPrimaryText} />
-                    <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-                      生成语音片段
-                    </ThemedText>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </>
-        ) : (
-          <View style={styles.emptyContainer}>
-            <FontAwesome6 name="folder-open" size={48} color={theme.textMuted} />
-            <ThemedText variant="body" color={theme.textMuted}>
-              请先完成文本编辑
-            </ThemedText>
-            <TouchableOpacity
-              style={styles.createButton}
-              onPress={() => router.push('/edit-text-content')}
-            >
-              <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-                编辑文本
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
-        )}
-      </ScrollView>
+        <TouchableOpacity
+          style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+          onPress={handleSave}
+          disabled={saving}
+        >
+          {saving ? (
+            <ActivityIndicator size="small" color="#000" />
+          ) : (
+            <>
+              <FontAwesome6 name="floppy-disk" size={16} color="#000" />
+              <Text style={styles.saveBtnText}>保存</Text>
+            </>
+          )}
+        </TouchableOpacity>
 
-      {/* Error Dialog */}
+        <TouchableOpacity
+          style={styles.confirmBtn}
+          onPress={confirmAndNext}
+        >
+          <FontAwesome6 name="check" size={16} color="#000" />
+          <Text style={styles.confirmBtnText}>{currentIndex < sentences.length - 1 ? '下一句' : '完成'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 完成切分按钮 */}
+      <View style={styles.finalizeSection}>
+        <TouchableOpacity
+          style={[styles.finalizeBtn, processing && styles.finalizeBtnDisabled]}
+          onPress={handleFinalize}
+          disabled={processing}
+        >
+          {processing ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <FontAwesome6 name="wand-magic-sparkles" size={18} color="#fff" />
+              <Text style={styles.finalizeBtnText}>完成切分并生成语音</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* Dialogs */}
       <ConfirmDialog
         visible={errorDialog.visible}
         title="错误"
@@ -463,15 +695,247 @@ export default function EditSentenceAudioScreen() {
         onCancel={() => setErrorDialog({ visible: false, message: '' })}
       />
 
-      {/* Success Dialog */}
       <ConfirmDialog
         visible={successDialog.visible}
         title="成功"
         message={successDialog.message}
         confirmText="确定"
-        onConfirm={() => setSuccessDialog({ visible: false, message: '' })}
-        onCancel={() => setSuccessDialog({ visible: false, message: '' })}
+        onConfirm={() => {
+          setSuccessDialog({ visible: false, message: '' });
+          successDialog.onConfirm?.();
+        }}
+        onCancel={() => {
+          setSuccessDialog({ visible: false, message: '' });
+          successDialog.onConfirm?.();
+        }}
+      />
+
+      <ConfirmDialog
+        visible={deleteConfirm.visible}
+        title="确认删除"
+        message={`确定要删除这个句子吗？\n\n"${currentSentence?.text?.substring(0, 30)}${(currentSentence?.text?.length || 0) > 30 ? '...' : ''}"`}
+        confirmText="删除"
+        cancelText="取消"
+        onConfirm={executeDelete}
+        onCancel={() => setDeleteConfirm({ visible: false, sentenceId: null })}
       />
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  // 顶部状态栏
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    backgroundColor: '#1a1a1a',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  headerInfo: {
+    color: '#00ff88',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#2a2a2a',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // 句子导航
+  navBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  navBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#00ff8820',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  navBtnDisabled: {
+    opacity: 0.3,
+  },
+  sentenceBox: {
+    flex: 1,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  sentenceText: {
+    color: '#fff',
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+
+  // 时间调整区域
+  dialSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+  },
+
+  // 时长显示
+  durationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+  },
+  durationDivider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#333',
+  },
+  durationBox: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  durationLabel: {
+    color: '#666',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  durationValue: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+
+  // 音频时长提示
+  durationHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+  },
+  durationHintText: {
+    color: '#666',
+    fontSize: 12,
+  },
+
+  // 底部操作栏
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-evenly',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#1a1a1a',
+    borderTopWidth: 1,
+    borderTopColor: '#2a2a2a',
+    gap: 8,
+  },
+  deleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#ff444420',
+  },
+  deleteBtnText: {
+    color: '#ff4444',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  stopBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#333',
+  },
+  stopBtnActive: {
+    backgroundColor: '#666',
+  },
+  stopBtnText: {
+    color: '#444',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  stopBtnTextActive: {
+    color: '#fff',
+  },
+  saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#00ff88',
+  },
+  saveBtnDisabled: {
+    opacity: 0.6,
+  },
+  saveBtnText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  confirmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#00ff88',
+  },
+  confirmBtnText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  // 完成切分按钮
+  finalizeSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  finalizeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: '#00ff88',
+  },
+  finalizeBtnDisabled: {
+    opacity: 0.6,
+  },
+  finalizeBtnText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+});
