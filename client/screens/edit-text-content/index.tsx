@@ -54,6 +54,16 @@ export default function EditTextContentScreen() {
   
   const [textContent, setTextContent] = useState('');
   
+  // 段落统计（使用 useMemo 缓存计算结果）
+  const paragraphStats = useMemo(() => {
+    if (!textContent || !textContent.trim()) return null;
+    const paragraphs = textContent.split(/\n\s*\n/).filter(p => p.trim());
+    return {
+      count: paragraphs.length,
+      length: textContent.length,
+    };
+  }, [textContent]);
+  
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPosition, setPlaybackPosition] = useState(0);
@@ -670,21 +680,20 @@ export default function EditTextContentScreen() {
             <TextInput
               style={styles.textEditor}
               value={textContent}
-              onChangeText={(text) => {
-                setTextContent(text);
-              }}
+              onChangeText={setTextContent}
               placeholder="输入或粘贴文本内容，空行分隔段落"
               placeholderTextColor={theme.textMuted}
               multiline
               textAlignVertical="top"
+              autoCapitalize="sentences"
+              autoCorrect={false}
             />
             
             {/* 段落统计 */}
-            {textContent && textContent.trim() && (
+            {paragraphStats && (
               <View style={styles.paragraphStats}>
                 <ThemedText variant="small" color={theme.textMuted}>
-                  共 {textContent.split(/\n\s*\n/).filter(p => p.trim()).length} 个段落，
-                  {textContent.length} 字符
+                  共 {paragraphStats.count} 个段落，{paragraphStats.length} 字符
                 </ThemedText>
               </View>
             )}

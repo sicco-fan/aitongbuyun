@@ -277,12 +277,12 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.lg,
       padding: Spacing.lg,
       minHeight: 400,  // 增加高度，方便查看段落
-      fontSize: 15,
-      lineHeight: 24,  // 增加行高，提高可读性
+      fontSize: 16,    // 字体大小
       color: theme.textPrimary,
       borderWidth: 1,
       borderColor: theme.border,
       marginBottom: Spacing.sm,
+      // 注意：Android 上 multiline TextInput 使用 lineHeight 会导致输入跳动
     },
     
     // 段落统计
