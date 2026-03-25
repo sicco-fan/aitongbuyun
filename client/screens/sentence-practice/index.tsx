@@ -788,6 +788,31 @@ export default function SentencePracticeScreen() {
               autoCorrect={false}
               autoFocus
             />
+            {/* 输入反馈覆盖层 */}
+            <View style={styles.inputOverlay} pointerEvents="none">
+              {currentInput.length === 0 ? (
+                <ThemedText style={styles.inputPlaceholder}>输入单词...</ThemedText>
+              ) : (
+                currentInput.split('').map((char, idx) => {
+                  // 找到当前正在匹配的目标单词
+                  const incompleteWords = wordStatuses.filter(w => !w.isPunctuation && !w.revealed);
+                  const targetWord = incompleteWords[0]?.word.toLowerCase() || '';
+                  const isCorrect = idx < targetWord.length && char.toLowerCase() === targetWord[idx];
+                  
+                  return (
+                    <ThemedText
+                      key={idx}
+                      style={[
+                        styles.inputChar,
+                        isCorrect ? styles.inputCharCorrect : styles.inputCharWrong,
+                      ]}
+                    >
+                      {char}
+                    </ThemedText>
+                  );
+                })
+              )}
+            </View>
             <TouchableOpacity
               style={styles.inputVoiceBtn}
               onPressIn={startRecording}

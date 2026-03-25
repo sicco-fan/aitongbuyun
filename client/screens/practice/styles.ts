@@ -183,7 +183,7 @@ export const createStyles = (theme: Theme) => {
       marginBottom: Spacing.xl,
     },
     inputWrapper: {
-      width: '80%',
+      width: '85%',
       position: 'relative',
     },
     input: {
@@ -194,11 +194,38 @@ export const createStyles = (theme: Theme) => {
       borderColor: '#A5D6A7',
       paddingHorizontal: Spacing.xl,
       paddingVertical: Spacing.lg,
-      fontSize: 28,
-      color: theme.textPrimary,
+      fontSize: 24,
+      color: 'transparent', // 隐藏原生输入文字
       fontWeight: '600',
       textAlign: 'center',
       paddingRight: 56, // 为语音按钮留空间
+    },
+    inputOverlay: {
+      position: 'absolute',
+      left: Spacing.xl,
+      right: 56, // 为语音按钮留空间
+      top: 0,
+      bottom: 0,
+      justifyContent: 'center',
+      alignItems: 'center',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+    },
+    inputChar: {
+      fontSize: 24,
+      fontWeight: '600',
+      letterSpacing: 1,
+    },
+    inputCharCorrect: {
+      color: theme.success,
+    },
+    inputCharWrong: {
+      color: theme.error,
+    },
+    inputPlaceholder: {
+      fontSize: 18,
+      color: theme.textMuted,
+      fontWeight: '400',
     },
     inputVoiceBtn: {
       position: 'absolute',
