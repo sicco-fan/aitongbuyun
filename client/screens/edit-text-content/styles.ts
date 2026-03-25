@@ -182,21 +182,21 @@ export const createStyles = (theme: Theme) => {
     audioPlayerCard: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
-      padding: Spacing.md,
+      padding: Spacing.lg,
     },
     audioPlayerHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: Spacing.sm,
+      marginBottom: Spacing.md,
     },
     audioPlayerIcon: {
-      width: 36,
-      height: 36,
+      width: 40,
+      height: 40,
       borderRadius: BorderRadius.md,
       backgroundColor: theme.primary + '15',
       alignItems: 'center',
       justifyContent: 'center',
-      marginRight: Spacing.sm,
+      marginRight: Spacing.md,
     },
     audioPlayerInfo: {
       flex: 1,
@@ -205,47 +205,58 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: Spacing.md,
+      gap: Spacing.xl,
+      marginTop: Spacing.md,
     },
-    controlButtonSmall: {
-      width: 32,
-      height: 32,
+    // 后退/前进按钮
+    seekButton: {
+      width: 48,
+      height: 48,
       borderRadius: BorderRadius.md,
       backgroundColor: theme.backgroundTertiary,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    controlButtonDelete: {
-      backgroundColor: theme.error + '15',
-    },
-    playButtonSmall: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
+    // 大播放按钮
+    playButton: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
       backgroundColor: theme.primary,
       alignItems: 'center',
       justifyContent: 'center',
+      // 添加阴影让按钮更明显
+      shadowColor: theme.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+    // 播放器提示
+    playerHint: {
+      alignItems: 'center',
+      marginTop: Spacing.md,
     },
     
-    // 播放进度
+    // 播放进度 - 更高的进度条，方便点击
     progressContainer: {
       marginBottom: Spacing.sm,
     },
     progressBarBg: {
       width: '100%',
-      height: 3,
+      height: 8,  // 增加高度，方便点击
       backgroundColor: theme.backgroundTertiary,
-      borderRadius: BorderRadius.sm,
+      borderRadius: BorderRadius.md,
       overflow: 'hidden',
     },
     progressBarFill: {
       height: '100%',
-      borderRadius: BorderRadius.sm,
+      borderRadius: BorderRadius.md,
     },
     timeRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginTop: 4,
+      marginTop: Spacing.xs,
     },
     
     // 提取按钮

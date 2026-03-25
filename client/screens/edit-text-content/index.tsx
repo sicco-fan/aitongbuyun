@@ -37,12 +37,6 @@ interface SentenceFile {
   sentences_count?: number;
 }
 
-interface Sentence {
-  id: string;
-  text: string;
-  order: number;
-}
-
 export default function EditTextContentScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -59,12 +53,12 @@ export default function EditTextContentScreen() {
   const [currentFile, setCurrentFile] = useState<SentenceFile | null>(null); // 当前编辑
   
   const [textContent, setTextContent] = useState('');
-  const [sentences, setSentences] = useState<Sentence[]>([]);
   
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPosition, setPlaybackPosition] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(0);
+  const [progressBarWidth, setProgressBarWidth] = useState(0);
   const soundRef = useRef<Audio.Sound | null>(null);
   const [playingFileId, setPlayingFileId] = useState<number | null>(null);
   
@@ -152,7 +146,6 @@ export default function EditTextContentScreen() {
         setCurrentFile(result.file);
         if (result.file.text_content) {
           setTextContent(result.file.text_content);
-          parseSentences(result.file.text_content);
         }
       } else {
         throw new Error(result.error || '加载失败');
@@ -186,7 +179,6 @@ export default function EditTextContentScreen() {
         const extractedText = result.text || result.text_content || '';
         if (extractedText) {
           setTextContent(extractedText);
-          parseSentences(extractedText);
           setSuccessDialog({ visible: true, message: '文本提取成功' });
         } else {
           throw new Error('提取的文本为空');
@@ -201,20 +193,6 @@ export default function EditTextContentScreen() {
     }
   };
 
-  // 解析句子
-  const parseSentences = (text: string) => {
-    const lines = text.split(/\n\s*\n/);
-    const parsed = lines
-      .map((line, index) => line.trim())
-      .filter(line => line.length > 0)
-      .map((line, index) => ({
-        id: `sentence-${index}`,
-        text: line,
-        order: index + 1,
-      }));
-    setSentences(parsed);
-  };
-
   // 保存文本
   const handleSave = async () => {
     if (!currentFile) return;
@@ -225,14 +203,13 @@ export default function EditTextContentScreen() {
        * 服务端文件：server/src/routes/sentence-files.ts
        * 接口：PATCH /api/v1/sentence-files/:id
        * Path 参数：id: number
-       * Body 参数：text_content: string, sentences?: Array
+       * Body 参数：text_content: string
        */
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${currentFile.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text_content: textContent,
-          sentences: sentences.map(s => ({ text: s.text, order: s.order })),
         }),
       });
       
@@ -304,6 +281,42 @@ export default function EditTextContentScreen() {
       console.error('播放失败:', error);
       setErrorDialog({ visible: true, message: '音频播放失败' });
     }
+  };
+
+  // 后退5秒
+  const seekBackward = async () => {
+    if (soundRef.current) {
+      const status = await soundRef.current.getStatusAsync();
+      if (status.isLoaded) {
+        const newPosition = Math.max(0, status.positionMillis - 5000);
+        await soundRef.current.setPositionAsync(newPosition);
+        setPlaybackPosition(newPosition);
+      }
+    }
+  };
+
+  // 前进5秒
+  const seekForward = async () => {
+    if (soundRef.current) {
+      const status = await soundRef.current.getStatusAsync();
+      if (status.isLoaded && status.durationMillis) {
+        const newPosition = Math.min(status.durationMillis, status.positionMillis + 5000);
+        await soundRef.current.setPositionAsync(newPosition);
+        setPlaybackPosition(newPosition);
+      }
+    }
+  };
+
+  // 点击进度条跳转
+  const handleProgressPress = async (event: any) => {
+    if (!soundRef.current || playbackDuration === 0 || progressBarWidth === 0) return;
+    
+    const { locationX } = event.nativeEvent;
+    const clickPosition = Math.max(0, Math.min(1, locationX / progressBarWidth));
+    const newPosition = clickPosition * playbackDuration;
+    
+    await soundRef.current.setPositionAsync(newPosition);
+    setPlaybackPosition(newPosition);
   };
 
   const stopPlayback = async () => {
@@ -390,7 +403,6 @@ export default function EditTextContentScreen() {
     }
     setCurrentFile(null);
     setTextContent('');
-    setSentences([]);
     setIsPlaying(false);
     setPlaybackPosition(0);
     setPlaybackDuration(0);
@@ -543,9 +555,14 @@ export default function EditTextContentScreen() {
                   </View>
                 </View>
                 
-                {/* 播放进度 */}
+                {/* 播放进度 - 可点击跳转 */}
                 {playbackDuration > 0 && (
-                  <View style={styles.progressContainer}>
+                  <TouchableOpacity 
+                    style={styles.progressContainer}
+                    onPress={handleProgressPress}
+                    activeOpacity={0.8}
+                    onLayout={(event) => setProgressBarWidth(event.nativeEvent.layout.width)}
+                  >
                     <View style={styles.progressBarBg}>
                       <View 
                         style={[
@@ -555,43 +572,55 @@ export default function EditTextContentScreen() {
                       />
                     </View>
                     <View style={styles.timeRow}>
-                      <ThemedText variant="tiny" color={theme.textMuted}>
+                      <ThemedText variant="small" color={theme.textMuted}>
                         {formatDuration(playbackPosition)}
                       </ThemedText>
-                      <ThemedText variant="tiny" color={theme.textMuted}>
+                      <ThemedText variant="small" color={theme.textMuted}>
                         {formatDuration(playbackDuration)}
                       </ThemedText>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 )}
                 
                 {/* 控制按钮 */}
                 <View style={styles.audioPlayerControls}>
-                  <TouchableOpacity style={styles.controlButtonSmall} onPress={stopPlayback}>
-                    <FontAwesome6 name="stop" size={14} color={theme.textPrimary} />
-                  </TouchableOpacity>
+                  {/* 后退5秒 */}
                   <TouchableOpacity 
-                    style={styles.playButtonSmall}
+                    style={styles.seekButton}
+                    onPress={seekBackward}
+                  >
+                    <FontAwesome6 name="rotate-left" size={14} color={theme.textPrimary} />
+                    <ThemedText variant="tiny" color={theme.textMuted}>5s</ThemedText>
+                  </TouchableOpacity>
+                  
+                  {/* 播放/暂停 */}
+                  <TouchableOpacity 
+                    style={styles.playButton}
                     onPress={() => togglePlayback(currentFile.original_audio_signed_url!, currentFile.id)}
+                    activeOpacity={0.7}
                   >
                     <FontAwesome6 
                       name={isPlaying && playingFileId === currentFile.id ? "pause" : "play"} 
-                      size={18} 
+                      size={24} 
                       color={theme.buttonPrimaryText} 
                     />
                   </TouchableOpacity>
+                  
+                  {/* 前进5秒 */}
                   <TouchableOpacity 
-                    style={styles.controlButtonSmall}
-                    onPress={() => handleDownload(currentFile.original_audio_signed_url!, currentFile.title)}
+                    style={styles.seekButton}
+                    onPress={seekForward}
                   >
-                    <FontAwesome6 name="download" size={14} color={theme.textPrimary} />
+                    <FontAwesome6 name="rotate-right" size={14} color={theme.textPrimary} />
+                    <ThemedText variant="tiny" color={theme.textMuted}>5s</ThemedText>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.controlButtonSmall, styles.controlButtonDelete]}
-                    onPress={() => setDeleteConfirm({ visible: true, fileId: currentFile.id, fileName: currentFile.title })}
-                  >
-                    <FontAwesome6 name="trash" size={14} color={theme.error} />
-                  </TouchableOpacity>
+                </View>
+                
+                {/* 提示 */}
+                <View style={styles.playerHint}>
+                  <ThemedText variant="tiny" color={theme.textMuted}>
+                    点击进度条可跳转 · 播放时文本核对更方便
+                  </ThemedText>
                 </View>
               </View>
             )}
@@ -609,7 +638,7 @@ export default function EditTextContentScreen() {
                 </ThemedText>
               </View>
               <ThemedText variant="tiny" color={theme.textMuted}>
-                {sentences.length} 个句子
+                {textContent.split(/\n\s*\n/).filter(p => p.trim()).length} 个段落
               </ThemedText>
             </View>
             
