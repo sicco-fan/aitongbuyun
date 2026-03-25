@@ -507,11 +507,57 @@ router.post('/:id/extract-text', async (req: Request, res: Response) => {
       }
     }
     
+    // 段落划分：使用 LLM 根据文章逻辑划分段落
+    console.log(`[提取文本] 开始段落划分...`);
+    let paragraphedText = rawText;
+    
+    try {
+      const llmClient = new LLMClient(new Config(), customHeaders);
+      const paragraphResponse = await llmClient.invoke([
+        {
+          role: 'system',
+          content: `You are a text formatting assistant. Your task is to divide a continuous English text into logical paragraphs.
+
+Rules:
+1. Keep ALL original text exactly as is - do NOT change, add, or remove any words
+2. Analyze the content structure and identify natural topic transitions
+3. Start a new paragraph when:
+   - The speaker introduces a new topic or idea
+   - There's a logical shift in the discussion
+   - A new section or phase is mentioned
+   - There's a clear transition phrase (like "Now let's...", "Moving on to...", "First...", "Second...", "Finally...")
+4. Separate paragraphs with a blank line (double newline)
+5. Keep sentences that belong to the same topic/idea together in one paragraph
+6. Return ONLY the formatted text without any explanation or commentary
+
+For a speech or presentation:
+- Introduction and greeting should be one paragraph
+- Each main topic/section should be its own paragraph
+- Conclusion or summary should be a separate paragraph`
+        },
+        {
+          role: 'user',
+          content: `Please divide this English text into logical paragraphs. Keep every word exactly as it is, just add blank lines between paragraphs:\n\n${rawText}`
+        }
+      ], { temperature: 0.3 });
+      
+      paragraphedText = paragraphResponse.content.trim();
+      console.log(`[提取文本] 段落划分后长度: ${paragraphedText.length}`);
+      
+      // 计算段落数
+      const paragraphCount = paragraphedText.split(/\n\s*\n/).filter((p: string) => p.trim()).length;
+      console.log(`[提取文本] 划分为 ${paragraphCount} 个段落`);
+      
+    } catch (llmError) {
+      console.log(`[提取文本] LLM 段落划分失败: ${(llmError as Error).message}`);
+      // 如果段落划分失败，使用原始文本
+    }
+    
     // 更新数据库
     const { error: updateError } = await supabase
       .from('sentence_files')
       .update({
-        text_content: rawText,
+        text_content: paragraphedText,
         status: 'text_ready',
       })
       .eq('id', id);
@@ -522,7 +568,7 @@ router.post('/:id/extract-text', async (req: Request, res: Response) => {
     
     res.json({
       success: true,
-      text: rawText,
+      text: paragraphedText,
       message: '文本提取成功',
     });
   } catch (error) {
