@@ -265,11 +265,18 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
       padding: Spacing.lg,
-      minHeight: 150,
+      minHeight: 400,  // 增加高度，方便查看段落
       fontSize: 15,
+      lineHeight: 24,  // 增加行高，提高可读性
       color: theme.textPrimary,
       borderWidth: 1,
       borderColor: theme.border,
+      marginBottom: Spacing.sm,
+    },
+    
+    // 段落统计
+    paragraphStats: {
+      paddingHorizontal: Spacing.sm,
       marginBottom: Spacing.md,
     },
     

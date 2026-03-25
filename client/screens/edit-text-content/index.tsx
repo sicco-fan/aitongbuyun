@@ -637,34 +637,20 @@ export default function EditTextContentScreen() {
               value={textContent}
               onChangeText={(text) => {
                 setTextContent(text);
-                parseSentences(text);
               }}
-              placeholder="输入或粘贴文本内容，空行分隔句子"
+              placeholder="输入或粘贴文本内容，空行分隔段落"
               placeholderTextColor={theme.textMuted}
               multiline
               textAlignVertical="top"
             />
             
-            {/* 句子预览 */}
-            {sentences.length > 0 && (
-              <View style={styles.sentencesPreview}>
-                {sentences.slice(0, 3).map((item, index) => (
-                  <View key={item.id} style={styles.sentencePreviewItem}>
-                    <View style={styles.sentenceNumber}>
-                      <ThemedText variant="tiny" color={theme.buttonPrimaryText}>
-                        {item.order}
-                      </ThemedText>
-                    </View>
-                    <ThemedText variant="small" color={theme.textPrimary} numberOfLines={1}>
-                      {item.text}
-                    </ThemedText>
-                  </View>
-                ))}
-                {sentences.length > 3 && (
-                  <ThemedText variant="tiny" color={theme.textMuted} style={styles.moreSentences}>
-                    ... 还有 {sentences.length - 3} 个句子
-                  </ThemedText>
-                )}
+            {/* 段落统计 */}
+            {textContent && textContent.trim() && (
+              <View style={styles.paragraphStats}>
+                <ThemedText variant="small" color={theme.textMuted}>
+                  共 {textContent.split(/\n\s*\n/).filter(p => p.trim()).length} 个段落，
+                  {textContent.length} 字符
+                </ThemedText>
               </View>
             )}
             
