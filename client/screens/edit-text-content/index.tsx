@@ -6,9 +6,9 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
+  Linking,
 } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as WebBrowser from 'expo-web-browser';
 import { Audio } from 'expo-av';
 import * as Sharing from 'expo-sharing';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
@@ -321,12 +321,8 @@ export default function EditTextContentScreen() {
 
     try {
       if (Platform.OS === 'web') {
-        const link = document.createElement('a');
-        link.href = audioUrl;
-        link.download = `${fileName}.mp3`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        // Web 端：在新标签页打开，用户可以在新标签页中下载
+        window.open(audioUrl, '_blank');
       } else {
         if (await Sharing.isAvailableAsync()) {
           const cacheDir = (FileSystem as any).cacheDirectory || '';
@@ -336,7 +332,8 @@ export default function EditTextContentScreen() {
             await Sharing.shareAsync(downloadResult.uri);
           }
         } else {
-          await WebBrowser.openBrowserAsync(audioUrl);
+          // 使用系统浏览器打开
+          await Linking.openURL(audioUrl);
         }
       }
     } catch (error) {

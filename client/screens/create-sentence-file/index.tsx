@@ -11,7 +11,6 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as WebBrowser from 'expo-web-browser';
 import { Audio } from 'expo-av';
 import * as Sharing from 'expo-sharing';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
@@ -442,13 +441,9 @@ export default function CreateSentenceFileScreen() {
 
     try {
       if (Platform.OS === 'web') {
-        // Web 端直接打开链接下载
-        const link = document.createElement('a');
-        link.href = audioUrl;
-        link.download = `${fileName}.mp3`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        // Web 端：在新标签页打开，用户可以在新标签页中下载
+        // 使用 window.open 而不是创建 <a> 标签，因为跨域资源的 download 属性无效
+        window.open(audioUrl, '_blank');
       } else {
         // 移动端使用分享功能
         if (await Sharing.isAvailableAsync()) {
@@ -464,8 +459,8 @@ export default function CreateSentenceFileScreen() {
             await Sharing.shareAsync(downloadResult.uri);
           }
         } else {
-          // 分享不可用时，直接打开浏览器
-          await WebBrowser.openBrowserAsync(audioUrl);
+          // 分享不可用时，使用系统浏览器打开
+          await Linking.openURL(audioUrl);
         }
       }
     } catch (error) {
