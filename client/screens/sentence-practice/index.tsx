@@ -618,14 +618,8 @@ export default function SentencePracticeScreen() {
     // 正常输入流程：检查是否完全匹配某个单词
     const matchedWord = incompleteWords.find(w => wordsMatch(w.word, actualInput));
 
-    // 检查是否有其他单词以当前输入开头（说明用户可能还在输入）
-    const hasLongerMatch = incompleteWords.some(w => {
-      // 排除完全匹配的单词，找以当前输入开头但更长的单词
-      return !wordsMatch(w.word, actualInput) && wordsStartWith(actualInput, w.word);
-    });
-
-    if (matchedWord && !hasLongerMatch) {
-      // 完全匹配且没有更长的单词以当前输入开头，确认匹配
+    if (matchedWord) {
+      // 完全匹配，确认匹配
       updateWordStatusesWithRef(prev => prev.map(ws => {
         if (ws.index === matchedWord.index) {
           return {
