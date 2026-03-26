@@ -16,10 +16,9 @@ import { Spacing, BorderRadius } from '@/constants/theme';
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
 interface Stats {
-  totalMaterials: number;
-  completedMaterials: number;
-  totalSentences: number;
-  completedSentences: number;
+  totalFiles: number;          // 句库总数
+  totalSentences: number;      // 总句数
+  learnedSentences: number;    // 已学句数
   totalAttempts: number;
   errorWordsCount: number;
 }
@@ -30,10 +29,9 @@ export default function ProfileScreen() {
   const router = useSafeRouter();
   const { user, isAuthenticated, logout, updateNickname } = useAuth();
   const [stats, setStats] = useState<Stats>({
-    totalMaterials: 0,
-    completedMaterials: 0,
+    totalFiles: 0,
     totalSentences: 0,
-    completedSentences: 0,
+    learnedSentences: 0,
     totalAttempts: 0,
     errorWordsCount: 0,
   });
@@ -45,30 +43,43 @@ export default function ProfileScreen() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials`);
+      // 从新的句库系统获取统计数据
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`);
       const data = await response.json();
 
-      if (data.materials) {
-        const materials = data.materials;
-        const totalMaterials = materials.length;
-        const completedMaterials = materials.filter(
-          (m: { completed_count: number; sentences_count: number }) => 
-            m.completed_count === m.sentences_count && m.sentences_count > 0
-        ).length;
-        const totalSentences = materials.reduce(
-          (sum: number, m: { sentences_count: number }) => sum + m.sentences_count, 0
+      if (data.files) {
+        const files = data.files;
+        
+        // 句库总数
+        const totalFiles = files.length;
+        
+        // 总句数（所有句库的可学习句子数）
+        const totalSentences = files.reduce(
+          (sum: number, f: { ready_sentences_count: number }) => sum + (f.ready_sentences_count || 0), 0
         );
-        const completedSentences = materials.reduce(
-          (sum: number, m: { completed_count: number }) => sum + m.completed_count, 0
-        );
+        
+        // 获取学习记录统计（如果有登录）
+        let learnedSentences = 0;
+        if (isAuthenticated && user?.id) {
+          try {
+            const statsResponse = await fetch(
+              `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/stats?user_id=${user.id}`
+            );
+            const statsData = await statsResponse.json();
+            if (statsData.success) {
+              learnedSentences = statsData.data?.learnedSentences || 0;
+            }
+          } catch (e) {
+            console.log('获取学习统计失败:', e);
+          }
+        }
 
         const errorWords = await getErrorWords();
 
         setStats({
-          totalMaterials,
-          completedMaterials,
+          totalFiles,
           totalSentences,
-          completedSentences,
+          learnedSentences,
           totalAttempts: 0,
           errorWordsCount: errorWords.length,
         });
@@ -76,7 +87,7 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('获取统计失败:', error);
     }
-  }, []);
+  }, [isAuthenticated, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -127,7 +138,7 @@ export default function ProfileScreen() {
   };
 
   const accuracy = stats.totalSentences > 0 
-    ? Math.round((stats.completedSentences / stats.totalSentences) * 100) 
+    ? Math.round((stats.learnedSentences / stats.totalSentences) * 100) 
     : 0;
 
   return (
@@ -193,20 +204,20 @@ export default function ProfileScreen() {
           <View style={styles.statCard}>
             <FontAwesome6 name="folder" size={24} color={theme.primary} style={styles.statIcon} />
             <ThemedText variant="h2" color={theme.textPrimary} style={styles.statValue}>
-              {stats.totalMaterials}
+              {stats.totalFiles}
             </ThemedText>
             <ThemedText variant="small" color={theme.textMuted} style={styles.statLabel}>
-              学习材料
+              句库总数
             </ThemedText>
           </View>
 
           <View style={[styles.statCard, styles.statCardEven]}>
             <FontAwesome6 name="circle-check" size={24} color={theme.success} style={styles.statIcon} />
             <ThemedText variant="h2" color={theme.success} style={styles.statValue}>
-              {stats.completedMaterials}
+              {stats.learnedSentences}
             </ThemedText>
             <ThemedText variant="small" color={theme.textMuted} style={styles.statLabel}>
-              已完成
+              已学习
             </ThemedText>
           </View>
 
@@ -226,7 +237,7 @@ export default function ProfileScreen() {
               {accuracy}%
             </ThemedText>
             <ThemedText variant="small" color={theme.textMuted} style={styles.statLabel}>
-              完成率
+              学习进度
             </ThemedText>
           </View>
         </View>

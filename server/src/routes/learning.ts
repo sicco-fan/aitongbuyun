@@ -5,6 +5,49 @@ import { getSupabaseClient } from '../storage/database/supabase-client';
 const router = Router();
 
 /**
+ * GET /api/v1/learning-records/stats
+ * 获取用户的学习统计
+ * Query: user_id
+ */
+router.get('/stats', async (req: Request, res: Response) => {
+  try {
+    const { user_id } = req.query;
+    
+    if (!user_id) {
+      return res.status(400).json({ error: '缺少用户ID' });
+    }
+    
+    const supabase = getSupabaseClient();
+    
+    // 获取用户所有句库的学习汇总记录
+    const { data: summaries, error } = await supabase
+      .from('file_learning_summary')
+      .select('last_sentence_index')
+      .eq('user_id', user_id);
+    
+    if (error) {
+      throw new Error(error.message);
+    }
+    
+    // 计算已学习的句子数量（按句库汇总的最大句子索引）
+    const learnedSentences = summaries?.reduce(
+      (sum, s) => sum + (s.last_sentence_index || 0), 0
+    ) || 0;
+    
+    res.json({
+      success: true,
+      data: {
+        learnedSentences,
+        totalFiles: summaries?.length || 0,
+      },
+    });
+  } catch (error) {
+    console.error('获取学习统计失败:', error);
+    res.status(500).json({ error: '获取学习统计失败' });
+  }
+});
+
+/**
  * GET /api/v1/learning-records/progress/:fileId
  * 获取句库的学习进度
  * Query: user_id
