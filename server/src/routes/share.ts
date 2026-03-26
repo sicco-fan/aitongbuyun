@@ -110,6 +110,22 @@ router.get('/list', async (req, res) => {
     
     if (error) throw error;
     
+    // 获取分享者的昵称
+    const sharesWithNickname = await Promise.all(
+      (shares || []).map(async (share) => {
+        const { data: sharer } = await client
+          .from('users')
+          .select('nickname')
+          .eq('id', share.shared_by)
+          .maybeSingle();
+        
+        return {
+          ...share,
+          sharer_nickname: sharer?.nickname || '匿名用户',
+        };
+      })
+    );
+    
     // 获取总数
     const { count, error: countError } = await client
       .from('shared_sentence_files')
@@ -120,7 +136,7 @@ router.get('/list', async (req, res) => {
     
     res.json({ 
       success: true, 
-      shares: shares || [],
+      shares: sharesWithNickname,
       total: count || 0,
       page: pageNum,
       limit: limitNum

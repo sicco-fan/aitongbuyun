@@ -57,6 +57,11 @@ export default function LoginScreen() {
 
   // 验证码登录
   const handleLogin = async () => {
+    if (!codeSent) {
+      setError('请先点击「获取验证码」按钮');
+      return;
+    }
+    
     if (!code || code.length !== 6) {
       setError('请输入6位验证码');
       return;
@@ -101,7 +106,7 @@ export default function LoginScreen() {
 
         {/* 开发环境提示 */}
         <View style={styles.devTip}>
-          <Text style={styles.devTipText}>开发模式：验证码固定为 123456</Text>
+          <Text style={styles.devTipText}>开发模式：输入手机号后点击「获取验证码」，验证码自动填充为 123456</Text>
         </View>
 
         {/* 手机号输入 */}

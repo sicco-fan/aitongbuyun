@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { ScrollView, View, TouchableOpacity, Text, Alert } from 'react-native';
+import { ScrollView, View, TouchableOpacity, Text, Alert, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -10,6 +10,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { getErrorWords } from '@/utils/learningStorage';
+import { Spacing, BorderRadius } from '@/constants/theme';
 
 // 后端服务地址
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
@@ -27,7 +28,7 @@ export default function ProfileScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout, updateNickname } = useAuth();
   const [stats, setStats] = useState<Stats>({
     totalMaterials: 0,
     completedMaterials: 0,
@@ -36,6 +37,11 @@ export default function ProfileScreen() {
     totalAttempts: 0,
     errorWordsCount: 0,
   });
+  
+  // 修改昵称相关状态
+  const [nicknameModalVisible, setNicknameModalVisible] = useState(false);
+  const [newNickname, setNewNickname] = useState('');
+  const [updatingNickname, setUpdatingNickname] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -95,6 +101,31 @@ export default function ProfileScreen() {
     );
   };
 
+  // 打开修改昵称弹窗
+  const handleOpenNicknameModal = () => {
+    setNewNickname(user?.nickname || '');
+    setNicknameModalVisible(true);
+  };
+
+  // 保存昵称
+  const handleSaveNickname = async () => {
+    if (!newNickname.trim()) {
+      Alert.alert('提示', '昵称不能为空');
+      return;
+    }
+    
+    setUpdatingNickname(true);
+    const result = await updateNickname(newNickname.trim());
+    setUpdatingNickname(false);
+    
+    if (result.success) {
+      setNicknameModalVisible(false);
+      Alert.alert('成功', '昵称已更新');
+    } else {
+      Alert.alert('错误', result.error || '更新失败');
+    }
+  };
+
   const accuracy = stats.totalSentences > 0 
     ? Math.round((stats.completedSentences / stats.totalSentences) * 100) 
     : 0;
@@ -124,6 +155,9 @@ export default function ProfileScreen() {
                       <ThemedText variant="tiny" color={theme.accent}>管理员</ThemedText>
                     </View>
                   )}
+                  <TouchableOpacity onPress={handleOpenNicknameModal} style={{ marginLeft: 4 }}>
+                    <FontAwesome6 name="pen" size={12} color={theme.textMuted} />
+                  </TouchableOpacity>
                 </View>
                 <ThemedText variant="small" color={theme.textMuted}>
                   {user.is_guest ? '游客模式' : user.phone}
@@ -326,6 +360,77 @@ export default function ProfileScreen() {
           <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
         </TouchableOpacity>
       </ScrollView>
+
+      {/* 修改昵称弹窗 */}
+      <Modal visible={nicknameModalVisible} transparent animationType="fade">
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}>
+          <View style={{
+            backgroundColor: theme.backgroundDefault,
+            borderRadius: BorderRadius.lg,
+            padding: Spacing.xl,
+            width: '85%',
+            maxWidth: 400,
+          }}>
+            <ThemedText variant="h4" color={theme.textPrimary} style={{ marginBottom: Spacing.lg, textAlign: 'center' }}>
+              修改昵称
+            </ThemedText>
+            <TextInput
+              style={{
+                backgroundColor: theme.backgroundTertiary,
+                borderRadius: BorderRadius.md,
+                paddingHorizontal: Spacing.lg,
+                paddingVertical: Spacing.md,
+                fontSize: 16,
+                color: theme.textPrimary,
+                marginBottom: Spacing.md,
+                borderWidth: 1,
+                borderColor: theme.borderLight,
+              }}
+              value={newNickname}
+              onChangeText={setNewNickname}
+              placeholder="请输入昵称"
+              placeholderTextColor={theme.textMuted}
+              maxLength={20}
+            />
+            <View style={{ flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.md }}>
+              <TouchableOpacity 
+                style={{
+                  flex: 1,
+                  paddingVertical: Spacing.md,
+                  borderRadius: BorderRadius.md,
+                  alignItems: 'center',
+                  backgroundColor: theme.backgroundTertiary,
+                }}
+                onPress={() => setNicknameModalVisible(false)}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '600', color: theme.textSecondary }}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={{
+                  flex: 1,
+                  paddingVertical: Spacing.md,
+                  borderRadius: BorderRadius.md,
+                  alignItems: 'center',
+                  backgroundColor: theme.primary,
+                }}
+                onPress={handleSaveNickname}
+                disabled={updatingNickname}
+              >
+                {updatingNickname ? (
+                  <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
+                ) : (
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: theme.buttonPrimaryText }}>保存</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }

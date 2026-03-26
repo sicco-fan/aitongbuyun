@@ -31,6 +31,7 @@ interface SharedFile {
   description: string;
   download_count: number;
   created_at: string;
+  sharer_nickname?: string;
 }
 
 interface SentenceItem {
@@ -294,6 +295,12 @@ export default function ShareMarketScreen() {
                   </ThemedText>
                   <View style={styles.shareMeta}>
                     <View style={styles.metaTag}>
+                      <FontAwesome6 name="user" size={10} color={theme.textMuted} />
+                      <ThemedText variant="tiny" color={theme.textMuted}>
+                        {share.sharer_nickname || '匿名用户'}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.metaTag}>
                       <FontAwesome6 name="calendar" size={10} color={theme.textMuted} />
                       <ThemedText variant="tiny" color={theme.textMuted}>
                         {formatDate(share.created_at)}
@@ -302,7 +309,7 @@ export default function ShareMarketScreen() {
                     <View style={styles.metaTag}>
                       <FontAwesome6 name="download" size={10} color={theme.textMuted} />
                       <ThemedText variant="tiny" color={theme.textMuted}>
-                        {share.download_count} 次下载
+                        {share.download_count} 次
                       </ThemedText>
                     </View>
                   </View>
