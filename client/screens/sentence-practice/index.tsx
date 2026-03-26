@@ -363,7 +363,7 @@ export default function SentencePracticeScreen() {
   const wordStatusesRef = useRef(wordStatuses);
   const targetWordIndexRef = useRef(targetWordIndex);
   
-  // 同步 ref
+  // 初始化 ref（仅在首次渲染时）
   useEffect(() => {
     wordStatusesRef.current = wordStatuses;
   }, [wordStatuses]);
@@ -372,6 +372,20 @@ export default function SentencePracticeScreen() {
     targetWordIndexRef.current = targetWordIndex;
   }, [targetWordIndex]);
 
+  // 辅助函数：同步更新状态和 ref
+  const updateWordStatusesWithRef = useCallback((updater: (prev: WordStatus[]) => WordStatus[]) => {
+    setWordStatuses(prev => {
+      const next = updater(prev);
+      wordStatusesRef.current = next; // 立即同步 ref
+      return next;
+    });
+  }, []);
+
+  const setTargetWordIndexWithRef = useCallback((value: number | null) => {
+    setTargetWordIndex(value);
+    targetWordIndexRef.current = value; // 立即同步 ref
+  }, []);
+
   const handleInputChange = useCallback((text: string) => {
     const inputLower = text.toLowerCase();
     const currentWordStatuses = wordStatusesRef.current;
@@ -379,7 +393,7 @@ export default function SentencePracticeScreen() {
 
     // 空输入时重置状态
     if (inputLower.length === 0) {
-      setWordStatuses(prev => prev.map(ws => {
+      updateWordStatusesWithRef(prev => prev.map(ws => {
         if (ws.isPunctuation || ws.revealed) return ws;
         return {
           ...ws,
@@ -388,7 +402,7 @@ export default function SentencePracticeScreen() {
         };
       }));
       setCurrentInput('');
-      setTargetWordIndex(null);
+      setTargetWordIndexWithRef(null);
       return;
     }
 
@@ -401,7 +415,7 @@ export default function SentencePracticeScreen() {
 
     if (exactMatch) {
       // 完全匹配！标记完成并清空输入框
-      setWordStatuses(prev => prev.map(ws => {
+      updateWordStatusesWithRef(prev => prev.map(ws => {
         if (ws.index === exactMatch.index) {
           return {
             ...ws,
@@ -414,7 +428,7 @@ export default function SentencePracticeScreen() {
       }));
       // 清空输入框，继续下一个单词
       setCurrentInput('');
-      setTargetWordIndex(null); // 清除目标单词，让下一个输入重新选择
+      setTargetWordIndexWithRef(null); // 清除目标单词，让下一个输入重新选择
       return;
     }
 
@@ -426,7 +440,7 @@ export default function SentencePracticeScreen() {
     if (targetIndex === null || !targetWordStatus || targetWordStatus.revealed) {
       // 按顺序选择第一个未完成的单词
       targetIndex = incompleteWords[0].index;
-      setTargetWordIndex(targetIndex);
+      setTargetWordIndexWithRef(targetIndex);
     }
 
     // 找到目标单词
@@ -446,7 +460,7 @@ export default function SentencePracticeScreen() {
     }
 
     // 更新单词状态
-    setWordStatuses(prev => prev.map(ws => {
+    updateWordStatusesWithRef(prev => prev.map(ws => {
       if (ws.revealed || ws.isPunctuation) return ws;
       
       if (ws.index === targetIndex) {
@@ -467,7 +481,7 @@ export default function SentencePracticeScreen() {
 
     // 保留用户输入
     setCurrentInput(text);
-  }, []);
+  }, [updateWordStatusesWithRef, setTargetWordIndexWithRef]);
 
   // 检查是否完成
   useEffect(() => {
