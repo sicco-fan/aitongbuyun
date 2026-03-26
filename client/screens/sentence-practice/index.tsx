@@ -24,6 +24,18 @@ import { createFormDataFile } from '@/utils';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
+/**
+ * 规范化字符：将所有引号类字符统一为直引号
+ * 用于比较单词时忽略引号格式差异
+ */
+const normalizeQuotes = (text: string): string => {
+  return text
+    .replace(/[''"″′‵ʹʻʼʽ＇`´]/g, "'")  // 各种单引号类字符 -> 直引号
+    .replace(/[""″‶]/g, '"')              // 各种双引号类字符 -> 直引号
+    .replace(/[—–−–]/g, '-')              // 各种破折号 -> 连字符
+    .toLowerCase();
+};
+
 interface Sentence {
   id: number;
   text: string;
@@ -451,12 +463,8 @@ export default function SentencePracticeScreen() {
     // 提取实际单词内容（去掉末尾的空格/回车）
     const actualInput = isConfirmChar ? text.slice(0, -1) : text;
     
-    // 规范化特殊字符：将所有引号类字符统一为直引号
-    const normalizedInput = actualInput
-      .replace(/[''"″′‵ʹʻʼʽ＇`´]/g, "'")  // 各种单引号类字符 -> 直引号
-      .replace(/[""″‶]/g, '"')              // 各种双引号类字符 -> 直引号
-      .replace(/[—–−–]/g, '-')              // 各种破折号 -> 连字符
-      .toLowerCase();
+    // 规范化用户输入
+    const normalizedInput = normalizeQuotes(actualInput);
 
     // 空输入时重置
     if (normalizedInput.length === 0) {
@@ -474,7 +482,7 @@ export default function SentencePracticeScreen() {
 
     // 如果用户按了空格/回车，强制匹配当前输入
     if (isConfirmChar) {
-      const matchedWord = incompleteWords.find(w => w.word.toLowerCase() === normalizedInput);
+      const matchedWord = incompleteWords.find(w => normalizeQuotes(w.word) === normalizedInput);
       
       if (matchedWord) {
         // 匹配成功，显示单词
@@ -497,13 +505,13 @@ export default function SentencePracticeScreen() {
     }
 
     // 正常输入流程：检查是否完全匹配某个单词
-    const matchedWord = incompleteWords.find(w => w.word.toLowerCase() === normalizedInput);
+    const matchedWord = incompleteWords.find(w => normalizeQuotes(w.word) === normalizedInput);
 
     // 检查是否有其他单词以当前输入开头（说明用户可能还在输入）
     const hasLongerMatch = incompleteWords.some(w => {
-      const wordLower = w.word.toLowerCase();
+      const wordNormalized = normalizeQuotes(w.word);
       // 排除完全匹配的单词，找以当前输入开头但更长的单词
-      return wordLower !== normalizedInput && wordLower.startsWith(normalizedInput);
+      return wordNormalized !== normalizedInput && wordNormalized.startsWith(normalizedInput);
     });
 
     if (matchedWord && !hasLongerMatch) {
