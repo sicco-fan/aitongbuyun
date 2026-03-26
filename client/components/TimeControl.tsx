@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect } from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -6,7 +6,6 @@ import Animated, {
   useAnimatedStyle,
   runOnJS,
 } from 'react-native-reanimated';
-import { FontAwesome6 } from '@expo/vector-icons';
 
 interface TimeControlProps {
   value: number; // 当前时间值（毫秒）
@@ -63,17 +62,16 @@ export function TimeControl({
     transform: [{ translateX: accumulatedDelta.value * 0.15 }],
   }));
 
-  // 渲染调整按钮 - 6个按钮在一行，充满整个宽度
-  const renderAdjustButton = (delta: number, icon: string, text: string) => {
+  // 渲染调整按钮 - 6个按钮在一行，用箭头符号表示
+  const renderAdjustButton = (delta: number, symbol: string) => {
     return (
       <Pressable 
-        key={text}
+        key={symbol}
         style={[styles.adjustBtn, { backgroundColor: color + '20', borderColor: color }]}
         onPress={() => onChange(delta)}
         hitSlop={{ top: 8, bottom: 8, left: 2, right: 2 }}
       >
-        <FontAwesome6 name={icon} size={12} color={color} />
-        <Text style={[styles.btnText, { color }]}>{text}</Text>
+        <Text style={[styles.btnSymbol, { color }]}>{symbol}</Text>
       </Pressable>
     );
   };
@@ -88,7 +86,6 @@ export function TimeControl({
             onPress={handlePlay}
           >
             <View style={styles.labelRow}>
-              <FontAwesome6 name="play" size={16} color={color} />
               <Text style={[styles.label, { color }]}>{label}</Text>
             </View>
             <Text style={[styles.timeValue, { color }]}>
@@ -100,12 +97,12 @@ export function TimeControl({
       
       {/* 调整按钮行 - 6个按钮充满整个宽度 */}
       <View style={styles.buttonRow}>
-        {renderAdjustButton(-1000, 'angles-left', '-1s')}
-        {renderAdjustButton(-100, 'angle-left', '-0.1')}
-        {renderAdjustButton(-10, 'minus', '-10ms')}
-        {renderAdjustButton(10, 'plus', '+10ms')}
-        {renderAdjustButton(100, 'angle-right', '+0.1')}
-        {renderAdjustButton(1000, 'angles-right', '+1s')}
+        {renderAdjustButton(-1000, '«««')}
+        {renderAdjustButton(-100, '««')}
+        {renderAdjustButton(-10, '«')}
+        {renderAdjustButton(10, '»')}
+        {renderAdjustButton(100, '»»')}
+        {renderAdjustButton(1000, '»»»')}
       </View>
       
       <Text style={styles.hint}>点击播放 | 滑动微调</Text>
@@ -156,17 +153,16 @@ const styles = StyleSheet.create({
   },
   adjustBtn: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 6,
     borderWidth: 1,
   },
-  btnText: {
-    fontSize: 10,
-    fontWeight: '600',
+  btnSymbol: {
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -1,
   },
   hint: {
     color: '#444',

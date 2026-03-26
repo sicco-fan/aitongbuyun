@@ -788,7 +788,7 @@ export default function EditSentenceAudioScreen() {
 
   const hasValidTime = currentSentence && currentSentence.start_time !== null && currentSentence.end_time !== null && currentSentence.end_time > currentSentence.start_time;
 
-  // 更新语速设置
+  // 更新语速设置 - 从当前句子开始重新分配后续所有句子
   const handleWpmChange = () => {
     const newWpm = parseInt(wpmInput, 10);
     if (isNaN(newWpm) || newWpm < MIN_WPM || newWpm > MAX_WPM) {
@@ -797,40 +797,33 @@ export default function EditSentenceAudioScreen() {
     }
     setWordsPerMinute(newWpm);
     
-    // 更新当前句子的时长
+    // 从当前句子开始，重新分配后续所有句子的时间
     if (currentSentence) {
-      const wordCount = countWords(currentSentence.text);
-      const newDuration = calculateEstimatedDuration(wordCount, newWpm);
+      // 获取当前句子的开始时间（作为后续句子的起始点）
+      const startFrom: number = currentSentence.start_time ?? 0;
       
-      // 更新当前句子的结束时间
       const newSentences = [...sentences];
-      newSentences[currentIndex] = {
-        ...currentSentence,
-        start_time: currentSentence.start_time ?? 0,
-        end_time: (currentSentence.start_time ?? 0) + newDuration,
-      };
+      let currentTime: number = startFrom;
+      
+      // 从当前索引开始，重新分配时间
+      for (let i = currentIndex; i < newSentences.length; i++) {
+        const sentence = newSentences[i];
+        const wordCount = countWords(sentence.text);
+        const estimatedDuration = calculateEstimatedDuration(wordCount, newWpm);
+        
+        newSentences[i] = {
+          ...sentence,
+          start_time: currentTime,
+          end_time: currentTime + estimatedDuration,
+        };
+        currentTime = newSentences[i].end_time!;
+      }
+      
       setSentences(newSentences);
+      console.log(`[WPM] 语速更新为: ${newWpm} 词/分钟，已从第 ${currentIndex + 1} 句开始重新分配时间`);
     }
     
     setShowWpmModal(false);
-    console.log(`[WPM] 语速更新为: ${newWpm} 词/分钟，已更新当前句子时长`);
-  };
-
-  // 根据新语速重新分配所有时间
-  const redistributeTimeByWpm = (newWpm: number) => {
-    let currentTime = 0;
-    const newSentences = sentences.map((sentence) => {
-      const wordCount = countWords(sentence.text);
-      const estimatedDuration = calculateEstimatedDuration(wordCount, newWpm);
-      const newSentence = {
-        ...sentence,
-        start_time: currentTime,
-        end_time: currentTime + estimatedDuration,
-      };
-      currentTime = newSentence.end_time;
-      return newSentence;
-    });
-    setSentences(newSentences);
   };
 
   // 加载中
@@ -1147,24 +1140,13 @@ export default function EditSentenceAudioScreen() {
                 style={styles.modalConfirmBtn}
                 onPress={handleWpmChange}
               >
-                <Text style={styles.modalConfirmText}>应用当前句</Text>
+                <Text style={styles.modalConfirmText}>确定</Text>
               </TouchableOpacity>
             </View>
             
-            <TouchableOpacity 
-              style={styles.redistributeBtn}
-              onPress={() => {
-                const newWpm = parseInt(wpmInput, 10);
-                if (!isNaN(newWpm) && newWpm >= MIN_WPM && newWpm <= MAX_WPM) {
-                  setWordsPerMinute(newWpm);
-                  redistributeTimeByWpm(newWpm);
-                  setShowWpmModal(false);
-                  console.log(`[WPM] 重新分配所有时间，语速: ${newWpm} 词/分钟`);
-                }
-              }}
-            >
-              <Text style={styles.redistributeBtnText}>重新分配所有句子</Text>
-            </TouchableOpacity>
+            <Text style={styles.modalHint}>
+              提示：确定后将从当前句子开始，重新分配后续所有句子的时间
+            </Text>
           </View>
         </View>
       </Modal>
