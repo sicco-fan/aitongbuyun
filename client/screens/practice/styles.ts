@@ -197,31 +197,10 @@ export const createStyles = (theme: Theme) => {
       paddingHorizontal: Spacing.xl,
       paddingVertical: Spacing.lg,
       fontSize: 24,
-      color: 'transparent', // 隐藏原生输入文字
+      color: theme.textPrimary,
       fontWeight: '600',
       textAlign: 'center',
       paddingRight: 56, // 为语音按钮留空间
-    },
-    inputOverlay: {
-      position: 'absolute',
-      left: Spacing.xl,
-      right: 56, // 为语音按钮留空间
-      top: 0,
-      bottom: 0,
-      justifyContent: 'center',
-      alignItems: 'center',
-      flexDirection: 'row',
-    },
-    inputChar: {
-      fontSize: 24,
-      fontWeight: '600',
-      letterSpacing: 1,
-    },
-    inputCharCorrect: {
-      color: theme.success,
-    },
-    inputCharWrong: {
-      color: theme.error,
     },
     inputVoiceBtn: {
       position: 'absolute',
