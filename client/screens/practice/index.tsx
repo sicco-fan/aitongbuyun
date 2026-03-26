@@ -171,20 +171,20 @@ export default function PracticeScreen() {
     
     // 先将文本中的各种引号和破折号统一为标准格式
     const normalizedText = text
-      .replace(/[''′']/g, "'")  // 各种单引号 -> 直引号
-      .replace(/[""″"]/g, '"')  // 各种双引号 -> 直引号
-      .replace(/[—–−]/g, '-');  // 各种破折号 -> 连字符
+      .replace(/[^\w\s.,!?;:()\[\]{}\-]/g, (char) => {
+        if (/[''"″′‵ʹʻʼʽ＇`´]/.test(char)) return "'";
+        if (/[""″‶]/.test(char)) return '"';
+        if (/[—–−–]/.test(char)) return '-';
+        return char;
+      });
     
     // 使用正则分割：保留单词（包括内部的 - ' &）和纯标点符号
-    // 纯标点符号：,.!?;: 等（不包括 - ' &）
     const tokens = normalizedText.match(/[a-zA-Z0-9'\-&]+|[,.\!?;:()"]/g) || [];
 
     tokens.forEach((token) => {
-      // 判断是否为纯标点符号（不包含字母数字、-'&）
       const isPurePunctuation = !/[a-zA-Z0-9]/.test(token);
       
       result.push({
-        // 单词：转为小写，保留 -'&
         word: isPurePunctuation ? '' : token.toLowerCase(),
         displayText: token,
         isPunctuation: isPurePunctuation,
@@ -464,11 +464,11 @@ export default function PracticeScreen() {
     // 提取实际单词内容（去掉末尾的空格/回车）
     const actualInput = isConfirmChar ? text.slice(0, -1) : text;
     
-    // 规范化特殊字符：将弯引号等转换为直引号
+    // 规范化特殊字符：将所有引号类字符统一为直引号
     const normalizedInput = actualInput
-      .replace(/[''′']/g, "'")  // 各种单引号 -> 直引号
-      .replace(/[""″"]/g, '"')  // 各种双引号 -> 直引号
-      .replace(/[—–−]/g, '-')   // 各种破折号 -> 连字符
+      .replace(/[''"″′‵ʹʻʼʽ＇`´]/g, "'")  // 各种单引号类字符 -> 直引号
+      .replace(/[""″‶]/g, '"')              // 各种双引号类字符 -> 直引号
+      .replace(/[—–−–]/g, '-')              // 各种破折号 -> 连字符
       .toLowerCase();
 
     // 空输入时重置
