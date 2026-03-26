@@ -1210,10 +1210,8 @@ export default function SentencePracticeScreen() {
               
               {/* 自建键盘 */}
               <View style={styles.customKeyboard}>
-                {/* 第一列：特殊符号 */}
+                {/* 第一列：特殊符号 - 3行均匀分布 */}
                 <View style={styles.keyboardColumn}>
-                  {/* 第一行空占位 */}
-                  <View style={[styles.keyButton, styles.symbolKey]} />
                   {/* 连接符 */}
                   <TouchableOpacity
                     style={[styles.keyButton, styles.symbolKey]}
@@ -1237,7 +1235,7 @@ export default function SentencePracticeScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {/* 第二到第四列：字母 */}
+                {/* 第二到第四列：字母 - 3行均匀分布 */}
                 <View style={styles.keyboardLetterSection}>
                   {/* 第一行 */}
                   <View style={styles.keyboardRow}>
@@ -1306,7 +1304,7 @@ export default function SentencePracticeScreen() {
                   </View>
                 </View>
 
-                {/* 第五列：功能键 */}
+                {/* 第五列：功能键 - 3行均匀分布 */}
                 <View style={styles.keyboardColumn}>
                   <TouchableOpacity
                     style={[styles.keyButton, styles.functionKey]}
@@ -1321,7 +1319,7 @@ export default function SentencePracticeScreen() {
                     <ThemedText variant="body" color={theme.textPrimary}>清空</ThemedText>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.keyButton, styles.functionKey, styles.spaceKey]}
+                    style={[styles.keyButton, styles.functionKey]}
                     onPress={() => handleCustomKeyPress('空格', '')}
                   >
                     <ThemedText variant="body" color={theme.textPrimary}>空格</ThemedText>

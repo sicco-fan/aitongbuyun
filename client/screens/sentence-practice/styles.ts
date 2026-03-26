@@ -300,42 +300,40 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.lg,
       padding: 8,
       gap: 6,
+      height: 240, // 固定键盘总高度
     },
     keyboardColumn: {
       flexDirection: 'column',
       gap: 6,
+      justifyContent: 'space-between',
     },
     keyboardLetterSection: {
       flex: 1,
       flexDirection: 'column',
       gap: 6,
+      justifyContent: 'space-between',
     },
     keyboardRow: {
       flexDirection: 'row',
       gap: 6,
+      flex: 1, // 每行自动扩展
     },
     keyButton: {
       borderRadius: 8,
       justifyContent: 'center',
       alignItems: 'center',
+      flex: 1, // 每个按键自动扩展填满行高
     },
     symbolKey: {
       width: 56,
-      height: 64,
       backgroundColor: '#9CA3AF',
     },
     letterKey: {
-      flex: 1,
-      height: 64,
       backgroundColor: '#FFFFFF',
     },
     functionKey: {
       width: 56,
-      height: 64,
       backgroundColor: '#9CA3AF',
-    },
-    spaceKey: {
-      height: 134,
     },
   });
 };
