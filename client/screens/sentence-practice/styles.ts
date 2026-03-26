@@ -199,7 +199,7 @@ export const createStyles = (theme: Theme) => {
       paddingHorizontal: Spacing.lg,
       paddingTop: Spacing.sm,
       paddingBottom: Spacing.sm,
-      backgroundColor: theme.backgroundRoot,
+      marginBottom: Spacing.md, // 让键盘整体上移
     },
     inputWrapper: {
       width: '100%',
