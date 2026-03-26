@@ -874,6 +874,12 @@ export default function EditSentenceAudioScreen() {
       setSentences(newSentences);
       setIsEditingText(false);
       
+      // 显示成功提示
+      setSuccessDialog({
+        visible: true,
+        message: '文本已保存并同步到所有相关文件',
+      });
+      
       console.log('[保存文本] 文本已更新');
     } catch (error) {
       console.error('[保存文本] 失败:', error);
