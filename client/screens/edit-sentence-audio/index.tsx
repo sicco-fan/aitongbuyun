@@ -97,7 +97,7 @@ interface SentenceFile {
 export default function EditSentenceAudioScreen() {
   const { theme } = useTheme();
   const router = useSafeRouter();
-  const params = useSafeSearchParams<{ fileId?: number }>();
+  const params = useSafeSearchParams<{ fileId?: number; sentenceIndex?: number }>();
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -145,6 +145,11 @@ export default function EditSentenceAudioScreen() {
     visible: false,
     stats: null,
   });
+
+  // 文本编辑状态
+  const [isEditingText, setIsEditingText] = useState(false);
+  const [editingText, setEditingText] = useState('');
+  const [savingText, setSavingText] = useState(false);
 
   const currentSentence = sentences[currentIndex];
 
@@ -300,6 +305,12 @@ export default function EditSentenceAudioScreen() {
         }
       } else {
         throw new Error(result.error || '加载失败');
+      }
+
+      // 如果传入了 sentenceIndex 参数，定位到指定句子
+      if (params.sentenceIndex !== undefined && params.sentenceIndex >= 0) {
+        setCurrentIndex(params.sentenceIndex);
+        console.log(`[loadFile] 定位到第 ${params.sentenceIndex + 1} 句`);
       }
     } catch (error) {
       console.error('[loadFile] 加载失败:', error);
@@ -825,6 +836,59 @@ export default function EditSentenceAudioScreen() {
     }
   };
 
+  // 保存文本编辑
+  const handleSaveTextEdit = async () => {
+    if (!currentSentence || !file || !editingText.trim()) return;
+    
+    setSavingText(true);
+    try {
+      // 如果句子有ID，调用PUT接口更新
+      if (currentSentence.id > 0) {
+        /**
+         * 服务端文件：server/src/routes/sentence-files.ts
+         * 接口：PUT /api/v1/sentence-files/:id/sentences/:sentenceId
+         * Path 参数：id: number, sentenceId: number
+         * Body 参数：text?: string, start_time?: number, end_time?: number
+         */
+        const response = await fetch(
+          `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${file.id}/sentences/${currentSentence.id}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: editingText.trim() }),
+          }
+        );
+        
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || '保存失败');
+        }
+      }
+      
+      // 更新本地状态
+      const newSentences = [...sentences];
+      newSentences[currentIndex] = {
+        ...newSentences[currentIndex],
+        text: editingText.trim(),
+      };
+      setSentences(newSentences);
+      setIsEditingText(false);
+      
+      console.log('[保存文本] 文本已更新');
+    } catch (error) {
+      console.error('[保存文本] 失败:', error);
+      setErrorDialog({ visible: true, message: `保存失败：${(error as Error).message}` });
+    } finally {
+      setSavingText(false);
+    }
+  };
+
+  // 取消文本编辑
+  const handleCancelTextEdit = () => {
+    setIsEditingText(false);
+    setEditingText('');
+  };
+
   // 格式化时间（秒 -> m:ss.SS）
   const formatTime = (seconds: number | null) => {
     if (seconds === null) return '0:00.00';
@@ -1002,23 +1066,69 @@ export default function EditSentenceAudioScreen() {
 
       {/* 句子导航 */}
       <View style={styles.navBar}>
-        <TouchableOpacity
-          style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
-          onPress={goToPrevious}
-        >
-          <FontAwesome6 name="chevron-left" size={16} color={currentIndex === 0 ? '#444' : '#00ff88'} />
-        </TouchableOpacity>
+        {!isEditingText ? (
+          <>
+            <TouchableOpacity
+              style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
+              onPress={goToPrevious}
+            >
+              <FontAwesome6 name="chevron-left" size={16} color={currentIndex === 0 ? '#444' : '#00ff88'} />
+            </TouchableOpacity>
 
-        <View style={styles.sentenceBox}>
-          <Text style={styles.sentenceText}>{currentSentence?.text}</Text>
-        </View>
+            <TouchableOpacity 
+              style={styles.sentenceBox}
+              onPress={() => {
+                if (currentSentence) {
+                  setEditingText(currentSentence.text);
+                  setIsEditingText(true);
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.sentenceText}>{currentSentence?.text}</Text>
+              <Text style={styles.sentenceHint}>点击编辑文本</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
-          onPress={goToNext}
-        >
-          <FontAwesome6 name="chevron-right" size={16} color={currentIndex === sentences.length - 1 ? '#444' : '#00ff88'} />
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
+              onPress={goToNext}
+            >
+              <FontAwesome6 name="chevron-right" size={16} color={currentIndex === sentences.length - 1 ? '#444' : '#00ff88'} />
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <TouchableOpacity
+              style={[styles.navBtn, { backgroundColor: '#ff444420' }]}
+              onPress={handleCancelTextEdit}
+            >
+              <FontAwesome6 name="xmark" size={16} color="#ff4444" />
+            </TouchableOpacity>
+
+            <View style={[styles.sentenceBox, { paddingVertical: 8 }]}>
+              <TextInput
+                style={styles.sentenceInput}
+                value={editingText}
+                onChangeText={setEditingText}
+                multiline
+                autoFocus
+                selectTextOnFocus={false}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.navBtn, savingText && styles.navBtnDisabled]}
+              onPress={handleSaveTextEdit}
+              disabled={savingText}
+            >
+              {savingText ? (
+                <ActivityIndicator size="small" color="#00ff88" />
+              ) : (
+                <FontAwesome6 name="check" size={16} color="#00ff88" />
+              )}
+            </TouchableOpacity>
+          </>
+        )}
       </View>
 
       {/* 时间调整区域 */}
@@ -1320,6 +1430,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     lineHeight: 24,
+  },
+  sentenceHint: {
+    color: '#666',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  sentenceInput: {
+    color: '#fff',
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
+    minHeight: 48,
+    padding: 0,
   },
 
   // 时间调整区域

@@ -983,6 +983,29 @@ router.put('/:id/sentences/:sentenceId', async (req: Request, res: Response) => 
       throw new Error(error.message);
     }
     
+    // 如果更新了文本，同步更新 sentence_files.text_content
+    if (text !== undefined) {
+      // 获取该文件的所有句子（按顺序）
+      const { data: allSentences, error: fetchError } = await supabase
+        .from('sentence_file_items')
+        .select('text')
+        .eq('sentence_file_id', id)
+        .order('sentence_index');
+      
+      if (!fetchError && allSentences) {
+        // 拼接成完整文本（用双换行分隔）
+        const textContent = allSentences.map((s: any) => s.text).join('\n\n');
+        
+        // 更新 sentence_files.text_content
+        await supabase
+          .from('sentence_files')
+          .update({ text_content: textContent })
+          .eq('id', id);
+        
+        console.log(`[更新句子] 已同步更新 text_content，共 ${allSentences.length} 个句子`);
+      }
+    }
+    
     res.json({ success: true, message: '句子已更新' });
   } catch (error) {
     console.error('更新句子失败:', error);

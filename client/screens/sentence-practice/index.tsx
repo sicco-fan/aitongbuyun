@@ -1109,6 +1109,19 @@ export default function SentencePracticeScreen() {
         </View>
         {/* 右侧小控制按钮 */}
         <View style={styles.headerControls}>
+          {/* 编辑此句按钮 */}
+          <TouchableOpacity
+            style={styles.smallControlBtn}
+            onPress={() => {
+              stopPlayback();
+              router.push('/edit-sentence-audio', { 
+                fileId: fileId, 
+                sentenceIndex: currentIndex 
+              });
+            }}
+          >
+            <FontAwesome6 name="pencil" size={14} color={theme.textMuted} />
+          </TouchableOpacity>
           {/* 键盘切换按钮 */}
           <TouchableOpacity
             style={[styles.smallControlBtn, keyboardType === 'custom' && styles.smallControlBtnActive]}
