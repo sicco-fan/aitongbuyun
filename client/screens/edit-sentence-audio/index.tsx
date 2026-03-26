@@ -499,9 +499,14 @@ export default function EditSentenceAudioScreen() {
     }
 
     console.log('[playFromStart] 播放位置:', startMs, 'ms');
-    await soundRef.current.setPositionAsync(startMs);
-    await soundRef.current.playAsync();
-    setIsPlaying(true);
+    try {
+      await soundRef.current.setPositionAsync(startMs);
+      await soundRef.current.playAsync();
+      setIsPlaying(true);
+    } catch (e) {
+      console.error('[playFromStart] 播放失败:', e);
+      setErrorDialog({ visible: true, message: '播放失败，请重试' });
+    }
   };
 
   // 播放从结束时间位置开始（用于预览结束位置）
@@ -541,9 +546,14 @@ export default function EditSentenceAudioScreen() {
     }
 
     console.log('[playFromEnd] 播放位置:', positionMs, 'ms');
-    await soundRef.current.setPositionAsync(positionMs);
-    await soundRef.current.playAsync();
-    setIsPlaying(true);
+    try {
+      await soundRef.current.setPositionAsync(positionMs);
+      await soundRef.current.playAsync();
+      setIsPlaying(true);
+    } catch (e) {
+      console.error('[playFromEnd] 播放失败:', e);
+      setErrorDialog({ visible: true, message: '播放失败，请重试' });
+    }
   };
 
   // 调整开始时间

@@ -292,11 +292,15 @@ export default function EditTextContentScreen() {
   // 后退5秒
   const seekBackward = async () => {
     if (soundRef.current) {
-      const status = await soundRef.current.getStatusAsync();
-      if (status.isLoaded) {
-        const newPosition = Math.max(0, status.positionMillis - 5000);
-        await soundRef.current.setPositionAsync(newPosition);
-        setPlaybackPosition(newPosition);
+      try {
+        const status = await soundRef.current.getStatusAsync();
+        if (status.isLoaded && status.durationMillis) {
+          const newPosition = Math.max(0, status.positionMillis - 5000);
+          await soundRef.current.setPositionAsync(newPosition);
+          setPlaybackPosition(newPosition);
+        }
+      } catch (error) {
+        console.warn('Seek failed:', error);
       }
     }
   };
@@ -304,11 +308,15 @@ export default function EditTextContentScreen() {
   // 前进5秒
   const seekForward = async () => {
     if (soundRef.current) {
-      const status = await soundRef.current.getStatusAsync();
-      if (status.isLoaded && status.durationMillis) {
-        const newPosition = Math.min(status.durationMillis, status.positionMillis + 5000);
-        await soundRef.current.setPositionAsync(newPosition);
-        setPlaybackPosition(newPosition);
+      try {
+        const status = await soundRef.current.getStatusAsync();
+        if (status.isLoaded && status.durationMillis) {
+          const newPosition = Math.min(status.durationMillis, status.positionMillis + 5000);
+          await soundRef.current.setPositionAsync(newPosition);
+          setPlaybackPosition(newPosition);
+        }
+      } catch (error) {
+        console.warn('Seek failed:', error);
       }
     }
   };
@@ -317,12 +325,20 @@ export default function EditTextContentScreen() {
   const handleProgressPress = async (event: any) => {
     if (!soundRef.current || playbackDuration === 0 || progressBarWidth === 0) return;
     
-    const { locationX } = event.nativeEvent;
-    const clickPosition = Math.max(0, Math.min(1, locationX / progressBarWidth));
-    const newPosition = clickPosition * playbackDuration;
-    
-    await soundRef.current.setPositionAsync(newPosition);
-    setPlaybackPosition(newPosition);
+    try {
+      const status = await soundRef.current.getStatusAsync();
+      if (!status.isLoaded) return;
+      
+      const { locationX } = event.nativeEvent;
+      const clickPosition = Math.max(0, Math.min(1, locationX / progressBarWidth));
+      const newPosition = clickPosition * playbackDuration;
+      
+      await soundRef.current.setPositionAsync(newPosition);
+      setPlaybackPosition(newPosition);
+    } catch (error) {
+      console.warn('Seek failed:', error);
+      // 不显示错误弹窗，静默失败
+    }
   };
 
   const stopPlayback = async () => {
