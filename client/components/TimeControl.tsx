@@ -1,5 +1,5 @@
-import React, { useCallback, useRef, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import React, { useCallback, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -25,10 +25,6 @@ export function TimeControl({
 }: TimeControlProps) {
   const lastAngle = useSharedValue(0);
   const accumulatedDelta = useSharedValue(0);
-  
-  // 长按相关
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [pressedButton, setPressedButton] = useState<string | null>(null);
 
   // 格式化时间显示
   const formatTime = (ms: number) => {
@@ -46,42 +42,6 @@ export function TimeControl({
   const handlePlay = useCallback(() => {
     onPlay?.();
   }, [onPlay]);
-
-  // 开始连续调整
-  const startContinuousAdjust = useCallback((delta: number, btnText: string) => {
-    // 立即执行一次
-    onChange(delta);
-    setPressedButton(btnText);
-    
-    // 150ms 后开始连续触发
-    setTimeout(() => {
-      // 再次执行
-      onChange(delta);
-      
-      // 开始连续触发
-      intervalRef.current = setInterval(() => {
-        onChange(delta);
-      }, 80);
-    }, 150);
-  }, [onChange]);
-
-  // 停止连续调整
-  const stopContinuousAdjust = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    setPressedButton(null);
-  }, []);
-
-  // 组件卸载时清理
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, []);
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
@@ -103,21 +63,14 @@ export function TimeControl({
     transform: [{ translateX: accumulatedDelta.value * 0.15 }],
   }));
 
-  // 渲染调整按钮 - 6个按钮在一行
+  // 渲染调整按钮 - 6个按钮在一行，充满整个宽度
   const renderAdjustButton = (delta: number, icon: string, text: string) => {
-    const isPressed = pressedButton === text;
     return (
       <Pressable 
         key={text}
-        style={[
-          styles.adjustBtn, 
-          { backgroundColor: color + '20', borderColor: color },
-          isPressed && styles.adjustBtnActive,
-        ]}
-        onPressIn={() => startContinuousAdjust(delta, text)}
-        onPressOut={stopContinuousAdjust}
-        onPress={stopContinuousAdjust}
-        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+        style={[styles.adjustBtn, { backgroundColor: color + '20', borderColor: color }]}
+        onPress={() => onChange(delta)}
+        hitSlop={{ top: 8, bottom: 8, left: 2, right: 2 }}
       >
         <FontAwesome6 name={icon} size={12} color={color} />
         <Text style={[styles.btnText, { color }]}>{text}</Text>
@@ -145,7 +98,7 @@ export function TimeControl({
         </Animated.View>
       </GestureDetector>
       
-      {/* 调整按钮行 - 6个按钮在一行，支持长按连续调整 */}
+      {/* 调整按钮行 - 6个按钮充满整个宽度 */}
       <View style={styles.buttonRow}>
         {renderAdjustButton(-1000, 'angles-left', '-1s')}
         {renderAdjustButton(-100, 'angle-left', '-0.1')}
@@ -155,7 +108,7 @@ export function TimeControl({
         {renderAdjustButton(1000, 'angles-right', '+1s')}
       </View>
       
-      <Text style={styles.hint}>点击播放 | 滑动微调 | 长按快调</Text>
+      <Text style={styles.hint}>点击播放 | 滑动微调</Text>
     </View>
   );
 }
@@ -164,6 +117,7 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     paddingVertical: 8,
+    width: '100%',
   },
   timeRow: {
     flexDirection: 'row',
@@ -195,21 +149,20 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: 10,
+    width: '100%',
     gap: 4,
   },
   adjustBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 2,
-    paddingHorizontal: 6,
     paddingVertical: 8,
     borderRadius: 6,
     borderWidth: 1,
-  },
-  adjustBtnActive: {
-    opacity: 0.6,
-    transform: [{ scale: 0.95 }],
   },
   btnText: {
     fontSize: 10,
