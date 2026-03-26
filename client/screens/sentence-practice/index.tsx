@@ -798,6 +798,62 @@ export default function SentencePracticeScreen() {
     );
   }, [wordKeySequences]);
 
+  // 处理长串句子匹配（用于语音识别输入的完整句子）
+  const handleLongTextInput = useCallback((text: string) => {
+    const currentWordStatuses = wordStatusesRef.current;
+    
+    // 获取未完成的单词列表
+    const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
+    if (incompleteWords.length === 0) return;
+    
+    // 按位置排序
+    incompleteWords.sort((a, b) => a.index - b.index);
+    
+    // 提取输入中的单词（去除标点，转小写）
+    const inputWords = text
+      .toLowerCase()
+      .replace(/[^\w\s'-]/g, '') // 保留字母、数字、空格、连字符、单引号
+      .split(/\s+/)
+      .filter(w => w.length > 0);
+    
+    if (inputWords.length === 0) return;
+    
+    // 记录匹配成功的单词索引
+    const matchedIndices: number[] = [];
+    
+    // 从第一个未完成的单词开始匹配
+    let wordIndex = 0;
+    for (const inputWord of inputWords) {
+      // 从当前位置开始查找匹配
+      while (wordIndex < incompleteWords.length) {
+        const targetWord = incompleteWords[wordIndex];
+        if (wordsMatch(targetWord.word, inputWord)) {
+          matchedIndices.push(targetWord.index);
+          wordIndex++;
+          break;
+        }
+        wordIndex++;
+      }
+    }
+    
+    // 标记所有匹配成功的单词
+    if (matchedIndices.length > 0) {
+      updateWordStatusesWithRef(prev => prev.map(ws => {
+        if (matchedIndices.includes(ws.index)) {
+          return {
+            ...ws,
+            revealed: true,
+            revealedChars: new Array(ws.word.length).fill(true),
+            errorCharIndex: -1,
+          };
+        }
+        return ws;
+      }));
+      
+      console.log(`[语音匹配] 成功匹配 ${matchedIndices.length} 个单词`);
+    }
+  }, [updateWordStatusesWithRef]);
+
   // 处理手机键盘/电脑键盘输入
   const handleInputChange = useCallback((text: string) => {
     const currentWordStatuses = wordStatusesRef.current;
@@ -820,6 +876,17 @@ export default function SentencePracticeScreen() {
     const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
     if (incompleteWords.length === 0) {
       setCurrentInput('');
+      return;
+    }
+
+    // 检测是否是多单词输入（包含空格）
+    const wordsInInput = actualInput.split(/\s+/).filter(w => w.length > 0);
+    if (wordsInInput.length > 1) {
+      // 多单词输入，使用长文本匹配逻辑
+      handleLongTextInput(actualInput);
+      setCurrentInput('');
+      setCurrentKeySequence([]);
+      setTargetWordIndexWithRef(null);
       return;
     }
 
@@ -903,7 +970,7 @@ export default function SentencePracticeScreen() {
     // 输入过程中只保留用户输入
     setCurrentInput(text);
     setTargetWordIndexWithRef(null);
-  }, [updateWordStatusesWithRef, setTargetWordIndexWithRef, hasAmbiguousPrefixes, hasLongerPotentialMatch]);
+  }, [updateWordStatusesWithRef, setTargetWordIndexWithRef, hasAmbiguousPrefixes, hasLongerPotentialMatch, handleLongTextInput]);
 
   // 当前按键序列
   const [currentKeySequence, setCurrentKeySequence] = useState<string[]>([]);
