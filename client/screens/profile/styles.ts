@@ -10,7 +10,36 @@ export const createStyles = (theme: Theme) => {
       paddingBottom: Spacing['5xl'],
     },
     header: {
-      marginBottom: Spacing['3xl'],
+      marginBottom: Spacing['2xl'],
+    },
+    // 用户信息
+    userInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    avatar: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: theme.primary + '15',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    userDetails: {
+      flex: 1,
+      marginLeft: Spacing.lg,
+    },
+    logoutBtn: {
+      padding: Spacing.md,
+    },
+    loginPrompt: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.lg,
+      borderWidth: 1,
+      borderColor: theme.border,
     },
     title: {},
     statsGrid: {

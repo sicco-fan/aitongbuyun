@@ -37,6 +37,7 @@ export default function RootLayout() {
             <Stack.Screen name="edit-text-content" options={{ title: "编辑文本内容" }} />
             <Stack.Screen name="edit-sentence-audio" options={{ title: "剪辑句子语音" }} />
             <Stack.Screen name="sentence-practice" options={{ title: "句库学习" }} />
+            <Stack.Screen name="login" options={{ title: "登录" }} />
           </Stack>
           <Toast />
         </GestureHandlerRootView>

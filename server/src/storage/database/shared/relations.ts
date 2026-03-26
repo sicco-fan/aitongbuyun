@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { materials, sentences, learningRecords } from "./schema";
+import { materials, sentences, learningRecords, sentenceFiles, sentenceFileItems } from "./schema";
 
 export const sentencesRelations = relations(sentences, ({one, many}) => ({
 	material: one(materials, {
@@ -18,4 +18,15 @@ export const learningRecordsRelations = relations(learningRecords, ({one}) => ({
 		fields: [learningRecords.sentenceId],
 		references: [sentences.id]
 	}),
+}));
+
+export const sentenceFileItemsRelations = relations(sentenceFileItems, ({one}) => ({
+	sentenceFile: one(sentenceFiles, {
+		fields: [sentenceFileItems.sentenceFileId],
+		references: [sentenceFiles.id]
+	}),
+}));
+
+export const sentenceFilesRelations = relations(sentenceFiles, ({many}) => ({
+	sentenceFileItems: many(sentenceFileItems),
 }));

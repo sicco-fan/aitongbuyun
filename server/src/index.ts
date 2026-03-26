@@ -7,6 +7,9 @@ import translateRouter from "./routes/translate";
 import letterPronunciationRouter from "./routes/letter-pronunciation";
 import videoDownloadRouter from "./routes/video-download";
 import sentenceFilesRouter from "./routes/sentence-files";
+import authRouter from "./routes/auth";
+import statsRouter from "./routes/stats";
+import shareRouter from "./routes/share";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -36,6 +39,15 @@ app.use('/api/v1/learning-records', learningRouter);
 app.use('/api/v1/speech-recognize', speechRouter);
 app.use('/api/v1/translate', translateRouter);
 app.use('/api/v1/letter-pronunciation', letterPronunciationRouter);
+
+// 用户认证路由
+app.use('/api/v1/auth', authRouter);
+
+// 学习统计路由
+app.use('/api/v1/stats', statsRouter);
+
+// 句库分享路由
+app.use('/api/v1/share', shareRouter);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

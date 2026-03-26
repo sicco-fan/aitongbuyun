@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { ScrollView, View, TouchableOpacity } from 'react-native';
+import { ScrollView, View, TouchableOpacity, Text, Alert } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/contexts/AuthContext';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -10,7 +11,7 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { getErrorWords } from '@/utils/learningStorage';
 
-// 后端服务地址 - 直接连接后端服务器，不经过 Metro 代理
+// 后端服务地址
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
 interface Stats {
@@ -26,6 +27,7 @@ export default function ProfileScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
+  const { user, isAuthenticated, logout } = useAuth();
   const [stats, setStats] = useState<Stats>({
     totalMaterials: 0,
     completedMaterials: 0,
@@ -37,10 +39,6 @@ export default function ProfileScreen() {
 
   const fetchStats = useCallback(async () => {
     try {
-      /**
-       * 服务端文件：server/src/routes/materials.ts
-       * 接口：GET /api/v1/materials
-       */
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/materials`);
       const data = await response.json();
 
@@ -58,7 +56,6 @@ export default function ProfileScreen() {
           (sum: number, m: { completed_count: number }) => sum + m.completed_count, 0
         );
 
-        // 获取错题数量
         const errorWords = await getErrorWords();
 
         setStats({
@@ -81,6 +78,23 @@ export default function ProfileScreen() {
     }, [fetchStats])
   );
 
+  const handleLogout = () => {
+    Alert.alert(
+      '退出登录',
+      '确定要退出登录吗？',
+      [
+        { text: '取消', style: 'cancel' },
+        { 
+          text: '确定', 
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+          }
+        }
+      ]
+    );
+  };
+
   const accuracy = stats.totalSentences > 0 
     ? Math.round((stats.completedSentences / stats.totalSentences) * 100) 
     : 0;
@@ -88,11 +102,44 @@ export default function ProfileScreen() {
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
+        {/* 用户信息 */}
         <ThemedView level="root" style={styles.header}>
-          <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
-            学习统计
-          </ThemedText>
+          {isAuthenticated && user ? (
+            <View style={styles.userInfo}>
+              <View style={styles.avatar}>
+                <FontAwesome6 name="user" size={24} color={theme.primary} />
+              </View>
+              <View style={styles.userDetails}>
+                <ThemedText variant="h3" color={theme.textPrimary}>
+                  {user.nickname || '用户'}
+                </ThemedText>
+                <ThemedText variant="small" color={theme.textMuted}>
+                  {user.is_guest ? '游客模式' : user.phone}
+                </ThemedText>
+              </View>
+              <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
+                <FontAwesome6 name="right-from-bracket" size={18} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity 
+              style={styles.loginPrompt}
+              onPress={() => router.push('/login')}
+            >
+              <View style={styles.avatar}>
+                <FontAwesome6 name="user" size={24} color={theme.textMuted} />
+              </View>
+              <View style={styles.userDetails}>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                  点击登录
+                </ThemedText>
+                <ThemedText variant="small" color={theme.textMuted}>
+                  登录后同步学习进度
+                </ThemedText>
+              </View>
+              <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+            </TouchableOpacity>
+          )}
         </ThemedView>
 
         {/* Stats Grid */}
@@ -134,30 +181,6 @@ export default function ProfileScreen() {
             </ThemedText>
             <ThemedText variant="small" color={theme.textMuted} style={styles.statLabel}>
               完成率
-            </ThemedText>
-          </View>
-        </View>
-
-        {/* Progress Info */}
-        <ThemedText variant="h4" color={theme.textPrimary} style={styles.sectionHeader}>
-          学习进度
-        </ThemedText>
-
-        <View style={styles.infoCard}>
-          <View style={styles.infoRow}>
-            <ThemedText variant="body" color={theme.textSecondary} style={styles.infoLabel}>
-              已完成句子
-            </ThemedText>
-            <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoValue}>
-              {stats.completedSentences} / {stats.totalSentences}
-            </ThemedText>
-          </View>
-          <View style={[styles.infoRow, styles.infoRowLast]}>
-            <ThemedText variant="body" color={theme.textSecondary} style={styles.infoLabel}>
-              学习进度
-            </ThemedText>
-            <ThemedText variant="bodyMedium" color={theme.primary} style={styles.infoValue}>
-              {accuracy}%
             </ThemedText>
           </View>
         </View>
