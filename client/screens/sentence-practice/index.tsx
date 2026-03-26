@@ -25,15 +25,125 @@ import { createFormDataFile } from '@/utils';
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
 /**
- * 规范化字符：将所有引号类字符统一为直引号
- * 用于比较单词时忽略引号格式差异
+ * 判断字符是否为单引号类字符
+ * 包含所有可能的单引号变体
  */
-const normalizeQuotes = (text: string): string => {
-  return text
-    .replace(/[''"″′‵ʹʻʼʽ＇`´]/g, "'")  // 各种单引号类字符 -> 直引号
-    .replace(/[""″‶]/g, '"')              // 各种双引号类字符 -> 直引号
-    .replace(/[—–−–]/g, '-')              // 各种破折号 -> 连字符
-    .toLowerCase();
+const isSingleQuoteLike = (char: string): boolean => {
+  const code = char.charCodeAt(0);
+  // 常见单引号类字符的 Unicode 码点
+  return (
+    code === 0x0027 || // ' Apostrophe
+    code === 0x0060 || // ` Grave accent
+    code === 0x00B4 || // ´ Acute accent
+    code === 0x02B9 || // ʹ Modifier letter prime
+    code === 0x02BA || // ʺ Modifier letter double prime
+    code === 0x02BB || // ʻ Modifier letter turned comma
+    code === 0x02BC || // ʼ Modifier letter apostrophe
+    code === 0x02BD || // ʽ Modifier letter reversed comma
+    code === 0x2018 || // ' Left single quotation mark
+    code === 0x2019 || // ' Right single quotation mark
+    code === 0x201A || // ‚ Single low-9 quotation mark
+    code === 0x201B || // ‛ Single high-reversed-9 quotation mark
+    code === 0x2032 || // ′ Prime
+    code === 0x2035 || // ‵ Reversed prime
+    code === 0xFF07    // ＇ Fullwidth apostrophe
+  );
+};
+
+/**
+ * 判断字符是否为双引号类字符
+ */
+const isDoubleQuoteLike = (char: string): boolean => {
+  const code = char.charCodeAt(0);
+  return (
+    code === 0x0022 || // " Quotation mark
+    code === 0x201C || // " Left double quotation mark
+    code === 0x201D || // " Right double quotation mark
+    code === 0x201E || // „ Double low-9 quotation mark
+    code === 0x201F || // ‟ Double high-reversed-9 quotation mark
+    code === 0x2033 || // ″ Double prime
+    code === 0x2036    // ‶ Reversed double prime
+  );
+};
+
+/**
+ * 判断字符是否为破折号类字符
+ */
+const isDashLike = (char: string): boolean => {
+  const code = char.charCodeAt(0);
+  return (
+    code === 0x002D || // - Hyphen-minus
+    code === 0x2010 || // – Hyphen
+    code === 0x2011 || // ‑ Non-breaking hyphen
+    code === 0x2012 || // ‒ Figure dash
+    code === 0x2013 || // – En dash
+    code === 0x2014 || // — Em dash
+    code === 0x2212    // − Minus sign
+  );
+};
+
+/**
+ * 比较两个单词是否匹配（忽略引号格式差异）
+ */
+const wordsMatch = (word1: string, word2: string): boolean => {
+  const w1 = word1.toLowerCase();
+  const w2 = word2.toLowerCase();
+  
+  if (w1.length !== w2.length) return false;
+  
+  for (let i = 0; i < w1.length; i++) {
+    const c1 = w1[i];
+    const c2 = w2[i];
+    
+    // 完全相同
+    if (c1 === c2) continue;
+    
+    // 都是单引号类字符
+    if (isSingleQuoteLike(c1) && isSingleQuoteLike(c2)) continue;
+    
+    // 都是双引号类字符
+    if (isDoubleQuoteLike(c1) && isDoubleQuoteLike(c2)) continue;
+    
+    // 都是破折号类字符
+    if (isDashLike(c1) && isDashLike(c2)) continue;
+    
+    // 不匹配
+    return false;
+  }
+  
+  return true;
+};
+
+/**
+ * 检查单词是否以指定前缀开头（忽略引号格式差异）
+ */
+const wordsStartWith = (prefix: string, word: string): boolean => {
+  const p = prefix.toLowerCase();
+  const w = word.toLowerCase();
+  
+  if (p.length > w.length) return false;
+  
+  for (let i = 0; i < p.length; i++) {
+    const c1 = p[i];
+    const c2 = w[i];
+    
+    // 完全相同
+    if (c1 === c2) continue;
+    
+    // 都是单引号类字符
+    if (isSingleQuoteLike(c1) && isSingleQuoteLike(c2)) continue;
+    
+    // 都是双引号类字符
+    if (isDoubleQuoteLike(c1) && isDoubleQuoteLike(c2)) continue;
+    
+    // 都是破折号类字符
+    if (isDashLike(c1) && isDashLike(c2)) continue;
+    
+    // 不匹配
+    return false;
+  }
+  
+  return true;
 };
 
 interface Sentence {
@@ -462,12 +572,9 @@ export default function SentencePracticeScreen() {
     
     // 提取实际单词内容（去掉末尾的空格/回车）
     const actualInput = isConfirmChar ? text.slice(0, -1) : text;
-    
-    // 规范化用户输入
-    const normalizedInput = normalizeQuotes(actualInput);
 
     // 空输入时重置
-    if (normalizedInput.length === 0) {
+    if (actualInput.length === 0) {
       setCurrentInput('');
       setTargetWordIndexWithRef(null);
       return;
@@ -482,7 +589,7 @@ export default function SentencePracticeScreen() {
 
     // 如果用户按了空格/回车，强制匹配当前输入
     if (isConfirmChar) {
-      const matchedWord = incompleteWords.find(w => normalizeQuotes(w.word) === normalizedInput);
+      const matchedWord = incompleteWords.find(w => wordsMatch(w.word, actualInput));
       
       if (matchedWord) {
         // 匹配成功，显示单词
@@ -505,13 +612,12 @@ export default function SentencePracticeScreen() {
     }
 
     // 正常输入流程：检查是否完全匹配某个单词
-    const matchedWord = incompleteWords.find(w => normalizeQuotes(w.word) === normalizedInput);
+    const matchedWord = incompleteWords.find(w => wordsMatch(w.word, actualInput));
 
     // 检查是否有其他单词以当前输入开头（说明用户可能还在输入）
     const hasLongerMatch = incompleteWords.some(w => {
-      const wordNormalized = normalizeQuotes(w.word);
       // 排除完全匹配的单词，找以当前输入开头但更长的单词
-      return wordNormalized !== normalizedInput && wordNormalized.startsWith(normalizedInput);
+      return !wordsMatch(w.word, actualInput) && wordsStartWith(actualInput, w.word);
     });
 
     if (matchedWord && !hasLongerMatch) {
