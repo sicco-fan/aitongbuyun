@@ -218,6 +218,7 @@ export default function SentencePracticeScreen() {
 
   // 键盘类型：'system' 手机键盘 | 'custom' 自建键盘
   const [keyboardType, setKeyboardType] = useState<'system' | 'custom'>('system');
+  const [showNumberPanel, setShowNumberPanel] = useState(false); // 显示数字面板
 
   // 错误闪烁动画
   const errorAnimRef = useRef<Animated.Value>(new Animated.Value(0));
@@ -1450,10 +1451,10 @@ export default function SentencePracticeScreen() {
                   {/* 第一行 */}
                   <View style={styles.keyboardRow}>
                     <TouchableOpacity
-                      style={[styles.keyButton, styles.letterKey]}
-                      onPress={() => handleCustomKeyPress('SYMBOL', 'SYMBOL')}
+                      style={[styles.keyButton, styles.letterKey, showNumberPanel && styles.numberKeyActive]}
+                      onPress={() => setShowNumberPanel(!showNumberPanel)}
                     >
-                      <ThemedText variant="body" color={theme.textMuted}>符号</ThemedText>
+                      <ThemedText variant="body" color={showNumberPanel ? theme.primary : theme.textMuted}>数字</ThemedText>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.keyButton, styles.letterKey]}
@@ -1469,49 +1470,105 @@ export default function SentencePracticeScreen() {
                     </TouchableOpacity>
                   </View>
                   
-                  {/* 第二行 */}
-                  <View style={styles.keyboardRow}>
-                    <TouchableOpacity
-                      style={[styles.keyButton, styles.letterKey]}
-                      onPress={() => handleCustomKeyPress('GHI', 'GHI')}
-                    >
-                      <ThemedText variant="h4" color={theme.textPrimary}>GHI</ThemedText>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.keyButton, styles.letterKey]}
-                      onPress={() => handleCustomKeyPress('JKL', 'JKL')}
-                    >
-                      <ThemedText variant="h4" color={theme.textPrimary}>JKL</ThemedText>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.keyButton, styles.letterKey]}
-                      onPress={() => handleCustomKeyPress('MNO', 'MNO')}
-                    >
-                      <ThemedText variant="h4" color={theme.textPrimary}>MNO</ThemedText>
-                    </TouchableOpacity>
-                  </View>
+                  {/* 第二行 - 字母或数字 */}
+                  {showNumberPanel ? (
+                    <View style={styles.keyboardRow}>
+                      {[1, 2, 3, 4, 5].map((num) => (
+                        <TouchableOpacity
+                          key={num}
+                          style={[styles.keyButton, styles.letterKey]}
+                          onPress={() => {
+                            // 直接输入数字
+                            const newInput = currentInput + num.toString();
+                            setCurrentInput(newInput);
+                            // 检查是否匹配某个单词
+                            const matched = wordStatuses.find(ws => 
+                              !ws.isPunctuation && !ws.revealed && ws.word.toLowerCase() === newInput.toLowerCase()
+                            );
+                            if (matched) {
+                              setTimeout(() => {
+                                handleInputChange(newInput);
+                                setCurrentInput('');
+                                setShowNumberPanel(false);
+                              }, 100);
+                            }
+                          }}
+                        >
+                          <ThemedText variant="h4" color={theme.textPrimary}>{num}</ThemedText>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ) : (
+                    <View style={styles.keyboardRow}>
+                      <TouchableOpacity
+                        style={[styles.keyButton, styles.letterKey]}
+                        onPress={() => handleCustomKeyPress('GHI', 'GHI')}
+                      >
+                        <ThemedText variant="h4" color={theme.textPrimary}>GHI</ThemedText>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.keyButton, styles.letterKey]}
+                        onPress={() => handleCustomKeyPress('JKL', 'JKL')}
+                      >
+                        <ThemedText variant="h4" color={theme.textPrimary}>JKL</ThemedText>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.keyButton, styles.letterKey]}
+                        onPress={() => handleCustomKeyPress('MNO', 'MNO')}
+                      >
+                        <ThemedText variant="h4" color={theme.textPrimary}>MNO</ThemedText>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                   
-                  {/* 第三行 */}
-                  <View style={styles.keyboardRow}>
-                    <TouchableOpacity
-                      style={[styles.keyButton, styles.letterKey]}
-                      onPress={() => handleCustomKeyPress('PQRS', 'PQRS')}
-                    >
-                      <ThemedText variant="h4" color={theme.textPrimary}>PQRS</ThemedText>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.keyButton, styles.letterKey]}
-                      onPress={() => handleCustomKeyPress('TUV', 'TUV')}
-                    >
-                      <ThemedText variant="h4" color={theme.textPrimary}>TUV</ThemedText>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.keyButton, styles.letterKey]}
-                      onPress={() => handleCustomKeyPress('WXYZ', 'WXYZ')}
-                    >
-                      <ThemedText variant="h4" color={theme.textPrimary}>WXYZ</ThemedText>
-                    </TouchableOpacity>
-                  </View>
+                  {/* 第三行 - 数字或字母 */}
+                  {showNumberPanel ? (
+                    <View style={styles.keyboardRow}>
+                      {[6, 7, 8, 9, 0].map((num) => (
+                        <TouchableOpacity
+                          key={num}
+                          style={[styles.keyButton, styles.letterKey]}
+                          onPress={() => {
+                            const newInput = currentInput + num.toString();
+                            setCurrentInput(newInput);
+                            const matched = wordStatuses.find(ws => 
+                              !ws.isPunctuation && !ws.revealed && ws.word.toLowerCase() === newInput.toLowerCase()
+                            );
+                            if (matched) {
+                              setTimeout(() => {
+                                handleInputChange(newInput);
+                                setCurrentInput('');
+                                setShowNumberPanel(false);
+                              }, 100);
+                            }
+                          }}
+                        >
+                          <ThemedText variant="h4" color={theme.textPrimary}>{num}</ThemedText>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ) : (
+                    <View style={styles.keyboardRow}>
+                      <TouchableOpacity
+                        style={[styles.keyButton, styles.letterKey]}
+                        onPress={() => handleCustomKeyPress('PQRS', 'PQRS')}
+                      >
+                        <ThemedText variant="h4" color={theme.textPrimary}>PQRS</ThemedText>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.keyButton, styles.letterKey]}
+                        onPress={() => handleCustomKeyPress('TUV', 'TUV')}
+                      >
+                        <ThemedText variant="h4" color={theme.textPrimary}>TUV</ThemedText>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.keyButton, styles.letterKey]}
+                        onPress={() => handleCustomKeyPress('WXYZ', 'WXYZ')}
+                      >
+                        <ThemedText variant="h4" color={theme.textPrimary}>WXYZ</ThemedText>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
 
                 {/* 第五列：功能键 - 3行均匀分布 */}

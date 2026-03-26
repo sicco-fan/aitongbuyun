@@ -304,7 +304,7 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.lg,
       padding: 8,
       gap: 6,
-      height: 260, // 增加高度
+      height: 260,
     },
     keyboardColumn: {
       flexDirection: 'column',
@@ -338,6 +338,18 @@ export const createStyles = (theme: Theme) => {
     functionKey: {
       width: 54,
       backgroundColor: '#9CA3AF',
+    },
+    numberKey: {
+      backgroundColor: '#FFFFFF',
+      flex: 1,
+    },
+    numberKeyActive: {
+      backgroundColor: theme.backgroundTertiary,
+    },
+    numberPanel: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
     },
   });
 };
