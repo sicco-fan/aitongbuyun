@@ -703,12 +703,44 @@ export default function SentencePracticeScreen() {
 
   // 当前按键序列
   const [currentKeySequence, setCurrentKeySequence] = useState<string[]>([]);
-  const currentKeySequenceRef = useRef<string[]>([]);
   
-  // 同步 ref
-  useEffect(() => {
-    currentKeySequenceRef.current = currentKeySequence;
-  }, [currentKeySequence]);
+  // 候选词列表
+  const [candidates, setCandidates] = useState<{ word: string; index: number }[]>([]);
+
+  // 根据按键序列更新候选词
+  const updateCandidates = useCallback((sequence: string[]) => {
+    if (sequence.length === 0) {
+      setCandidates([]);
+      return;
+    }
+    
+    // 找到所有匹配的单词
+    const matched = wordKeySequences.filter(item => {
+      const targetSeq = item.keySequence;
+      if (sequence.length > targetSeq.length) return false;
+      return sequence.every((k, i) => k === targetSeq[i]);
+    });
+    
+    // 按完全匹配优先、然后按单词长度排序
+    matched.sort((a, b) => {
+      const aExact = a.keySequence.length === sequence.length;
+      const bExact = b.keySequence.length === sequence.length;
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
+      return a.word.length - b.word.length;
+    });
+    
+    setCandidates(matched.map(item => ({ word: item.word, index: item.index })));
+  }, [wordKeySequences]);
+
+  // 点击候选词确认
+  const handleCandidatePress = useCallback((word: string, index: number) => {
+    handleInputChange(word);
+    setCurrentInput('');
+    setCurrentKeySequence([]);
+    setCandidates([]);
+    setTargetWordIndexWithRef(null);
+  }, [handleInputChange, setTargetWordIndexWithRef]);
 
   // 处理自建键盘按键
   const handleCustomKeyPress = useCallback((key: string, keyLetters: string) => {
@@ -716,7 +748,7 @@ export default function SentencePracticeScreen() {
       setCurrentInput(prev => prev.slice(0, -1));
       setCurrentKeySequence(prev => {
         const newSeq = prev.slice(0, -1);
-        currentKeySequenceRef.current = newSeq;
+        updateCandidates(newSeq);
         return newSeq;
       });
       return;
@@ -725,33 +757,17 @@ export default function SentencePracticeScreen() {
     if (key === '清空') {
       setCurrentInput('');
       setCurrentKeySequence([]);
-      currentKeySequenceRef.current = [];
+      setCandidates([]);
       setTargetWordIndexWithRef(null);
       return;
     }
     
     if (key === '空格') {
-      // 空格键：确认当前输入的单词
-      // 即使有更长的单词匹配，也确认当前输入
-      const seq = currentKeySequenceRef.current;
-      
-      if (seq.length === 0) return;
-      
-      // 找到当前按键序列对应的单词（完全匹配当前长度）
-      const matchedWord = wordKeySequences.find(item => {
-        const targetSeq = item.keySequence;
-        return seq.length === targetSeq.length && 
-               seq.every((k, i) => k === targetSeq[i]);
-      });
-      
-      if (matchedWord) {
-        // 完全匹配，确认单词
-        setCurrentKeySequence([]);
-        currentKeySequenceRef.current = []; // 同步更新 ref
-        setCurrentInput('');
-        handleInputChange(matchedWord.word);
+      // 空格键：确认第一个候选词
+      if (candidates.length > 0) {
+        const first = candidates[0];
+        handleCandidatePress(first.word, first.index);
       }
-      // 没有匹配到任何单词，不做操作
       return;
     }
     
@@ -761,53 +777,29 @@ export default function SentencePracticeScreen() {
     setCurrentKeySequence(prev => {
       const newSequence = [...prev, pressedKey];
       
-      // 同步更新 ref（避免竞态条件）
-      currentKeySequenceRef.current = newSequence;
+      // 更新候选词
+      updateCandidates(newSequence);
       
-      // 优先查找完全匹配的单词
-      const exactMatch = wordKeySequences.find(item => {
+      // 显示第一个候选词的前缀（如果有匹配）
+      const matched = wordKeySequences.filter(item => {
         const targetSeq = item.keySequence;
-        if (newSequence.length !== targetSeq.length) return false;
+        if (newSequence.length > targetSeq.length) return false;
         return newSequence.every((k, i) => k === targetSeq[i]);
       });
       
-      if (exactMatch) {
-        // 完全匹配，显示单词但不自动完成（等用户按空格确认）
-        setCurrentInput(exactMatch.word);
-        setTargetWordIndexWithRef(exactMatch.index);
+      if (matched.length > 0) {
+        // 显示第一个匹配单词的前缀
+        const firstMatch = matched[0];
+        const wordChars = firstMatch.word.slice(0, newSequence.length);
+        setCurrentInput(wordChars);
+        setTargetWordIndexWithRef(firstMatch.index);
         return newSequence;
       }
       
-      // 没有完全匹配，查找前缀匹配的单词
-      for (const item of wordKeySequences) {
-        const targetSeq = item.keySequence;
-        
-        // 检查按键序列是否匹配目标单词的前缀
-        if (newSequence.length <= targetSeq.length) {
-          let matches = true;
-          for (let i = 0; i < newSequence.length; i++) {
-            if (newSequence[i] !== targetSeq[i]) {
-              matches = false;
-              break;
-            }
-          }
-          
-          if (matches) {
-            // 更新输入框显示实际的单词字符
-            const wordChars = item.word.slice(0, newSequence.length);
-            setCurrentInput(wordChars);
-            setTargetWordIndexWithRef(item.index);
-            
-            return newSequence;
-          }
-        }
-      }
-      
       // 没有匹配，不更新序列
-      currentKeySequenceRef.current = prev; // 恢复 ref
       return prev;
     });
-  }, [wordKeySequences, handleInputChange, setTargetWordIndexWithRef]);
+  }, [wordKeySequences, updateCandidates, setTargetWordIndexWithRef]);
 
   // 检查是否完成
   useEffect(() => {
@@ -1277,6 +1269,23 @@ export default function SentencePracticeScreen() {
                   <FontAwesome6 name="chevron-right" size={16} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
                 </TouchableOpacity>
               </View>
+              
+              {/* 候选词列表 */}
+              {candidates.length > 0 && (
+                <View style={styles.candidatesRow}>
+                  {candidates.map((candidate, idx) => (
+                    <TouchableOpacity
+                      key={candidate.word + idx}
+                      style={styles.candidateBtn}
+                      onPress={() => handleCandidatePress(candidate.word, candidate.index)}
+                    >
+                      <ThemedText variant="body" color={theme.primary}>
+                        {candidate.word}
+                      </ThemedText>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
               
               {/* 自建键盘 */}
               <View style={styles.customKeyboard}>
