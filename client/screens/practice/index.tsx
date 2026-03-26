@@ -428,15 +428,39 @@ export default function PracticeScreen() {
     const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
     if (incompleteWords.length === 0) return;
 
-    // 确定目标单词 - 严格按顺序选择第一个未完成的单词
+    // 确定目标单词
     let targetIndex = currentTargetIndex;
     
     // 如果没有锁定目标，或者锁定的目标已经完成，选择第一个未完成的单词
     const targetWordStatus = currentWordStatuses.find(w => w.index === targetIndex);
     if (targetIndex === null || !targetWordStatus || targetWordStatus.revealed) {
-      // 严格按顺序选择第一个未完成的单词
       targetIndex = incompleteWords[0].index;
       setTargetWordIndexWithRef(targetIndex);
+    }
+
+    // 找到当前目标单词
+    const currentTargetWord = currentWordStatuses.find(w => w.index === targetIndex);
+    if (!currentTargetWord) return;
+
+    const currentWordLower = currentTargetWord.word.toLowerCase();
+
+    // 检查当前输入是否与目标单词匹配（第一个字母匹配）
+    const firstCharMatches = inputLower[0] === currentWordLower[0];
+
+    // 如果第一个字母不匹配，检查是否有其他未完成单词匹配
+    if (!firstCharMatches) {
+      // 在未完成的单词中查找首字母匹配的单词
+      const matchingWord = incompleteWords.find(w => {
+        const wordLower = w.word.toLowerCase();
+        return inputLower[0] === wordLower[0];
+      });
+
+      if (matchingWord) {
+        // 找到匹配的单词，切换目标
+        targetIndex = matchingWord.index;
+        setTargetWordIndexWithRef(targetIndex);
+      }
+      // 如果没找到匹配的单词，保持当前目标，显示错误
     }
 
     // 找到目标单词
