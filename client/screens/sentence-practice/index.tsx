@@ -410,11 +410,18 @@ export default function SentencePracticeScreen() {
       return;
     }
 
-    // 检查是否完全匹配任何未完成的单词
+    // 检查是否完全匹配某个单词
     const matchedWord = incompleteWords.find(w => w.word.toLowerCase() === inputLower);
 
-    if (matchedWord) {
-      // 完全匹配！标记完成并清空输入框
+    // 检查是否有其他单词以当前输入开头（说明用户可能还在输入）
+    const hasLongerMatch = incompleteWords.some(w => {
+      const wordLower = w.word.toLowerCase();
+      // 排除完全匹配的单词，找以当前输入开头但更长的单词
+      return wordLower !== inputLower && wordLower.startsWith(inputLower);
+    });
+
+    if (matchedWord && !hasLongerMatch) {
+      // 完全匹配且没有更长的单词以当前输入开头，确认匹配
       updateWordStatusesWithRef(prev => prev.map(ws => {
         if (ws.index === matchedWord.index) {
           return {
