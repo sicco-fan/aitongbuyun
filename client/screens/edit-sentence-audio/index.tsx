@@ -8,6 +8,7 @@ import {
   Alert,
   TextInput,
   Modal,
+  ScrollView,
 } from 'react-native';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -150,6 +151,9 @@ export default function EditSentenceAudioScreen() {
   const [isEditingText, setIsEditingText] = useState(false);
   const [editingText, setEditingText] = useState('');
   const [savingText, setSavingText] = useState(false);
+
+  // 帮助对话框
+  const [showHelp, setShowHelp] = useState(false);
 
   const currentSentence = sentences[currentIndex];
 
@@ -1048,7 +1052,12 @@ export default function EditSentenceAudioScreen() {
       {/* 顶部状态栏 */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>时间轴编辑</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={styles.headerTitle}>时间轴编辑</Text>
+            <TouchableOpacity onPress={() => setShowHelp(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <FontAwesome6 name="circle-info" size={14} color="#666" />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.headerInfo}>句子 {currentIndex + 1}/{sentences.length}</Text>
         </View>
         <View style={styles.headerRight}>
@@ -1353,6 +1362,66 @@ export default function EditSentenceAudioScreen() {
         onConfirm={() => setSyncResult({ visible: false, stats: null })}
         onCancel={() => setSyncResult({ visible: false, stats: null })}
       />
+
+      {/* 帮助对话框 */}
+      <Modal
+        visible={showHelp}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowHelp(false)}
+      >
+        <TouchableOpacity 
+          style={styles.helpOverlay}
+          activeOpacity={1}
+          onPress={() => setShowHelp(false)}
+        >
+          <View style={styles.helpContainer} onStartShouldSetResponder={() => true}>
+            <View style={styles.helpHeader}>
+              <Text style={styles.helpTitle}>操作说明</Text>
+              <TouchableOpacity onPress={() => setShowHelp(false)}>
+                <FontAwesome6 name="xmark" size={18} color="#888" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.helpContent}>
+              <Text style={styles.helpSectionTitle}>按钮功能对比</Text>
+              
+              <View style={styles.helpTable}>
+                <View style={styles.helpTableRow}>
+                  <Text style={styles.helpTableHeader}>操作</Text>
+                  <Text style={styles.helpTableHeader}>作用</Text>
+                </View>
+                <View style={styles.helpTableRow}>
+                  <Text style={styles.helpTableCellBold}>下一句</Text>
+                  <Text style={styles.helpTableCell}>仅切换显示，修改在内存中未保存</Text>
+                </View>
+                <View style={styles.helpTableRow}>
+                  <Text style={styles.helpTableCellBold}>保存</Text>
+                  <Text style={styles.helpTableCell}>保存所有时间戳到数据库，不生成音频文件</Text>
+                </View>
+                <View style={styles.helpTableRow}>
+                  <Text style={styles.helpTableCellBold}>完成切分</Text>
+                  <Text style={styles.helpTableCell}>保存 + 切分生成独立音频片段（覆盖旧文件）</Text>
+                </View>
+              </View>
+
+              <Text style={styles.helpSectionTitle}>编辑文本</Text>
+              <Text style={styles.helpText}>点击句子文本进入编辑模式，修改后点击 ✓ 保存。文本修改会同步更新到 AI 提取的原始文本。</Text>
+
+              <Text style={styles.helpSectionTitle}>推荐工作流</Text>
+              <View style={styles.helpWorkflow}>
+                <Text style={styles.helpWorkflowItem}>1. 逐句调整时间戳，用"下一句"切换</Text>
+                <Text style={styles.helpWorkflowItem}>2. 阶段性点"保存"防止丢失</Text>
+                <Text style={styles.helpWorkflowItem}>3. 全部完成后点"完成切分"（可选）</Text>
+              </View>
+
+              <Text style={styles.helpNote}>
+                💡 学习页面从原始音频 seek 播放，不点"完成切分"也能正常学习。独立音频片段是可选优化。
+              </Text>
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </Screen>
   );
 }
@@ -1699,5 +1768,103 @@ const styles = StyleSheet.create({
     color: '#00ff88',
     fontSize: 14,
     fontWeight: '600',
+  },
+
+  // 帮助对话框
+  helpOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  helpContainer: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 360,
+    maxHeight: '80%',
+  },
+  helpHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#3a3a3a',
+  },
+  helpTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  helpContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  helpSectionTitle: {
+    color: '#00ff88',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  helpText: {
+    color: '#aaa',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  helpTable: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  helpTableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  helpTableHeader: {
+    flex: 1,
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  helpTableCellBold: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  helpTableCell: {
+    flex: 2,
+    color: '#aaa',
+    fontSize: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    lineHeight: 18,
+  },
+  helpWorkflow: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    padding: 12,
+    gap: 8,
+  },
+  helpWorkflowItem: {
+    color: '#ccc',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  helpNote: {
+    color: '#666',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 20,
+    paddingBottom: 16,
   },
 });
