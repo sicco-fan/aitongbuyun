@@ -330,7 +330,7 @@ export default function SentencePracticeScreen() {
     stopPlayback();
 
     const tokens = extractWords(currentSentence.text);
-    setWordStatuses(tokens.map((token, index) => ({
+    const newWordStatuses = tokens.map((token, index) => ({
       word: token.word,
       displayText: token.displayText,
       revealed: token.isPunctuation,
@@ -338,11 +338,43 @@ export default function SentencePracticeScreen() {
       errorCharIndex: -1,
       index,
       isPunctuation: token.isPunctuation,
-    })));
+    }));
+    setWordStatuses(newWordStatuses);
     setCurrentInput('');
     setTargetWordIndex(null); // 重置目标单词
     isLoopingRef.current = true;
     setIsLooping(true);
+
+    // 预加载所有单词的翻译
+    const wordsToTranslate = newWordStatuses
+      .filter(ws => !ws.isPunctuation && !wordTranslations[ws.word])
+      .map(ws => ws.word);
+    
+    if (wordsToTranslate.length > 0) {
+      // 批量获取翻译
+      Promise.all(
+        wordsToTranslate.map(word => 
+          fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: word, type: 'word' }),
+          })
+            .then(res => res.json())
+            .then(data => ({ word, translation: data.translation || '' }))
+            .catch(() => ({ word, translation: '' }))
+        )
+      ).then(results => {
+        const newTranslations: Record<string, string> = {};
+        results.forEach(({ word, translation }) => {
+          if (translation) {
+            newTranslations[word] = translation;
+          }
+        });
+        if (Object.keys(newTranslations).length > 0) {
+          setWordTranslations(prev => ({ ...prev, ...newTranslations }));
+        }
+      });
+    }
 
     const timer = setTimeout(() => {
       playAudio();
@@ -820,8 +852,8 @@ export default function SentencePracticeScreen() {
                         let displayChar = char;
                         if (!ws.revealed) {
                           if (hintWordIndex === ws.index) {
-                            // 提示模式：显示首字母，其余显示下划线
-                            displayChar = charIdx === 0 ? char : '_';
+                            // 提示模式：显示完整单词
+                            displayChar = char;
                           } else {
                             // 正常模式：显示下划线
                             displayChar = '_';
@@ -835,8 +867,8 @@ export default function SentencePracticeScreen() {
                             color={
                               ws.revealed
                                 ? theme.success
-                                : hintWordIndex === ws.index && charIdx === 0
-                                ? theme.primary // 提示的首字母高亮
+                                : hintWordIndex === ws.index
+                                ? theme.primary // 提示模式下所有字母高亮
                                 : theme.textMuted
                             }
                             style={[

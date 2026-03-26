@@ -334,7 +334,7 @@ export default function PracticeScreen() {
     stopPlayback();
     
     const tokens = extractWords(currentSentence.text);
-    setWordStatuses(tokens.map((token, index) => ({
+    const newWordStatuses = tokens.map((token, index) => ({
       word: token.word,
       displayText: token.displayText,
       revealed: token.isPunctuation,
@@ -342,11 +342,42 @@ export default function PracticeScreen() {
       errorCharIndex: -1,
       index,
       isPunctuation: token.isPunctuation,
-    })));
+    }));
+    setWordStatuses(newWordStatuses);
     setCurrentInput('');
     setTargetWordIndex(null); // 重置目标单词
     isLoopingRef.current = true;
     setIsLooping(true);
+    
+    // 预加载所有单词的翻译
+    const wordsToTranslate = newWordStatuses
+      .filter(ws => !ws.isPunctuation && !wordTranslations[ws.word])
+      .map(ws => ws.word);
+    
+    if (wordsToTranslate.length > 0) {
+      Promise.all(
+        wordsToTranslate.map(word => 
+          fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: word, type: 'word' }),
+          })
+            .then(res => res.json())
+            .then(data => ({ word, translation: data.translation || '' }))
+            .catch(() => ({ word, translation: '' }))
+        )
+      ).then(results => {
+        const newTranslations: Record<string, string> = {};
+        results.forEach(({ word, translation }) => {
+          if (translation) {
+            newTranslations[word] = translation;
+          }
+        });
+        if (Object.keys(newTranslations).length > 0) {
+          setWordTranslations(prev => ({ ...prev, ...newTranslations }));
+        }
+      });
+    }
     
     // 根据历史错误率调整播放速度
     (async () => {
@@ -848,34 +879,45 @@ export default function PracticeScreen() {
                     onPress={() => handleWordPress(ws)}
                     activeOpacity={0.7}
                   >
-                    {ws.displayText.split('').map((char, charIdx) => (
-                      <ThemedText
-                        key={charIdx}
-                        variant="h4"
-                        color={
-                          ws.revealed
-                            ? theme.success
-                            : ws.revealedChars[charIdx]
-                            ? theme.textPrimary
-                            : ws.errorCharIndex === charIdx
-                            ? theme.error
-                            : theme.textMuted
+                    {ws.displayText.split('').map((char, charIdx) => {
+                      // 判断显示内容
+                      let displayChar = char;
+                      if (!ws.revealed) {
+                        if (hintWordIndex === ws.index) {
+                          // 提示模式：显示完整单词
+                          displayChar = char;
+                        } else if (ws.revealedChars[charIdx]) {
+                          displayChar = char;
+                        } else {
+                          displayChar = '_';
                         }
-                        style={[
-                          styles.char,
-                          !ws.revealed && !ws.revealedChars[charIdx] && styles.hiddenChar,
-                          ws.errorCharIndex === charIdx && styles.errorChar,
-                        ]}
-                      >
-                        {ws.revealed || ws.revealedChars[charIdx] ? char : '_'}
-                      </ThemedText>
-                    ))}
-                    {/* 单词提示 */}
-                    {hintWordIndex === ws.index && !ws.revealed && (
-                      <ThemedText variant="caption" color={theme.textSecondary} style={styles.wordHint}>
-                        {ws.displayText[0]}{'_'.repeat(ws.displayText.length - 1)}
-                      </ThemedText>
-                    )}
+                      }
+                      
+                      return (
+                        <ThemedText
+                          key={charIdx}
+                          variant="h4"
+                          color={
+                            ws.revealed
+                              ? theme.success
+                              : hintWordIndex === ws.index
+                              ? theme.primary // 提示模式下所有字母高亮
+                              : ws.revealedChars[charIdx]
+                              ? theme.textPrimary
+                              : ws.errorCharIndex === charIdx
+                              ? theme.error
+                              : theme.textMuted
+                          }
+                          style={[
+                            styles.char,
+                            !ws.revealed && hintWordIndex !== ws.index && !ws.revealedChars[charIdx] && styles.hiddenChar,
+                            ws.errorCharIndex === charIdx && styles.errorChar,
+                          ]}
+                        >
+                          {displayChar}
+                        </ThemedText>
+                      );
+                    })}
                     {/* 单词翻译 */}
                     {translationWordIndex === ws.index && ws.revealed && (
                       <ThemedText variant="caption" color={theme.textSecondary} style={styles.wordHint}>
