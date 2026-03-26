@@ -38,6 +38,9 @@ export default function RootLayout() {
             <Stack.Screen name="edit-sentence-audio" options={{ title: "剪辑句子语音" }} />
             <Stack.Screen name="sentence-practice" options={{ title: "句库学习" }} />
             <Stack.Screen name="login" options={{ title: "登录" }} />
+            <Stack.Screen name="my-files" options={{ title: "我的句库" }} />
+            <Stack.Screen name="share-market" options={{ title: "分享市场" }} />
+            <Stack.Screen name="my-shares" options={{ title: "我的分享" }} />
           </Stack>
           <Toast />
         </GestureHandlerRootView>

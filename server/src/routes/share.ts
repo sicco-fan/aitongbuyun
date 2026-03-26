@@ -261,6 +261,56 @@ router.post('/download/:share_id', async (req, res) => {
 });
 
 /**
+ * PUT /api/v1/share/:share_id
+ * 更新分享描述
+ * Body: { user_id: string, description?: string }
+ */
+router.put('/:share_id', async (req, res) => {
+  try {
+    const { share_id } = req.params;
+    const { user_id, description } = req.body;
+    
+    if (!user_id) {
+      return res.status(400).json({ error: '缺少用户ID' });
+    }
+    
+    const client = getSupabaseClient();
+    
+    // 验证是否是分享者
+    const { data: share, error: shareError } = await client
+      .from('shared_sentence_files')
+      .select('*')
+      .eq('id', share_id)
+      .eq('shared_by', user_id)
+      .maybeSingle();
+    
+    if (shareError) throw shareError;
+    
+    if (!share) {
+      return res.status(404).json({ error: '分享不存在或无权操作' });
+    }
+    
+    // 更新描述
+    const { data: updated, error: updateError } = await client
+      .from('shared_sentence_files')
+      .update({ 
+        description, 
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', share_id)
+      .select()
+      .single();
+    
+    if (updateError) throw updateError;
+    
+    res.json({ success: true, share: updated });
+  } catch (error) {
+    console.error('更新分享失败:', error);
+    res.status(500).json({ error: '更新分享失败' });
+  }
+});
+
+/**
  * DELETE /api/v1/share/:share_id
  * 取消分享
  * Body: { user_id: string }

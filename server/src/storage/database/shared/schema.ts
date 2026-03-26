@@ -14,11 +14,13 @@ export const users = pgTable("users", {
 	phone: varchar("phone", { length: 20 }),
 	nickname: varchar("nickname", { length: 100 }),
 	deviceId: varchar("device_id", { length: 100 }),
+	role: varchar("role", { length: 20 }).default('user'), // admin / user
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
 	index("users_phone_idx").on(table.phone),
 	index("users_device_id_idx").on(table.deviceId),
+	index("users_role_idx").on(table.role),
 ]);
 
 // 验证码表

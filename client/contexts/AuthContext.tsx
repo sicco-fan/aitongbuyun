@@ -19,6 +19,7 @@ interface User {
   nickname?: string;
   device_id?: string;
   is_guest?: boolean;
+  role?: 'admin' | 'user';
 }
 
 // 认证上下文类型

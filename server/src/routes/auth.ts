@@ -21,6 +21,19 @@ function generateCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+// 管理员手机号
+const ADMIN_PHONE = '18874255388';
+
+/**
+ * 根据手机号判断用户角色
+ */
+function determineRole(phone: string | null): 'admin' | 'user' {
+  if (phone === ADMIN_PHONE) {
+    return 'admin';
+  }
+  return 'user';
+}
+
 /**
  * POST /api/v1/auth/send-code
  * 发送验证码
@@ -124,20 +137,27 @@ router.post('/login', async (req, res) => {
     let user;
     
     if (existingUser) {
-      // 更新最后登录时间
+      // 更新最后登录时间，并检查是否需要更新角色
+      const updateData: Record<string, string> = { updated_at: new Date().toISOString() };
+      // 如果手机号是管理员，更新角色
+      if (phone === ADMIN_PHONE && existingUser.role !== 'admin') {
+        updateData.role = 'admin';
+      }
+      
       const { data, error } = await client
         .from('users')
-        .update({ updated_at: new Date().toISOString() })
+        .update(updateData)
         .eq('id', existingUser.id)
         .select()
         .single();
       if (error) throw error;
       user = data;
     } else {
-      // 创建新用户
+      // 创建新用户，根据手机号设置角色
+      const role = determineRole(phone);
       const { data, error } = await client
         .from('users')
-        .insert({ phone, nickname: `用户${phone.slice(-4)}` })
+        .insert({ phone, nickname: `用户${phone.slice(-4)}`, role })
         .select()
         .single();
       if (error) throw error;
@@ -150,7 +170,9 @@ router.post('/login', async (req, res) => {
         id: user.id,
         phone: user.phone,
         nickname: user.nickname,
-        device_id: user.device_id
+        device_id: user.device_id,
+        role: user.role || 'user',
+        is_guest: false
       }
     });
   } catch (error) {
@@ -213,6 +235,7 @@ router.post('/guest', async (req, res) => {
         phone: user.phone,
         nickname: user.nickname,
         device_id: user.device_id,
+        role: user.role || 'user',
         is_guest: !user.phone
       }
     });
@@ -239,7 +262,7 @@ router.get('/me', async (req, res) => {
     
     const { data: user, error } = await client
       .from('users')
-      .select('id, phone, nickname, device_id, created_at')
+      .select('id, phone, nickname, device_id, role, created_at')
       .eq('id', user_id)
       .maybeSingle();
     
@@ -295,7 +318,8 @@ router.put('/profile', async (req, res) => {
         id: user.id,
         phone: user.phone,
         nickname: user.nickname,
-        device_id: user.device_id
+        device_id: user.device_id,
+        role: user.role || 'user'
       }
     });
   } catch (error) {

@@ -10,6 +10,7 @@ import sentenceFilesRouter from "./routes/sentence-files";
 import authRouter from "./routes/auth";
 import statsRouter from "./routes/stats";
 import shareRouter from "./routes/share";
+import myFilesRouter from "./routes/my-files";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -48,6 +49,9 @@ app.use('/api/v1/stats', statsRouter);
 
 // 句库分享路由
 app.use('/api/v1/share', shareRouter);
+
+// 我的句库路由
+app.use('/api/v1/my-files', myFilesRouter);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

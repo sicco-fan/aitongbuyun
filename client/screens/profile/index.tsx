@@ -110,9 +110,21 @@ export default function ProfileScreen() {
                 <FontAwesome6 name="user" size={24} color={theme.primary} />
               </View>
               <View style={styles.userDetails}>
-                <ThemedText variant="h3" color={theme.textPrimary}>
-                  {user.nickname || '用户'}
-                </ThemedText>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ThemedText variant="h3" color={theme.textPrimary}>
+                    {user.nickname || '用户'}
+                  </ThemedText>
+                  {user.role === 'admin' && (
+                    <View style={{ 
+                      backgroundColor: theme.accent + '20', 
+                      paddingHorizontal: 8, 
+                      paddingVertical: 2, 
+                      borderRadius: 4 
+                    }}>
+                      <ThemedText variant="tiny" color={theme.accent}>管理员</ThemedText>
+                    </View>
+                  )}
+                </View>
                 <ThemedText variant="small" color={theme.textMuted}>
                   {user.is_guest ? '游客模式' : user.phone}
                 </ThemedText>
@@ -189,6 +201,42 @@ export default function ProfileScreen() {
         <ThemedText variant="h4" color={theme.textPrimary} style={styles.sectionHeader}>
           管理功能
         </ThemedText>
+
+        <TouchableOpacity 
+          style={styles.adminCard}
+          onPress={() => router.push('/my-files')}
+        >
+          <View style={[styles.adminIcon, { backgroundColor: theme.primary + '15' }]}>
+            <FontAwesome6 name="folder" size={24} color={theme.primary} />
+          </View>
+          <View style={styles.adminContent}>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+              我的句库
+            </ThemedText>
+            <ThemedText variant="small" color={theme.textMuted}>
+              管理您创建的句库，分享给其他用户
+            </ThemedText>
+          </View>
+          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.adminCard}
+          onPress={() => router.push('/share-market')}
+        >
+          <View style={[styles.adminIcon, { backgroundColor: theme.accent + '15' }]}>
+            <FontAwesome6 name="store" size={24} color={theme.accent} />
+          </View>
+          <View style={styles.adminContent}>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+              分享市场
+            </ThemedText>
+            <ThemedText variant="small" color={theme.textMuted}>
+              发现优质句库，下载学习
+            </ThemedText>
+          </View>
+          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+        </TouchableOpacity>
 
         <TouchableOpacity 
           style={styles.adminCard}
