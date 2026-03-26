@@ -227,8 +227,13 @@ export default function SentencePracticeScreen() {
   // 初始化录音权限
   useEffect(() => {
     (async () => {
-      const { status } = await Audio.requestPermissionsAsync();
-      setHasRecordingPermission(status === 'granted');
+      try {
+        const { status } = await Audio.requestPermissionsAsync();
+        setHasRecordingPermission(status === 'granted');
+      } catch (error) {
+        console.log('[权限] 请求麦克风权限失败:', error);
+        setHasRecordingPermission(false);
+      }
     })();
   }, []);
 
@@ -316,8 +321,12 @@ export default function SentencePracticeScreen() {
       }
 
       if (soundRef.current && !isPlaying) {
-        await soundRef.current.playAsync();
-        setIsPlaying(true);
+        try {
+          await soundRef.current.playAsync();
+          setIsPlaying(true);
+        } catch (e) {
+          console.log('[playAudio] 恢复播放失败:', e);
+        }
         return;
       }
 
@@ -339,7 +348,7 @@ export default function SentencePracticeScreen() {
       const { sound } = await Audio.Sound.createAsync(
         { uri: file.original_audio_signed_url },
         {
-          shouldPlay: true,
+          shouldPlay: false, // 先不播放，设置位置后再播放
           isLooping: false,
           volume: volumeRef.current,
           rate: playbackRateRef.current,
@@ -349,15 +358,15 @@ export default function SentencePracticeScreen() {
           if (status.isLoaded) {
             // 检查是否到达结束时间
             if (status.positionMillis >= endMs) {
-              sound.pauseAsync();
+              sound.pauseAsync().catch(() => {});
               setIsPlaying(false);
 
               // 循环播放
               if (isLoopingRef.current && isMountedRef.current) {
                 setTimeout(() => {
                   if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
-                    soundRef.current.setPositionAsync(startMs);
-                    soundRef.current.playAsync();
+                    soundRef.current.setPositionAsync(startMs).catch(() => {});
+                    soundRef.current.playAsync().catch(() => {});
                     setIsPlaying(true);
                   }
                 }, 500);
@@ -375,9 +384,22 @@ export default function SentencePracticeScreen() {
       );
 
       soundRef.current = sound;
-      // 设置起始位置
-      await sound.setPositionAsync(startMs);
-      setIsPlaying(true);
+      
+      // 设置起始位置后再播放
+      try {
+        await sound.setPositionAsync(startMs);
+        await sound.playAsync();
+        setIsPlaying(true);
+      } catch (seekError) {
+        console.log('[playAudio] Seeking 失败:', seekError);
+        // 尝试直接播放
+        try {
+          await sound.playAsync();
+          setIsPlaying(true);
+        } catch (playError) {
+          console.log('[playAudio] 播放失败:', playError);
+        }
+      }
 
       // 监听播放位置
       const checkInterval = setInterval(async () => {
@@ -385,22 +407,26 @@ export default function SentencePracticeScreen() {
           clearInterval(checkInterval);
           return;
         }
-        const s = await soundRef.current.getStatusAsync();
-        if (s.isLoaded && s.positionMillis >= endMs) {
-          await sound.pauseAsync();
-          setIsPlaying(false);
-          clearInterval(checkInterval);
+        try {
+          const s = await soundRef.current.getStatusAsync();
+          if (s.isLoaded && s.positionMillis >= endMs) {
+            await sound.pauseAsync().catch(() => {});
+            setIsPlaying(false);
+            clearInterval(checkInterval);
 
-          // 循环播放
-          if (isLoopingRef.current && isMountedRef.current) {
-            setTimeout(() => {
-              if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
-                soundRef.current.setPositionAsync(startMs);
-                soundRef.current.playAsync();
-                setIsPlaying(true);
-              }
-            }, 500);
+            // 循环播放
+            if (isLoopingRef.current && isMountedRef.current) {
+              setTimeout(() => {
+                if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
+                  soundRef.current.setPositionAsync(startMs).catch(() => {});
+                  soundRef.current.playAsync().catch(() => {});
+                  setIsPlaying(true);
+                }
+              }, 500);
+            }
           }
+        } catch (e) {
+          clearInterval(checkInterval);
         }
       }, 50);
 
@@ -1194,7 +1220,10 @@ export default function SentencePracticeScreen() {
                 onChangeText={handleInputChange}
                 autoCapitalize="none"
                 autoCorrect={false}
-                autoFocus
+                autoFocus={false}
+                blurOnSubmit={false}
+                textContentType="none"
+                autoComplete="off"
               />
               <TouchableOpacity
                 style={styles.inputVoiceBtn}

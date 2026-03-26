@@ -220,6 +220,8 @@ export const createStyles = (theme: Theme) => {
       fontWeight: '600',
       textAlign: 'center',
       paddingRight: 56, // 为语音按钮留空间
+      includeFontPadding: false, // Android
+      textAlignVertical: 'center', // Android
     },
     inputVoiceBtn: {
       position: 'absolute',
