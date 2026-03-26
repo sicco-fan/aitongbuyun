@@ -141,14 +141,20 @@ export default function SentencePracticeScreen() {
   // 提取单词和标点
   const extractWords = useCallback((text: string) => {
     const result: { word: string; displayText: string; isPunctuation: boolean }[] = [];
-    const tokens = text.match(/\w+|[^\w\s]+/g) || [];
+    
+    // 使用正则分割：保留单词（包括内部的 - ' &）和纯标点符号
+    // 纯标点符号：,.!?;: 等（不包括 - ' &）
+    const tokens = text.match(/[a-zA-Z0-9'\-&]+|[,.\!?;:()"]/g) || [];
 
     tokens.forEach((token) => {
-      const isPunctuation = !/\w/.test(token);
+      // 判断是否为纯标点符号（不包含字母数字、-'&）
+      const isPurePunctuation = !/[a-zA-Z0-9]/.test(token);
+      
       result.push({
-        word: isPunctuation ? '' : token.toLowerCase().replace(/\W/g, ''),
+        // 单词：转为小写，保留 -'&
+        word: isPurePunctuation ? '' : token.toLowerCase(),
         displayText: token,
-        isPunctuation,
+        isPunctuation: isPurePunctuation,
       });
     });
 
@@ -442,7 +448,7 @@ export default function SentencePracticeScreen() {
         targetIndex = matchingWord.index;
         setTargetWordIndexWithRef(targetIndex);
       }
-      // 如果没找到匹配的单词，保持当前目标，显示错误
+      // 如果没找到匹配的单词，保持当前目标
     }
 
     // 找到目标单词
@@ -471,42 +477,8 @@ export default function SentencePracticeScreen() {
       return;
     }
 
-    // 计算匹配情况 - 输入至少2个字母才显示绿色
-    const matchedChars: boolean[] = [];
-    for (let i = 0; i < wordLower.length; i++) {
-      if (i < inputLower.length) {
-        // 只有输入长度>=2时才显示绿色，否则都显示红色
-        if (inputLower.length >= 2 && inputLower[i] === wordLower[i]) {
-          matchedChars.push(true);
-        } else {
-          matchedChars.push(false);
-        }
-      } else {
-        matchedChars.push(false);
-      }
-    }
-
-    // 更新单词状态
-    updateWordStatusesWithRef(prev => prev.map(ws => {
-      if (ws.revealed || ws.isPunctuation) return ws;
-      
-      if (ws.index === targetIndex) {
-        return {
-          ...ws,
-          revealedChars: matchedChars,
-          errorCharIndex: -1,
-        };
-      }
-      
-      // 清除其他单词的显示状态
-      return {
-        ...ws,
-        revealedChars: new Array(ws.word.length).fill(false),
-        errorCharIndex: -1,
-      };
-    }));
-
-    // 保留用户输入
+    // 输入过程中不更新文本框显示，只在输入框中保留用户输入
+    // 单词完成后才会在文本框中显示绿色
     setCurrentInput(text);
   }, [updateWordStatusesWithRef, setTargetWordIndexWithRef]);
 
