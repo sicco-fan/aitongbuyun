@@ -1194,23 +1194,41 @@ export default function SentencePracticeScreen() {
               <View style={styles.customKeyboard}>
                 {/* 第一列：特殊符号 */}
                 <View style={styles.keyboardColumn}>
-                  {['-', '\'', '&'].map((symbol, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={[styles.keyButton, styles.symbolKey]}
-                      onPress={() => handleCustomKeyPress(symbol, symbol)}
-                    >
-                      <ThemedText variant="h4" color={theme.textPrimary}>
-                        {symbol === '\'' ? "'" : symbol}
-                      </ThemedText>
-                    </TouchableOpacity>
-                  ))}
+                  {/* 第一行空占位，因为符号在中间区域 */}
+                  <View style={[styles.keyButton, styles.symbolKey]} />
+                  {/* 连接符 */}
+                  <TouchableOpacity
+                    style={[styles.keyButton, styles.symbolKey]}
+                    onPress={() => handleCustomKeyPress('-', '-')}
+                  >
+                    <ThemedText variant="h4" color={theme.textPrimary}>-</ThemedText>
+                  </TouchableOpacity>
+                  {/* 单引号 */}
+                  <TouchableOpacity
+                    style={[styles.keyButton, styles.symbolKey]}
+                    onPress={() => handleCustomKeyPress('\'', '\'')}
+                  >
+                    <ThemedText variant="h4" color={theme.textPrimary}>'</ThemedText>
+                  </TouchableOpacity>
+                  {/* &符号 */}
+                  <TouchableOpacity
+                    style={[styles.keyButton, styles.symbolKey]}
+                    onPress={() => handleCustomKeyPress('&', '&')}
+                  >
+                    <ThemedText variant="h4" color={theme.textPrimary}>&amp;</ThemedText>
+                  </TouchableOpacity>
                 </View>
 
                 {/* 第二到第四列：字母 */}
                 <View style={styles.keyboardLetterSection}>
                   {/* 第一行 */}
                   <View style={styles.keyboardRow}>
+                    <TouchableOpacity
+                      style={[styles.keyButton, styles.letterKey]}
+                      onPress={() => {}}
+                    >
+                      <ThemedText variant="body" color={theme.textMuted}>符号</ThemedText>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.keyButton, styles.letterKey]}
                       onPress={() => handleCustomKeyPress('ABC', 'ABC')}

@@ -282,44 +282,44 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
       backgroundColor: '#D1D5DB', // 浅灰底色
       borderRadius: BorderRadius.lg,
-      padding: 6,
-      gap: 4,
+      padding: 8,
+      gap: 6,
     },
     keyboardColumn: {
       flexDirection: 'column',
-      gap: 4,
+      gap: 6,
     },
     keyboardLetterSection: {
       flex: 1,
       flexDirection: 'column',
-      gap: 4,
+      gap: 6,
     },
     keyboardRow: {
       flexDirection: 'row',
-      gap: 4,
+      gap: 6,
     },
     keyButton: {
-      borderRadius: 6,
+      borderRadius: 8,
       justifyContent: 'center',
       alignItems: 'center',
     },
     symbolKey: {
-      width: 48,
-      height: 48,
+      width: 52,
+      height: 56,
       backgroundColor: '#9CA3AF', // 深灰色
     },
     letterKey: {
       flex: 1,
-      height: 48,
+      height: 56,
       backgroundColor: '#FFFFFF', // 白色
     },
     functionKey: {
-      width: 48,
-      height: 48,
+      width: 52,
+      height: 56,
       backgroundColor: '#9CA3AF', // 深灰色
     },
     spaceKey: {
-      height: 100, // 合并两行
+      height: 118, // 合并两行
     },
     voiceKey: {
       flex: 1,
