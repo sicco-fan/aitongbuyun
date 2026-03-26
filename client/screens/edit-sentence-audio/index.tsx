@@ -6,6 +6,8 @@ import {
   ActivityIndicator,
   StyleSheet,
   Alert,
+  TextInput,
+  Modal,
 } from 'react-native';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -19,6 +21,11 @@ import { Audio } from 'expo-av';
 // 后端服务地址
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
+// 语速范围限制（词/分钟）
+const MIN_WPM = 50;
+const MAX_WPM = 250;
+const DEFAULT_WPM = 150;
+
 /**
  * 统计文本中的单词数量
  * @param text 文本
@@ -30,17 +37,41 @@ const countWords = (text: string): number => {
 };
 
 /**
- * 根据单词数和每个单词的平均时长计算预估时长（秒）
+ * 根据单词数和每分钟单词数计算预估时长（秒）
  * @param wordCount 单词数量
- * @param avgSecondsPerWord 每个单词的平均时长（秒）
+ * @param wordsPerMinute 每分钟单词数
  * @returns 预估时长（秒）
  */
-const calculateEstimatedDuration = (wordCount: number, avgSecondsPerWord: number): number => {
-  // 计算时长：单词数 * 每个单词平均时长
-  const durationSeconds = wordCount * avgSecondsPerWord;
+const calculateEstimatedDuration = (wordCount: number, wordsPerMinute: number): number => {
+  // 计算时长：单词数 / (WPM) = 分钟数，转换为秒
+  const durationMinutes = wordCount / wordsPerMinute;
+  const durationSeconds = durationMinutes * 60;
   
   // 至少给0.5秒，避免太短
   return Math.max(0.5, durationSeconds);
+};
+
+/**
+ * 根据音频总时长和总单词数计算语速（词/分钟）
+ * @param audioDurationSeconds 音频总时长（秒）
+ * @param totalWords 总单词数
+ * @returns 语速（词/分钟），如果超出范围则返回默认值
+ */
+const calculateWordsPerMinute = (audioDurationSeconds: number, totalWords: number): number => {
+  if (totalWords === 0 || audioDurationSeconds === 0) {
+    return DEFAULT_WPM;
+  }
+  
+  // 语速 = 总单词数 / (音频时长(秒) / 60) = 词/分钟
+  const wpm = totalWords / (audioDurationSeconds / 60);
+  
+  // 如果超出范围，使用默认值
+  if (wpm < MIN_WPM || wpm > MAX_WPM) {
+    console.log(`[WPM] 计算出的语速 ${wpm.toFixed(1)} 词/分钟 超出范围 [${MIN_WPM}, ${MAX_WPM}]，使用默认值 ${DEFAULT_WPM}`);
+    return DEFAULT_WPM;
+  }
+  
+  return Math.round(wpm);
 };
 
 interface SentenceItem {
@@ -96,12 +127,17 @@ export default function EditSentenceAudioScreen() {
     sentenceId: null,
   });
 
+  // 语速设置（词/分钟）
+  const [wordsPerMinute, setWordsPerMinute] = useState(DEFAULT_WPM);
+  const [showWpmModal, setShowWpmModal] = useState(false);
+  const [wpmInput, setWpmInput] = useState(String(DEFAULT_WPM));
+  
+  // 总单词数（用于显示）
+  const [totalWords, setTotalWords] = useState(0);
+
   // 文件列表（用于选择文件）
   const [fileList, setFileList] = useState<SentenceFile[]>([]);
   const [loadingList, setLoadingList] = useState(false);
-  
-  // 每个单词的平均时长（秒），用于预估
-  const [avgSecondsPerWord, setAvgSecondsPerWord] = useState(0.4); // 默认 150 词/分钟
 
   const currentSentence = sentences[currentIndex];
 
@@ -171,18 +207,20 @@ export default function EditSentenceAudioScreen() {
 
         // 如果已经有句子数据，加载它们
         if (result.file.sentences && result.file.sentences.length > 0) {
-          // 计算总单词数和每个单词的平均时长
+          // 计算总单词数
           const sentences = result.file.sentences;
-          const totalWords = sentences.reduce((sum: number, s: SentenceItem) => sum + countWords(s.text), 0);
+          const wordsCount = sentences.reduce((sum: number, s: SentenceItem) => sum + countWords(s.text), 0);
+          setTotalWords(wordsCount);
           
           // 获取音频总时长（秒），后端返回的是毫秒
           const audioTotalDuration = (result.file.original_duration || 0) / 1000;
           
-          // 计算每个单词的平均时长
-          const calculatedAvgSeconds = totalWords > 0 ? audioTotalDuration / totalWords : 60 / 150; // 默认 150 词/分钟
-          setAvgSecondsPerWord(calculatedAvgSeconds);
+          // 计算语速（词/分钟）
+          const calculatedWpm = calculateWordsPerMinute(audioTotalDuration, wordsCount);
+          setWordsPerMinute(calculatedWpm);
+          setWpmInput(String(calculatedWpm));
           
-          console.log(`[loadFile] 音频总时长: ${audioTotalDuration}s, 总单词数: ${totalWords}, 平均每词: ${calculatedAvgSeconds.toFixed(2)}s`);
+          console.log(`[loadFile] 音频总时长: ${audioTotalDuration}s, 总单词数: ${wordsCount}, 语速: ${calculatedWpm} 词/分钟`);
           
           // 对句子进行时间预估处理
           const processedSentences = sentences.map((sentence: SentenceItem, index: number, arr: SentenceItem[]) => {
@@ -193,7 +231,7 @@ export default function EditSentenceAudioScreen() {
             
             // 没有保存过时间，基于单词数计算预估时间
             const wordCount = countWords(sentence.text);
-            const estimatedDuration = calculateEstimatedDuration(wordCount, calculatedAvgSeconds);
+            const estimatedDuration = calculateEstimatedDuration(wordCount, calculatedWpm);
             
             // 开始时间：上一句的结束时间，或者0
             let startTime = 0;
@@ -218,23 +256,25 @@ export default function EditSentenceAudioScreen() {
           const lines = result.file.text_content.split(/\n\s*\n/);
           const filteredLines = lines.map((line: string) => line.trim()).filter((line: string) => line.length > 0);
           
-          // 计算总单词数和每个单词的平均时长
-          const totalWords = filteredLines.reduce((sum: number, line: string) => sum + countWords(line), 0);
+          // 计算总单词数
+          const wordsCount = filteredLines.reduce((sum: number, line: string) => sum + countWords(line), 0);
+          setTotalWords(wordsCount);
           
           // 获取音频总时长（秒），后端返回的是毫秒
           const audioTotalDuration = (result.file.original_duration || 0) / 1000;
           
-          // 计算每个单词的平均时长
-          const calculatedAvgSeconds = totalWords > 0 ? audioTotalDuration / totalWords : 60 / 150; // 默认 150 词/分钟
-          setAvgSecondsPerWord(calculatedAvgSeconds);
+          // 计算语速（词/分钟）
+          const calculatedWpm = calculateWordsPerMinute(audioTotalDuration, wordsCount);
+          setWordsPerMinute(calculatedWpm);
+          setWpmInput(String(calculatedWpm));
           
-          console.log(`[loadFile] 音频总时长: ${audioTotalDuration}s, 总单词数: ${totalWords}, 平均每词: ${calculatedAvgSeconds.toFixed(2)}s`);
+          console.log(`[loadFile] 音频总时长: ${audioTotalDuration}s, 总单词数: ${wordsCount}, 语速: ${calculatedWpm} 词/分钟`);
           
           let currentTime = 0;
           
           const newSentences = filteredLines.map((line: string, index: number) => {
             const wordCount = countWords(line);
-            const estimatedDuration = calculateEstimatedDuration(wordCount, calculatedAvgSeconds);
+            const estimatedDuration = calculateEstimatedDuration(wordCount, calculatedWpm);
             const sentence = {
               id: 0,
               sentence_file_id: fileId,
@@ -548,9 +588,9 @@ export default function EditSentenceAudioScreen() {
         const newSentences = [...sentences];
         const nextSentence = newSentences[nextIndex];
         
-        // 计算预估时长（基于单词数）
+        // 计算预估时长（基于单词数和语速）
         const wordCount = countWords(nextSentence.text);
-        const estimatedDuration = calculateEstimatedDuration(wordCount, avgSecondsPerWord);
+        const estimatedDuration = calculateEstimatedDuration(wordCount, wordsPerMinute);
         
         newSentences[nextIndex] = {
           ...nextSentence,
@@ -742,11 +782,40 @@ export default function EditSentenceAudioScreen() {
     ? currentSentence.end_time - currentSentence.start_time
     : 0;
 
-  // 计算预估时长（基于单词数和平均时长）
+  // 计算预估时长（基于单词数和语速）
   const wordCount = currentSentence ? countWords(currentSentence.text) : 0;
-  const estimatedDuration = currentSentence ? calculateEstimatedDuration(wordCount, avgSecondsPerWord) : 0;
+  const estimatedDuration = currentSentence ? calculateEstimatedDuration(wordCount, wordsPerMinute) : 0;
 
   const hasValidTime = currentSentence && currentSentence.start_time !== null && currentSentence.end_time !== null && currentSentence.end_time > currentSentence.start_time;
+
+  // 更新语速设置
+  const handleWpmChange = () => {
+    const newWpm = parseInt(wpmInput, 10);
+    if (isNaN(newWpm) || newWpm < MIN_WPM || newWpm > MAX_WPM) {
+      Alert.alert('无效输入', `请输入 ${MIN_WPM} 到 ${MAX_WPM} 之间的数字`);
+      return;
+    }
+    setWordsPerMinute(newWpm);
+    setShowWpmModal(false);
+    console.log(`[WPM] 语速更新为: ${newWpm} 词/分钟`);
+  };
+
+  // 根据新语速重新分配所有时间
+  const redistributeTimeByWpm = (newWpm: number) => {
+    let currentTime = 0;
+    const newSentences = sentences.map((sentence) => {
+      const wordCount = countWords(sentence.text);
+      const estimatedDuration = calculateEstimatedDuration(wordCount, newWpm);
+      const newSentence = {
+        ...sentence,
+        start_time: currentTime,
+        end_time: currentTime + estimatedDuration,
+      };
+      currentTime = newSentence.end_time;
+      return newSentence;
+    });
+    setSentences(newSentences);
+  };
 
   // 加载中
   if (loading || loadingList) {
@@ -899,6 +968,18 @@ export default function EditSentenceAudioScreen() {
           <View style={styles.durationDivider} />
         </View>
 
+        {/* 语速设置 */}
+        <TouchableOpacity 
+          style={styles.wpmRow}
+          onPress={() => setShowWpmModal(true)}
+        >
+          <FontAwesome6 name="gauge" size={14} color="#666" />
+          <Text style={styles.wpmText}>
+            语速: {wordsPerMinute} 词/分钟
+          </Text>
+          <FontAwesome6 name="pencil" size={12} color="#666" />
+        </TouchableOpacity>
+
         {/* 结束时间 */}
         <TimeControl
           value={(currentSentence?.end_time || 0) * 1000} // 转换为毫秒
@@ -1012,6 +1093,65 @@ export default function EditSentenceAudioScreen() {
         onConfirm={executeDelete}
         onCancel={() => setDeleteConfirm({ visible: false, sentenceId: null })}
       />
+
+      {/* 语速设置弹窗 */}
+      <Modal
+        visible={showWpmModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowWpmModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>设置语速</Text>
+            <Text style={styles.modalHint}>
+              根据音频总时长 ({formatTime(duration)}) 和总单词数 ({totalWords}) 计算
+            </Text>
+            <Text style={styles.modalHint}>
+              建议: {MIN_WPM} - {MAX_WPM} 词/分钟
+            </Text>
+            
+            <TextInput
+              style={styles.wpmInput}
+              value={wpmInput}
+              onChangeText={setWpmInput}
+              keyboardType="numeric"
+              placeholder={`${MIN_WPM}-${MAX_WPM}`}
+              placeholderTextColor="#666"
+            />
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={styles.modalCancelBtn}
+                onPress={() => setShowWpmModal(false)}
+              >
+                <Text style={styles.modalCancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.modalConfirmBtn}
+                onPress={handleWpmChange}
+              >
+                <Text style={styles.modalConfirmText}>确定</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <TouchableOpacity 
+              style={styles.redistributeBtn}
+              onPress={() => {
+                const newWpm = parseInt(wpmInput, 10);
+                if (!isNaN(newWpm) && newWpm >= MIN_WPM && newWpm <= MAX_WPM) {
+                  setWordsPerMinute(newWpm);
+                  redistributeTimeByWpm(newWpm);
+                  setShowWpmModal(false);
+                  console.log(`[WPM] 重新分配时间，语速: ${newWpm} 词/分钟`);
+                }
+              }}
+            >
+              <Text style={styles.redistributeBtnText}>应用并重新分配所有时间</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -1121,6 +1261,20 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 10,
     marginTop: 4,
+  },
+
+  // 语速设置
+  wpmRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  wpmText: {
+    color: '#666',
+    fontSize: 12,
   },
 
   // 音频时长提示
@@ -1235,5 +1389,87 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: 16,
     fontWeight: '700',
+  },
+
+  // 语速设置弹窗
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 16,
+    padding: 24,
+    width: '85%',
+    maxWidth: 320,
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  modalHint: {
+    color: '#888',
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  wpmInput: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#444',
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: 12,
+    marginTop: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#444',
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#00ff88',
+    alignItems: 'center',
+  },
+  modalConfirmText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  redistributeBtn: {
+    marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#00ff88',
+    alignItems: 'center',
+  },
+  redistributeBtnText: {
+    color: '#00ff88',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
