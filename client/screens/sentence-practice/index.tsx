@@ -440,10 +440,16 @@ export default function SentencePracticeScreen() {
     
     // 提取实际单词内容（去掉末尾的空格/回车）
     const actualInput = isConfirmChar ? text.slice(0, -1) : text;
-    const inputLower = actualInput.toLowerCase();
+    
+    // 规范化特殊字符：将弯引号等转换为直引号
+    const normalizedInput = actualInput
+      .replace(/[''′']/g, "'")  // 各种单引号 -> 直引号
+      .replace(/[""″"]/g, '"')  // 各种双引号 -> 直引号
+      .replace(/[—–−]/g, '-')   // 各种破折号 -> 连字符
+      .toLowerCase();
 
     // 空输入时重置
-    if (inputLower.length === 0) {
+    if (normalizedInput.length === 0) {
       setCurrentInput('');
       setTargetWordIndexWithRef(null);
       return;
@@ -458,7 +464,7 @@ export default function SentencePracticeScreen() {
 
     // 如果用户按了空格/回车，强制匹配当前输入
     if (isConfirmChar) {
-      const matchedWord = incompleteWords.find(w => w.word.toLowerCase() === inputLower);
+      const matchedWord = incompleteWords.find(w => w.word.toLowerCase() === normalizedInput);
       
       if (matchedWord) {
         // 匹配成功，显示单词
@@ -481,13 +487,13 @@ export default function SentencePracticeScreen() {
     }
 
     // 正常输入流程：检查是否完全匹配某个单词
-    const matchedWord = incompleteWords.find(w => w.word.toLowerCase() === inputLower);
+    const matchedWord = incompleteWords.find(w => w.word.toLowerCase() === normalizedInput);
 
     // 检查是否有其他单词以当前输入开头（说明用户可能还在输入）
     const hasLongerMatch = incompleteWords.some(w => {
       const wordLower = w.word.toLowerCase();
       // 排除完全匹配的单词，找以当前输入开头但更长的单词
-      return wordLower !== inputLower && wordLower.startsWith(inputLower);
+      return wordLower !== normalizedInput && wordLower.startsWith(normalizedInput);
     });
 
     if (matchedWord && !hasLongerMatch) {
