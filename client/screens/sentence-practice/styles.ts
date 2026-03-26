@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Platform } from 'react-native';
 import { Spacing, BorderRadius, Theme } from '@/constants/theme';
 
 export const createStyles = (theme: Theme) => {
@@ -6,11 +6,24 @@ export const createStyles = (theme: Theme) => {
     container: {
       flex: 1,
     },
-    scrollContent: {
-      flexGrow: 1,
+    
+    // Main Layout - 使用 flex 布局
+    mainContainer: {
+      flex: 1,
+      flexDirection: 'column',
+    },
+    
+    // Sentence Section - 固定在上方，可滚动
+    sentenceSection: {
+      flex: 1,
+      maxHeight: '55%', // 限制最大高度，确保输入区域可见
       paddingHorizontal: Spacing.lg,
-      paddingTop: Spacing.xl,
-      paddingBottom: Spacing['5xl'],
+    },
+    sentenceScrollView: {
+      flex: 1,
+    },
+    sentenceScrollContent: {
+      paddingVertical: Spacing.lg,
     },
     
     // Header
@@ -143,8 +156,7 @@ export const createStyles = (theme: Theme) => {
     sentenceCard: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.xl,
-      padding: Spacing.xl,
-      marginBottom: Spacing.xl,
+      padding: Spacing.lg,
       borderWidth: 1,
       borderColor: theme.borderLight,
       shadowColor: theme.primary,
@@ -158,6 +170,7 @@ export const createStyles = (theme: Theme) => {
       flexWrap: 'wrap',
       gap: Spacing.sm,
       alignItems: 'flex-end',
+      justifyContent: 'center',
     },
     wordWrapper: {
       marginBottom: Spacing.xs,
@@ -174,9 +187,9 @@ export const createStyles = (theme: Theme) => {
       lineHeight: 12,
     },
     char: {
-      fontSize: 26,
+      fontSize: 22, // 稍微减小字体
       fontWeight: '600',
-      letterSpacing: 1,
+      letterSpacing: 0.5,
     },
     hiddenChar: {
       opacity: 0.35,
@@ -185,13 +198,16 @@ export const createStyles = (theme: Theme) => {
       // 错误字符由 color 控制，无需额外样式
     },
     
-    // Input Section
+    // Input Section - 固定在下方
     inputSection: {
-      alignItems: 'center',
-      marginBottom: Spacing.xl,
+      paddingHorizontal: Spacing.lg,
+      paddingVertical: Spacing.md,
+      backgroundColor: theme.backgroundRoot,
+      borderTopWidth: 1,
+      borderTopColor: theme.borderLight,
     },
     inputWrapper: {
-      width: '85%',
+      width: '100%',
       position: 'relative',
       alignItems: 'center',
       justifyContent: 'center',
@@ -203,8 +219,8 @@ export const createStyles = (theme: Theme) => {
       borderWidth: 2,
       borderColor: '#A5D6A7',
       paddingHorizontal: Spacing.xl,
-      paddingVertical: Spacing.lg,
-      fontSize: 24,
+      paddingVertical: Spacing.md,
+      fontSize: 22,
       color: theme.textPrimary,
       fontWeight: '600',
       textAlign: 'center',
@@ -226,25 +242,26 @@ export const createStyles = (theme: Theme) => {
     // Translation Card
     translationCard: {
       backgroundColor: theme.primary + '10',
-      borderRadius: BorderRadius.xl,
-      padding: Spacing.xl,
-      marginBottom: Spacing.xl,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.md,
+      marginHorizontal: Spacing.lg,
+      marginBottom: Spacing.md,
       borderWidth: 1,
       borderColor: theme.primary + '30',
     },
     
-    // Navigation Buttons (Fixed at bottom)
+    // Navigation Buttons
     navButtons: {
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
       gap: Spacing['2xl'],
-      paddingVertical: Spacing.lg,
+      paddingVertical: Spacing.sm,
       backgroundColor: theme.backgroundRoot,
     },
     navBtn: {
-      width: 48,
-      height: 48,
+      width: 44,
+      height: 44,
       borderRadius: BorderRadius.full,
       backgroundColor: theme.primary + '10',
       justifyContent: 'center',

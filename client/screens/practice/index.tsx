@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from 'expo-router';
@@ -857,9 +859,13 @@ export default function PracticeScreen() {
           <View style={[styles.progressFill, { width: `${progress}%` }]} />
         </View>
       </TouchableOpacity>
-      
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent} 
+
+      {/* Main Content Area - 使用 flex 布局 */}
+      <View style={styles.mainContainer}>
+        {/* Sentence Section - 可滚动，限制高度 */}
+        <ScrollView 
+          style={styles.sentenceSection}
+          contentContainerStyle={styles.sentenceScrollContent} 
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         onTouchStart={() => showAudioSettings && setShowAudioSettings(false)}
@@ -930,8 +936,22 @@ export default function PracticeScreen() {
             ))}
           </View>
         </Animated.View>
-        
-        {/* Input Section */}
+
+        {/* Translation Display - 放在句子区域内 */}
+        {showTranslation && currentTranslation && (
+          <View style={styles.translationCard}>
+            <ThemedText variant="body" color={theme.textSecondary} style={{ textAlign: 'center' }}>
+              {currentTranslation}
+            </ThemedText>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Input Section - 固定在下方 */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
         <View style={styles.inputSection}>
           <View style={styles.inputWrapper}>
             <TextInput
@@ -954,36 +974,28 @@ export default function PracticeScreen() {
               />
             </TouchableOpacity>
           </View>
-        </View>
-        
-        {/* Translation Display */}
-        {showTranslation && currentTranslation && (
-          <View style={styles.translationCard}>
-            <ThemedText variant="body" color={theme.textSecondary} style={{ textAlign: 'center' }}>
-              {currentTranslation}
-            </ThemedText>
+
+          {/* Navigation Buttons */}
+          <View style={styles.navButtons}>
+            <TouchableOpacity 
+              style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
+              onPress={goToPrevSentence}
+              disabled={currentIndex === 0}
+            >
+              <FontAwesome6 name="chevron-left" size={18} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
+              onPress={goToNextSentence}
+              disabled={currentIndex === sentences.length - 1}
+            >
+              <FontAwesome6 name="chevron-right" size={18} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
+            </TouchableOpacity>
           </View>
-        )}
-      </ScrollView>
-      
-      {/* Navigation Buttons (Fixed at bottom) */}
-      <View style={styles.navButtons}>
-        <TouchableOpacity 
-          style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
-          onPress={goToPrevSentence}
-          disabled={currentIndex === 0}
-        >
-          <FontAwesome6 name="chevron-left" size={18} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
-          onPress={goToNextSentence}
-          disabled={currentIndex === sentences.length - 1}
-        >
-          <FontAwesome6 name="chevron-right" size={18} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
-        </TouchableOpacity>
-      </View>
-    </Screen>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
+  </Screen>
   );
 }

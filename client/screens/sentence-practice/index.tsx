@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from 'expo-router';
@@ -824,132 +826,142 @@ export default function SentencePracticeScreen() {
         </View>
       </TouchableOpacity>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        onTouchStart={() => showAudioSettings && setShowAudioSettings(false)}
-      >
-        {/* Sentence Display */}
-        <Animated.View style={[styles.sentenceCard, { opacity: Animated.subtract(1, errorAnimRef.current) }]}>
-          <View style={styles.wordContainer}>
-            {wordStatuses.map((ws, idx) => (
-              <TouchableOpacity 
-                key={idx} 
-                style={styles.wordWrapper}
-                onPress={() => handleWordPress(ws)}
-                activeOpacity={0.7}
-              >
-                {ws.isPunctuation ? (
-                  <ThemedText variant="h4" color={theme.textPrimary}>
-                    {ws.displayText}
-                  </ThemedText>
-                ) : (
-                  <View style={styles.wordBox}>
-                    <View style={styles.wordRow}>
-                      {ws.displayText.split('').map((char, charIdx) => {
-                        // 判断显示内容
-                        let displayChar = char;
-                        if (!ws.revealed) {
-                          if (hintWordIndex === ws.index) {
-                            // 提示模式：显示完整单词
-                            displayChar = char;
-                          } else {
-                            // 正常模式：显示下划线
-                            displayChar = '_';
-                          }
-                        }
-                        
-                        return (
-                          <ThemedText
-                            key={charIdx}
-                            variant="h4"
-                            color={
-                              ws.revealed
-                                ? theme.success
-                                : hintWordIndex === ws.index
-                                ? theme.primary // 提示模式下所有字母高亮
-                                : theme.textMuted
+      {/* Main Content Area - 使用 flex 布局 */}
+      <View style={styles.mainContainer}>
+        {/* Sentence Section - 可滚动，限制高度 */}
+        <ScrollView
+          style={styles.sentenceSection}
+          contentContainerStyle={styles.sentenceScrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          onTouchStart={() => showAudioSettings && setShowAudioSettings(false)}
+        >
+          {/* Sentence Display */}
+          <Animated.View style={[styles.sentenceCard, { opacity: Animated.subtract(1, errorAnimRef.current) }]}>
+            <View style={styles.wordContainer}>
+              {wordStatuses.map((ws, idx) => (
+                <TouchableOpacity 
+                  key={idx} 
+                  style={styles.wordWrapper}
+                  onPress={() => handleWordPress(ws)}
+                  activeOpacity={0.7}
+                >
+                  {ws.isPunctuation ? (
+                    <ThemedText variant="h4" color={theme.textPrimary}>
+                      {ws.displayText}
+                    </ThemedText>
+                  ) : (
+                    <View style={styles.wordBox}>
+                      <View style={styles.wordRow}>
+                        {ws.displayText.split('').map((char, charIdx) => {
+                          // 判断显示内容
+                          let displayChar = char;
+                          if (!ws.revealed) {
+                            if (hintWordIndex === ws.index) {
+                              // 提示模式：显示完整单词
+                              displayChar = char;
+                            } else {
+                              // 正常模式：显示下划线
+                              displayChar = '_';
                             }
-                            style={[
-                              styles.char,
-                              !ws.revealed && hintWordIndex !== ws.index && styles.hiddenChar,
-                            ]}
-                          >
-                            {displayChar}
-                          </ThemedText>
-                        );
-                      })}
+                          }
+                          
+                          return (
+                            <ThemedText
+                              key={charIdx}
+                              variant="h4"
+                              color={
+                                ws.revealed
+                                  ? theme.success
+                                  : hintWordIndex === ws.index
+                                  ? theme.primary // 提示模式下所有字母高亮
+                                  : theme.textMuted
+                              }
+                              style={[
+                                styles.char,
+                                !ws.revealed && hintWordIndex !== ws.index && styles.hiddenChar,
+                              ]}
+                            >
+                              {displayChar}
+                            </ThemedText>
+                          );
+                        })}
+                      </View>
+                      {/* 已完成单词显示翻译 */}
+                      {ws.revealed && translationWordIndex === ws.index && (
+                        <ThemedText 
+                          variant="caption" 
+                          color={theme.textSecondary}
+                          style={styles.translationText}
+                        >
+                          {wordTranslations[ws.word] || '...'}
+                        </ThemedText>
+                      )}
                     </View>
-                    {/* 已完成单词显示翻译 */}
-                    {ws.revealed && translationWordIndex === ws.index && (
-                      <ThemedText 
-                        variant="caption" 
-                        color={theme.textSecondary}
-                        style={styles.translationText}
-                      >
-                        {wordTranslations[ws.word] || '...'}
-                      </ThemedText>
-                    )}
-                  </View>
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Animated.View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Animated.View>
 
-        {/* Input Section */}
-        <View style={styles.inputSection}>
-          <View style={styles.inputWrapper}>
-            <TextInput
-              style={styles.input}
-              value={currentInput}
-              onChangeText={handleInputChange}
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-            />
-            <TouchableOpacity
-              style={styles.inputVoiceBtn}
-              onPressIn={startRecording}
-              onPressOut={stopRecordingAndRecognize}
-            >
-              <FontAwesome6
-                name={isRecording ? "stop" : "microphone"}
-                size={18}
-                color={isRecording ? theme.error : theme.primary}
+          {/* Translation Display - 放在句子区域内 */}
+          {showTranslation && currentTranslation && (
+            <View style={styles.translationCard}>
+              <ThemedText variant="body" color={theme.textSecondary} style={{ textAlign: 'center' }}>
+                {currentTranslation}
+              </ThemedText>
+            </View>
+          )}
+        </ScrollView>
+
+        {/* Input Section - 固定在下方 */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+          <View style={styles.inputSection}>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                value={currentInput}
+                onChangeText={handleInputChange}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
               />
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.inputVoiceBtn}
+                onPressIn={startRecording}
+                onPressOut={stopRecordingAndRecognize}
+              >
+                <FontAwesome6
+                  name={isRecording ? "stop" : "microphone"}
+                  size={18}
+                  color={isRecording ? theme.error : theme.primary}
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Navigation Buttons */}
+            <View style={styles.navButtons}>
+              <TouchableOpacity
+                style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
+                onPress={goToPrevSentence}
+                disabled={currentIndex === 0}
+              >
+                <FontAwesome6 name="chevron-left" size={18} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
+                onPress={goToNextSentence}
+                disabled={currentIndex === sentences.length - 1}
+              >
+                <FontAwesome6 name="chevron-right" size={18} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-
-        {/* Translation Display */}
-        {showTranslation && currentTranslation && (
-          <View style={styles.translationCard}>
-            <ThemedText variant="body" color={theme.textSecondary} style={{ textAlign: 'center' }}>
-              {currentTranslation}
-            </ThemedText>
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Navigation Buttons (Fixed at bottom) */}
-      <View style={styles.navButtons}>
-        <TouchableOpacity
-          style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
-          onPress={goToPrevSentence}
-          disabled={currentIndex === 0}
-        >
-          <FontAwesome6 name="chevron-left" size={18} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
-          onPress={goToNextSentence}
-          disabled={currentIndex === sentences.length - 1}
-        >
-          <FontAwesome6 name="chevron-right" size={18} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
-        </TouchableOpacity>
+        </KeyboardAvoidingView>
       </View>
     </Screen>
   );
