@@ -608,8 +608,9 @@ export default function SentencePracticeScreen() {
           return ws;
         }));
       }
-      // 无论匹配成功与否，都清空输入框
+      // 无论匹配成功与否，都清空输入框和按键序列
       setCurrentInput('');
+      setCurrentKeySequence([]);
       setTargetWordIndexWithRef(null);
       return;
     }
@@ -636,8 +637,9 @@ export default function SentencePracticeScreen() {
         }
         return ws;
       }));
-      // 清空输入框
+      // 清空输入框和按键序列
       setCurrentInput('');
+      setCurrentKeySequence([]);
       setTargetWordIndexWithRef(null);
       return;
     }
@@ -648,62 +650,71 @@ export default function SentencePracticeScreen() {
 
   // ==================== 自建键盘相关 ====================
   
-  // T9 键盘布局
-  const T9_KEYS = useMemo(() => [
-    // 第一列：特殊符号
-    { type: 'symbol', keys: ['-', '\'', '&'] },
-    // 第二列
-    { type: 'letters', keys: ['ABC', 'DEF'] },
-    { type: 'letters', keys: ['GHI', 'JKL', 'MNO'] },
-    { type: 'letters', keys: ['PQRS', 'TUV', 'WXYZ'] },
-    // 最后一列：功能键
-    { type: 'function', keys: ['⌫', '清空', '空格'] },
-  ], []);
+  // 字符到按键的映射
+  const charToKey: Record<string, string> = {
+    'a': 'ABC', 'b': 'ABC', 'c': 'ABC',
+    'd': 'DEF', 'e': 'DEF', 'f': 'DEF',
+    'g': 'GHI', 'h': 'GHI', 'i': 'GHI',
+    'j': 'JKL', 'k': 'JKL', 'l': 'JKL',
+    'm': 'MNO', 'n': 'MNO', 'o': 'MNO',
+    'p': 'PQRS', 'q': 'PQRS', 'r': 'PQRS', 's': 'PQRS',
+    't': 'TUV', 'u': 'TUV', 'v': 'TUV',
+    'w': 'WXYZ', 'x': 'WXYZ', 'y': 'WXYZ', 'z': 'WXYZ',
+    '-': '-',
+    '\'': '\'',
+    '&': '&',
+  };
 
-  // 获取当前需要输入的下一个字符
-  const getNextExpectedChar = useCallback((): string | null => {
-    const currentWordStatuses = wordStatusesRef.current;
+  // 将单词转换为按键编码序列
+  const wordToKeySequence = useCallback((word: string): string[] => {
+    const sequence: string[] = [];
+    const lowerWord = word.toLowerCase();
     
-    // 找到第一个未完成的单词
-    const incompleteWord = currentWordStatuses.find(w => !w.isPunctuation && !w.revealed);
-    if (!incompleteWord) return null;
+    for (const char of lowerWord) {
+      // 处理引号类字符
+      if (isSingleQuoteLike(char)) {
+        sequence.push('\'');
+      } else if (isDashLike(char)) {
+        sequence.push('-');
+      } else if (charToKey[char]) {
+        sequence.push(charToKey[char]);
+      }
+    }
     
-    // 获取当前已输入的长度
-    const inputLength = currentInput.length;
-    const word = incompleteWord.word.toLowerCase();
-    
-    // 如果输入长度已经等于或超过单词长度，返回 null
-    if (inputLength >= word.length) return null;
-    
-    return word[inputLength];
-  }, [currentInput]);
-
-  // 判断字符是否属于某个 T9 按键
-  const charBelongsToKey = useCallback((char: string, keyLetters: string): boolean => {
-    const lowerChar = char.toLowerCase();
-    const lowerKey = keyLetters.toLowerCase();
-    
-    // 直接匹配
-    if (lowerKey.includes(lowerChar)) return true;
-    
-    // 引号类字符匹配
-    if (isSingleQuoteLike(char) && (lowerKey.includes("'") || lowerKey.includes("'"))) return true;
-    
-    // 破折号类字符匹配
-    if (isDashLike(char) && lowerKey.includes('-')) return true;
-    
-    return false;
+    return sequence;
   }, []);
+
+  // 预计算所有未完成单词的按键编码
+  const wordKeySequences = useMemo(() => {
+    const sequences: { word: string; keySequence: string[]; index: number }[] = [];
+    
+    wordStatuses.forEach(ws => {
+      if (!ws.isPunctuation && !ws.revealed) {
+        sequences.push({
+          word: ws.word,
+          keySequence: wordToKeySequence(ws.word),
+          index: ws.index,
+        });
+      }
+    });
+    
+    return sequences;
+  }, [wordStatuses, wordToKeySequence]);
+
+  // 当前按键序列
+  const [currentKeySequence, setCurrentKeySequence] = useState<string[]>([]);
 
   // 处理自建键盘按键
   const handleCustomKeyPress = useCallback((key: string, keyLetters: string) => {
     if (key === '⌫') {
       setCurrentInput(prev => prev.slice(0, -1));
+      setCurrentKeySequence(prev => prev.slice(0, -1));
       return;
     }
     
     if (key === '清空') {
       setCurrentInput('');
+      setCurrentKeySequence([]);
       setTargetWordIndexWithRef(null);
       return;
     }
@@ -716,147 +727,52 @@ export default function SentencePracticeScreen() {
         }
         return '';
       });
+      setCurrentKeySequence([]);
       return;
     }
     
-    // 特殊符号（引号、连接符、&）
-    if (['-', '\'', '&'].includes(key)) {
-      setCurrentInput(prev => {
-        const currentWordStatuses = wordStatusesRef.current;
-        const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
-        
-        // 如果当前有输入，继续匹配当前单词
-        if (prev.length > 0) {
-          const currentTarget = incompleteWords.find(w => {
-            const targetWord = w.word.toLowerCase();
-            return targetWord.startsWith(prev.toLowerCase()) || wordsMatch(prev.toLowerCase(), targetWord.slice(0, prev.length));
-          });
-          
-          if (currentTarget) {
-            const targetWord = currentTarget.word.toLowerCase();
-            const nextCharIndex = prev.length;
-            
-            if (nextCharIndex < targetWord.length) {
-              const expectedChar = targetWord[nextCharIndex];
-              
-              // 检查是否匹配引号类字符
-              if ((key === '\'' && isSingleQuoteLike(expectedChar)) || 
-                  (key === '-' && isDashLike(expectedChar)) ||
-                  (key === '&' && expectedChar === '&')) {
-                const newInput = prev + expectedChar;
-                checkAndCompleteWord(newInput);
-                return newInput;
-              }
-            }
-          }
-        }
-        
-        // 尝试匹配新单词
-        for (const wordStatus of incompleteWords) {
-          const targetWord = wordStatus.word.toLowerCase();
-          const nextCharIndex = prev.length;
-          
-          if (nextCharIndex < targetWord.length) {
-            const expectedChar = targetWord[nextCharIndex];
-            
-            if ((key === '\'' && isSingleQuoteLike(expectedChar)) || 
-                (key === '-' && isDashLike(expectedChar)) ||
-                (key === '&' && expectedChar === '&')) {
-              const newInput = prev + expectedChar;
-              setTargetWordIndexWithRef(wordStatus.index);
-              checkAndCompleteWord(newInput);
-              return newInput;
-            }
-          }
-        }
-        
-        return prev;
-      });
-      return;
-    }
+    // 添加按键到序列
+    const pressedKey = ['-', '\'', '&'].includes(key) ? key : keyLetters;
     
-    // 字母按键：智能匹配所有未完成单词
-    const currentWordStatuses = wordStatusesRef.current;
-    const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
-    
-    if (incompleteWords.length === 0) return;
-    
-    const lowerKey = keyLetters.toLowerCase();
-    
-    setCurrentInput(prev => {
-      // 如果当前已有输入，继续匹配当前单词
-      if (prev.length > 0) {
-        // 找到当前正在输入的单词
-        const currentTarget = incompleteWords.find(w => {
-          const targetWord = w.word.toLowerCase();
-          return targetWord.startsWith(prev.toLowerCase()) || wordsMatch(prev.toLowerCase(), targetWord.slice(0, prev.length));
-        });
-        
-        if (currentTarget) {
-          const targetWord = currentTarget.word.toLowerCase();
-          const nextCharIndex = prev.length;
-          
-          if (nextCharIndex < targetWord.length) {
-            const expectedChar = targetWord[nextCharIndex];
-            
-            if (lowerKey.includes(expectedChar)) {
-              const newInput = prev + expectedChar;
-              checkAndCompleteWord(newInput);
-              return newInput;
-            }
-            // 检查引号类字符
-            if (isSingleQuoteLike(expectedChar)) {
-              // 跳过引号，继续匹配下一个字符
-              if (nextCharIndex + 1 < targetWord.length) {
-                const nextExpectedChar = targetWord[nextCharIndex + 1];
-                if (lowerKey.includes(nextExpectedChar)) {
-                  const newInput = prev + expectedChar + nextExpectedChar;
-                  checkAndCompleteWord(newInput);
-                  return newInput;
-                }
-              }
-            }
-          }
-        }
-        // 当前输入不匹配任何单词，重新开始匹配
-      }
+    setCurrentKeySequence(prev => {
+      const newSequence = [...prev, pressedKey];
       
-      // 开始新单词或重新匹配：查找首字母匹配的单词
-      for (const wordStatus of incompleteWords) {
-        const targetWord = wordStatus.word.toLowerCase();
-        const firstChar = targetWord[0];
+      // 检查是否匹配任何单词
+      for (const item of wordKeySequences) {
+        const targetSeq = item.keySequence;
         
-        if (lowerKey.includes(firstChar)) {
-          const newInput = firstChar;
-          // 更新目标单词索引
-          setTargetWordIndexWithRef(wordStatus.index);
-          checkAndCompleteWord(newInput);
-          return newInput;
+        // 检查按键序列是否匹配目标单词的前缀
+        if (newSequence.length <= targetSeq.length) {
+          let matches = true;
+          for (let i = 0; i < newSequence.length; i++) {
+            if (newSequence[i] !== targetSeq[i]) {
+              matches = false;
+              break;
+            }
+          }
+          
+          if (matches) {
+            // 更新输入框显示实际的单词字符
+            const wordChars = item.word.slice(0, newSequence.length);
+            setCurrentInput(wordChars);
+            setTargetWordIndexWithRef(item.index);
+            
+            // 如果完全匹配，触发完成
+            if (newSequence.length === targetSeq.length) {
+              setTimeout(() => {
+                handleInputChange(item.word);
+              }, 0);
+            }
+            
+            return newSequence;
+          }
         }
       }
       
+      // 没有匹配，不更新序列
       return prev;
     });
-  }, [handleInputChange, setTargetWordIndexWithRef]);
-
-  // 检查并完成单词匹配
-  const checkAndCompleteWord = useCallback((input: string) => {
-    const currentWordStatuses = wordStatusesRef.current;
-    const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
-    
-    for (const wordStatus of incompleteWords) {
-      const targetWord = wordStatus.word.toLowerCase();
-      const normalizedInput = input.toLowerCase();
-      
-      if (normalizedInput.length === targetWord.length && wordsMatch(normalizedInput, targetWord)) {
-        // 匹配成功，触发完成
-        setTimeout(() => {
-          handleInputChange(input);
-        }, 0);
-        break;
-      }
-    }
-  }, [handleInputChange]);
+  }, [wordKeySequences, handleInputChange, setTargetWordIndexWithRef]);
 
   // 检查是否完成
   useEffect(() => {
