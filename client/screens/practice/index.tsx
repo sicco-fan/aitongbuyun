@@ -428,13 +428,28 @@ export default function PracticeScreen() {
     const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
     if (incompleteWords.length === 0) return;
 
-    // 检查是否完全匹配任意单词
-    const exactMatch = incompleteWords.find(w => w.word.toLowerCase() === inputLower);
+    // 确定目标单词 - 严格按顺序选择第一个未完成的单词
+    let targetIndex = currentTargetIndex;
+    
+    // 如果没有锁定目标，或者锁定的目标已经完成，选择第一个未完成的单词
+    const targetWordStatus = currentWordStatuses.find(w => w.index === targetIndex);
+    if (targetIndex === null || !targetWordStatus || targetWordStatus.revealed) {
+      // 严格按顺序选择第一个未完成的单词
+      targetIndex = incompleteWords[0].index;
+      setTargetWordIndexWithRef(targetIndex);
+    }
 
-    if (exactMatch) {
+    // 找到目标单词
+    const targetWord = currentWordStatuses.find(w => w.index === targetIndex);
+    if (!targetWord) return;
+
+    const wordLower = targetWord.word.toLowerCase();
+
+    // 检查是否完全匹配目标单词
+    if (inputLower === wordLower) {
       // 完全匹配！标记完成并清空输入框
       updateWordStatusesWithRef(prev => prev.map(ws => {
-        if (ws.index === exactMatch.index) {
+        if (ws.index === targetIndex) {
           return {
             ...ws,
             revealed: true,
@@ -446,32 +461,20 @@ export default function PracticeScreen() {
       }));
       // 清空输入框，继续下一个单词
       setCurrentInput('');
-      setTargetWordIndexWithRef(null); // 清除目标单词，让下一个输入重新选择
+      setTargetWordIndexWithRef(null);
       return;
     }
 
-    // 确定目标单词 - 总是按顺序选择第一个未完成的单词
-    let targetIndex = currentTargetIndex;
-    
-    // 如果没有锁定目标，或者锁定的目标已经完成，选择第一个未完成的单词
-    const targetWordStatus = currentWordStatuses.find(w => w.index === targetIndex);
-    if (targetIndex === null || !targetWordStatus || targetWordStatus.revealed) {
-      // 按顺序选择第一个未完成的单词
-      targetIndex = incompleteWords[0].index;
-      setTargetWordIndexWithRef(targetIndex);
-    }
-
-    // 找到目标单词
-    const targetWord = currentWordStatuses.find(w => w.index === targetIndex);
-    if (!targetWord) return;
-
-    const wordLower = targetWord.word.toLowerCase();
-
-    // 计算匹配情况
+    // 计算匹配情况 - 输入至少2个字母才显示绿色
     const matchedChars: boolean[] = [];
     for (let i = 0; i < wordLower.length; i++) {
       if (i < inputLower.length) {
-        matchedChars.push(inputLower[i] === wordLower[i]);
+        // 只有输入长度>=2时才显示绿色，否则都显示红色
+        if (inputLower.length >= 2 && inputLower[i] === wordLower[i]) {
+          matchedChars.push(true);
+        } else {
+          matchedChars.push(false);
+        }
       } else {
         matchedChars.push(false);
       }
