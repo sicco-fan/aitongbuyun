@@ -315,12 +315,15 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
       padding: Spacing.md,
-      height: 500,  // 增大高度
+      minHeight: 500,  // 使用 minHeight 而非固定 height
       fontSize: 16,
+      lineHeight: 26,  // 增加行高，让段落更明显
       color: theme.textPrimary,
       borderWidth: 1,
       borderColor: theme.border,
       marginBottom: Spacing.sm,
+      includeFontPadding: false,  // Android 优化
+      textAlignVertical: 'top',   // 确保文本从顶部开始
     },
     
     // 段落统计

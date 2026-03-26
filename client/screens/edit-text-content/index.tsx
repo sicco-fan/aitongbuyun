@@ -620,12 +620,16 @@ export default function EditTextContentScreen() {
             style={styles.textEditor}
             value={textContent}
             onChangeText={setTextContent}
-            placeholder="输入或粘贴文本内容，空行分隔段落"
+            placeholder="输入或粘贴文本内容，空行分隔段落&#10;&#10;提示：从其他地方复制文本时，请确保原文有段落分隔（空行）"
             placeholderTextColor={theme.textMuted}
             multiline
+            numberOfLines={20}
             textAlignVertical="top"
             autoCapitalize="sentences"
             autoCorrect={false}
+            scrollEnabled={true}
+            blurOnSubmit={false}
+            underlineColorAndroid="transparent"
           />
           
           {/* 保存按钮 */}
