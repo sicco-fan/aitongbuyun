@@ -293,18 +293,18 @@ export default function PracticeScreen() {
     
     // 先将文本中的各种引号和破折号统一为标准格式
     const normalizedText = text
-      .replace(/[^\w\s.,!?;:()\[\]{}\-]/g, (char) => {
-        if (/[''"″′‵ʹʻʼʽ＇`´]/.test(char)) return "'";
-        if (/[""″‶]/.test(char)) return '"';
-        if (/[—–−–]/.test(char)) return '-';
+      .replace(/[^\w\s.,!?;:(){}\-]/g, (char) => {
+        if (/['"″′‵ʹʻʼʽ＇`´]/.test(char)) return "'";
+        if (/["″‶]/.test(char)) return '"';
+        if (/[—–−]/.test(char)) return '-';
         return char;
       });
     
     // 使用正则分割：保留单词（包括内部的 - ' &）和纯标点符号
-    const tokens = normalizedText.match(/[a-zA-Z0-9'\-&]+|[,.\!?;:()"]/g) || [];
+    const tokens = normalizedText.match(/[a-z0-9'\-&]+|[,.!?;:()"]/gi) || [];
 
     tokens.forEach((token) => {
-      const isPurePunctuation = !/[a-zA-Z0-9]/.test(token);
+      const isPurePunctuation = !/[a-z0-9]/i.test(token);
       
       result.push({
         word: isPurePunctuation ? '' : token.toLowerCase(),

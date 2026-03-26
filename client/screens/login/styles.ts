@@ -89,5 +89,17 @@ export const createStyles = (theme: Theme) => {
       textAlign: 'center',
       marginTop: Spacing['3xl'],
     },
+    devTip: {
+      backgroundColor: theme.primary + '15',
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.md,
+      borderRadius: BorderRadius.sm,
+      marginBottom: Spacing.lg,
+    },
+    devTipText: {
+      color: theme.primary,
+      fontSize: 12,
+      textAlign: 'center',
+    },
   });
 };

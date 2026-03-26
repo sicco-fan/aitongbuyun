@@ -282,21 +282,21 @@ export default function SentencePracticeScreen() {
     // 先将文本中的各种引号和破折号统一为标准格式
     // 使用更宽松的匹配：任何看起来像引号的字符都替换
     const normalizedText = text
-      .replace(/[^\w\s.,!?;:()\[\]{}\-]/g, (char) => {
+      .replace(/[^\w\s.,!?;:(){}\-]/g, (char) => {
         // 如果是字母、数字、空格、标点，保留
         // 如果是引号类字符（各种单引号、双引号变体），替换
-        if (/[''"″′‵ʹʻʼʽ＇`´]/.test(char)) return "'";
-        if (/[""″‶]/.test(char)) return '"';
-        if (/[—–−–]/.test(char)) return '-';
+        if (/['"″′‵ʹʻʼʽ＇`´]/.test(char)) return "'";
+        if (/["″‶]/.test(char)) return '"';
+        if (/[—–−]/.test(char)) return '-';
         return char;
       });
     
     // 使用正则分割：保留单词（包括内部的 - ' &）和纯标点符号
-    const tokens = normalizedText.match(/[a-zA-Z0-9'\-&]+|[,.\!?;:()"]/g) || [];
+    const tokens = normalizedText.match(/[a-z0-9'\-&]+|[,.!?;:()"]/gi) || [];
 
     tokens.forEach((token) => {
       // 判断是否为纯标点符号（不包含字母数字、-'&）
-      const isPurePunctuation = !/[a-zA-Z0-9]/.test(token);
+      const isPurePunctuation = !/[a-z0-9]/i.test(token);
       
       result.push({
         word: isPurePunctuation ? '' : token.toLowerCase(),
@@ -358,15 +358,15 @@ export default function SentencePracticeScreen() {
           if (status.isLoaded) {
             // 检查是否到达结束时间
             if (status.positionMillis >= endMs) {
-              sound.pauseAsync().catch(() => {});
+              sound.pauseAsync().catch(() => void 0);
               setIsPlaying(false);
 
               // 循环播放
               if (isLoopingRef.current && isMountedRef.current) {
                 setTimeout(() => {
                   if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
-                    soundRef.current.setPositionAsync(startMs).catch(() => {});
-                    soundRef.current.playAsync().catch(() => {});
+                    soundRef.current.setPositionAsync(startMs).catch(() => void 0);
+                    soundRef.current.playAsync().catch(() => void 0);
                     setIsPlaying(true);
                   }
                 }, 500);
@@ -410,7 +410,7 @@ export default function SentencePracticeScreen() {
         try {
           const s = await soundRef.current.getStatusAsync();
           if (s.isLoaded && s.positionMillis >= endMs) {
-            await sound.pauseAsync().catch(() => {});
+            await sound.pauseAsync().catch(() => void 0);
             setIsPlaying(false);
             clearInterval(checkInterval);
 
@@ -418,8 +418,8 @@ export default function SentencePracticeScreen() {
             if (isLoopingRef.current && isMountedRef.current) {
               setTimeout(() => {
                 if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
-                  soundRef.current.setPositionAsync(startMs).catch(() => {});
-                  soundRef.current.playAsync().catch(() => {});
+                  soundRef.current.setPositionAsync(startMs).catch(() => void 0);
+                  soundRef.current.playAsync().catch(() => void 0);
                   setIsPlaying(true);
                 }
               }, 500);
@@ -1286,7 +1286,7 @@ export default function SentencePracticeScreen() {
                     style={[styles.keyButton, styles.symbolKey]}
                     onPress={() => handleCustomKeyPress('\'', '\'')}
                   >
-                    <ThemedText variant="h4" color={theme.textPrimary}>'</ThemedText>
+                    <ThemedText variant="h4" color={theme.textPrimary}>&apos;</ThemedText>
                   </TouchableOpacity>
                   {/* &符号 */}
                   <TouchableOpacity
@@ -1303,7 +1303,7 @@ export default function SentencePracticeScreen() {
                   <View style={styles.keyboardRow}>
                     <TouchableOpacity
                       style={[styles.keyButton, styles.letterKey]}
-                      onPress={() => {}}
+                      onPress={() => handleCustomKeyPress('SYMBOL', 'SYMBOL')}
                     >
                       <ThemedText variant="body" color={theme.textMuted}>符号</ThemedText>
                     </TouchableOpacity>

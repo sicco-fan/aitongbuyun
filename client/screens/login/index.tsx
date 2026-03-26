@@ -44,6 +44,9 @@ export default function LoginScreen() {
       // 开发环境，自动填充验证码
       if (result.code) {
         setCode(result.code);
+      } else {
+        // 如果后端没有返回验证码，使用开发环境的固定验证码
+        setCode('123456');
       }
     } else {
       setError(result.error || '发送失败');
@@ -94,6 +97,11 @@ export default function LoginScreen() {
           <ThemedText variant="body" color={theme.textSecondary} style={styles.subtitle}>
             登录后可同步学习进度
           </ThemedText>
+        </View>
+
+        {/* 开发环境提示 */}
+        <View style={styles.devTip}>
+          <Text style={styles.devTipText}>开发模式：验证码固定为 123456</Text>
         </View>
 
         {/* 手机号输入 */}
