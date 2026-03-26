@@ -1227,9 +1227,11 @@ export default function SentencePracticeScreen() {
                 </TouchableOpacity>
                 
                 <View style={styles.customInputDisplay}>
-                  <ThemedText variant="h4" color={theme.textPrimary}>
-                    {currentInput || '点击下方按键输入...'}
-                  </ThemedText>
+                  {currentInput ? (
+                    <ThemedText variant="h4" color={theme.success}>
+                      {currentInput}
+                    </ThemedText>
+                  ) : null}
                 </View>
                 
                 <TouchableOpacity

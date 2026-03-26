@@ -302,7 +302,7 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.lg,
       padding: 8,
       gap: 6,
-      height: 220,
+      height: 260, // 增加高度
     },
     keyboardColumn: {
       flexDirection: 'column',
