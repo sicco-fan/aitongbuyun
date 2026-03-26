@@ -703,6 +703,12 @@ export default function SentencePracticeScreen() {
 
   // 当前按键序列
   const [currentKeySequence, setCurrentKeySequence] = useState<string[]>([]);
+  const currentKeySequenceRef = useRef<string[]>([]);
+  
+  // 同步 ref
+  useEffect(() => {
+    currentKeySequenceRef.current = currentKeySequence;
+  }, [currentKeySequence]);
 
   // 处理自建键盘按键
   const handleCustomKeyPress = useCallback((key: string, keyLetters: string) => {
@@ -720,14 +726,24 @@ export default function SentencePracticeScreen() {
     }
     
     if (key === '空格') {
-      // 空格确认当前输入的单词
-      setCurrentInput(prev => {
-        if (prev.length > 0) {
-          handleInputChange(prev + ' ');
-        }
-        return '';
+      // 空格键：仅用于单词匹配成功后的确认
+      // 不应该用于强制确认不完整的单词
+      const seq = currentKeySequenceRef.current;
+      
+      // 检查当前输入是否完全匹配某个单词
+      const matchedWord = wordKeySequences.find(item => {
+        const targetSeq = item.keySequence;
+        return seq.length === targetSeq.length && 
+               seq.every((k, i) => k === targetSeq[i]);
       });
-      setCurrentKeySequence([]);
+      
+      if (matchedWord) {
+        // 完全匹配，确认单词
+        handleInputChange(matchedWord.word);
+        setCurrentKeySequence([]);
+        setCurrentInput('');
+      }
+      // 没有完全匹配，不做任何操作
       return;
     }
     
