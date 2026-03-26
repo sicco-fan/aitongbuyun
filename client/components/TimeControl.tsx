@@ -26,7 +26,7 @@ export function TimeControl({
   const lastAngle = useSharedValue(0);
   const accumulatedDelta = useSharedValue(0);
   
-  // 长按相关 - 使用 ref 确保最新值
+  // 长按相关
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [pressedButton, setPressedButton] = useState<string | null>(null);
 
@@ -44,9 +44,8 @@ export function TimeControl({
   }, [onChange]);
 
   const handlePlay = useCallback(() => {
-    console.log(`[TimeControl] 点击播放片段: ${label}`);
     onPlay?.();
-  }, [onPlay, label]);
+  }, [onPlay]);
 
   // 开始连续调整
   const startContinuousAdjust = useCallback((delta: number, btnText: string) => {
@@ -54,7 +53,7 @@ export function TimeControl({
     onChange(delta);
     setPressedButton(btnText);
     
-    // 100ms 后开始连续触发
+    // 150ms 后开始连续触发
     setTimeout(() => {
       // 再次执行
       onChange(delta);
@@ -62,8 +61,8 @@ export function TimeControl({
       // 开始连续触发
       intervalRef.current = setInterval(() => {
         onChange(delta);
-      }, 50); // 每50ms执行一次
-    }, 100);
+      }, 80);
+    }, 150);
   }, [onChange]);
 
   // 停止连续调整
@@ -104,11 +103,12 @@ export function TimeControl({
     transform: [{ translateX: accumulatedDelta.value * 0.15 }],
   }));
 
-  // 渲染调整按钮 - 使用 Pressable 确保长按可靠
+  // 渲染调整按钮 - 6个按钮在一行
   const renderAdjustButton = (delta: number, icon: string, text: string) => {
     const isPressed = pressedButton === text;
     return (
       <Pressable 
+        key={text}
         style={[
           styles.adjustBtn, 
           { backgroundColor: color + '20', borderColor: color },
@@ -117,9 +117,9 @@ export function TimeControl({
         onPressIn={() => startContinuousAdjust(delta, text)}
         onPressOut={stopContinuousAdjust}
         onPress={stopContinuousAdjust}
-        hitSlop={{ top: 10, bottom: 10, left: 5, right: 5 }}
+        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
       >
-        <FontAwesome6 name={icon} size={16} color={color} />
+        <FontAwesome6 name={icon} size={12} color={color} />
         <Text style={[styles.btnText, { color }]}>{text}</Text>
       </Pressable>
     );
@@ -135,7 +135,7 @@ export function TimeControl({
             onPress={handlePlay}
           >
             <View style={styles.labelRow}>
-              <FontAwesome6 name="play" size={18} color={color} />
+              <FontAwesome6 name="play" size={16} color={color} />
               <Text style={[styles.label, { color }]}>{label}</Text>
             </View>
             <Text style={[styles.timeValue, { color }]}>
@@ -145,12 +145,14 @@ export function TimeControl({
         </Animated.View>
       </GestureDetector>
       
-      {/* 调整按钮行 - 支持长按连续调整 */}
+      {/* 调整按钮行 - 6个按钮在一行，支持长按连续调整 */}
       <View style={styles.buttonRow}>
-        {renderAdjustButton(-100, 'angles-left', '-100')}
-        {renderAdjustButton(-10, 'angle-left', '-10')}
-        {renderAdjustButton(10, 'angle-right', '+10')}
-        {renderAdjustButton(100, 'angles-right', '+100')}
+        {renderAdjustButton(-1000, 'angles-left', '-1s')}
+        {renderAdjustButton(-100, 'angle-left', '-0.1')}
+        {renderAdjustButton(-10, 'minus', '-10ms')}
+        {renderAdjustButton(10, 'plus', '+10ms')}
+        {renderAdjustButton(100, 'angle-right', '+0.1')}
+        {renderAdjustButton(1000, 'angles-right', '+1s')}
       </View>
       
       <Text style={styles.hint}>点击播放 | 滑动微调 | 长按快调</Text>
@@ -161,48 +163,48 @@ export function TimeControl({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
   },
   timeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
     borderWidth: 2,
     backgroundColor: '#1a1a1a',
-    minWidth: 280,
+    minWidth: 260,
   },
   labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   label: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   timeValue: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   buttonRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
-    gap: 8,
+    marginTop: 10,
+    gap: 4,
   },
   adjustBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
+    gap: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+    borderRadius: 6,
     borderWidth: 1,
   },
   adjustBtnActive: {
@@ -210,12 +212,12 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.95 }],
   },
   btnText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
   },
   hint: {
     color: '#444',
-    fontSize: 10,
-    marginTop: 8,
+    fontSize: 9,
+    marginTop: 6,
   },
 });

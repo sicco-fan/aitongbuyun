@@ -796,8 +796,24 @@ export default function EditSentenceAudioScreen() {
       return;
     }
     setWordsPerMinute(newWpm);
+    
+    // 更新当前句子的时长
+    if (currentSentence) {
+      const wordCount = countWords(currentSentence.text);
+      const newDuration = calculateEstimatedDuration(wordCount, newWpm);
+      
+      // 更新当前句子的结束时间
+      const newSentences = [...sentences];
+      newSentences[currentIndex] = {
+        ...currentSentence,
+        start_time: currentSentence.start_time ?? 0,
+        end_time: (currentSentence.start_time ?? 0) + newDuration,
+      };
+      setSentences(newSentences);
+    }
+    
     setShowWpmModal(false);
-    console.log(`[WPM] 语速更新为: ${newWpm} 词/分钟`);
+    console.log(`[WPM] 语速更新为: ${newWpm} 词/分钟，已更新当前句子时长`);
   };
 
   // 根据新语速重新分配所有时间
@@ -1131,7 +1147,7 @@ export default function EditSentenceAudioScreen() {
                 style={styles.modalConfirmBtn}
                 onPress={handleWpmChange}
               >
-                <Text style={styles.modalConfirmText}>确定</Text>
+                <Text style={styles.modalConfirmText}>应用当前句</Text>
               </TouchableOpacity>
             </View>
             
@@ -1143,11 +1159,11 @@ export default function EditSentenceAudioScreen() {
                   setWordsPerMinute(newWpm);
                   redistributeTimeByWpm(newWpm);
                   setShowWpmModal(false);
-                  console.log(`[WPM] 重新分配时间，语速: ${newWpm} 词/分钟`);
+                  console.log(`[WPM] 重新分配所有时间，语速: ${newWpm} 词/分钟`);
                 }
               }}
             >
-              <Text style={styles.redistributeBtnText}>应用并重新分配所有时间</Text>
+              <Text style={styles.redistributeBtnText}>重新分配所有句子</Text>
             </TouchableOpacity>
           </View>
         </View>
