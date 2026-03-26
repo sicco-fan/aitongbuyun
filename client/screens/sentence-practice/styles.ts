@@ -7,25 +7,6 @@ export const createStyles = (theme: Theme) => {
       flex: 1,
     },
     
-    // Main Layout - 使用 flex 布局
-    mainContainer: {
-      flex: 1,
-      flexDirection: 'column',
-    },
-    
-    // Sentence Section - 固定在上方，可滚动
-    sentenceSection: {
-      flex: 1,
-      maxHeight: '55%', // 限制最大高度，确保输入区域可见
-      paddingHorizontal: Spacing.lg,
-    },
-    sentenceScrollView: {
-      flex: 1,
-    },
-    sentenceScrollContent: {
-      paddingVertical: Spacing.lg,
-    },
-    
     // Header
     header: {
       flexDirection: 'row',
@@ -152,6 +133,21 @@ export const createStyles = (theme: Theme) => {
       justifyContent: 'center',
     },
     
+    // Content wrapper - 键盘避让
+    contentWrapper: {
+      flex: 1,
+    },
+    
+    // Sentence Section - 可滚动
+    sentenceSection: {
+      flex: 1,
+      paddingHorizontal: Spacing.lg,
+    },
+    sentenceScrollContent: {
+      paddingVertical: Spacing.lg,
+      paddingBottom: Spacing.md,
+    },
+    
     // Sentence Card
     sentenceCard: {
       backgroundColor: theme.backgroundDefault,
@@ -187,7 +183,7 @@ export const createStyles = (theme: Theme) => {
       lineHeight: 12,
     },
     char: {
-      fontSize: 22, // 稍微减小字体
+      fontSize: 22,
       fontWeight: '600',
       letterSpacing: 0.5,
     },
@@ -198,13 +194,11 @@ export const createStyles = (theme: Theme) => {
       // 错误字符由 color 控制，无需额外样式
     },
     
-    // Input Section - 固定在下方
+    // Input Section - 紧跟句子区域
     inputSection: {
       paddingHorizontal: Spacing.lg,
       paddingVertical: Spacing.md,
       backgroundColor: theme.backgroundRoot,
-      borderTopWidth: 1,
-      borderTopColor: theme.borderLight,
     },
     inputWrapper: {
       width: '100%',
@@ -239,18 +233,7 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
     },
     
-    // Translation Card
-    translationCard: {
-      backgroundColor: theme.primary + '10',
-      borderRadius: BorderRadius.lg,
-      padding: Spacing.md,
-      marginHorizontal: Spacing.lg,
-      marginBottom: Spacing.md,
-      borderWidth: 1,
-      borderColor: theme.primary + '30',
-    },
-    
-    // Navigation Buttons
+    // Navigation Buttons - 紧跟输入框
     navButtons: {
       flexDirection: 'row',
       justifyContent: 'center',
@@ -269,6 +252,16 @@ export const createStyles = (theme: Theme) => {
     },
     navBtnDisabled: {
       backgroundColor: theme.backgroundTertiary,
+    },
+    
+    // Translation Card
+    translationCard: {
+      backgroundColor: theme.primary + '10',
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.md,
+      marginTop: Spacing.md,
+      borderWidth: 1,
+      borderColor: theme.primary + '30',
     },
   });
 };

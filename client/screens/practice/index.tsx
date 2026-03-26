@@ -860,98 +860,98 @@ export default function PracticeScreen() {
         </View>
       </TouchableOpacity>
 
-      {/* Main Content Area - 使用 flex 布局 */}
-      <View style={styles.mainContainer}>
-        {/* Sentence Section - 可滚动，限制高度 */}
+      {/* Content with Keyboard Avoiding */}
+      <KeyboardAvoidingView
+        style={styles.contentWrapper}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        {/* Sentence Section - 可滚动 */}
         <ScrollView 
           style={styles.sentenceSection}
           contentContainerStyle={styles.sentenceScrollContent} 
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        onTouchStart={() => showAudioSettings && setShowAudioSettings(false)}
-      >
-        {/* Sentence Display */}
-        <Animated.View style={[styles.sentenceCard, { opacity: Animated.subtract(1, errorAnimRef.current) }]}>
-          <View style={styles.wordContainer}>
-            {wordStatuses.map((ws, idx) => (
-              <View key={idx} style={styles.wordWrapper}>
-                {ws.isPunctuation ? (
-                  <ThemedText variant="h4" color={theme.textPrimary}>
-                    {ws.displayText}
-                  </ThemedText>
-                ) : (
-                  <TouchableOpacity 
-                    style={styles.wordBox}
-                    onPress={() => handleWordPress(ws)}
-                    activeOpacity={0.7}
-                  >
-                    {ws.displayText.split('').map((char, charIdx) => {
-                      // 判断显示内容
-                      let displayChar = char;
-                      if (!ws.revealed) {
-                        if (hintWordIndex === ws.index) {
-                          // 提示模式：显示完整单词
-                          displayChar = char;
-                        } else if (ws.revealedChars[charIdx]) {
-                          displayChar = char;
-                        } else {
-                          displayChar = '_';
-                        }
-                      }
-                      
-                      return (
-                        <ThemedText
-                          key={charIdx}
-                          variant="h4"
-                          color={
-                            ws.revealed
-                              ? theme.success
-                              : hintWordIndex === ws.index
-                              ? theme.primary // 提示模式下所有字母高亮
-                              : ws.revealedChars[charIdx]
-                              ? theme.textPrimary
-                              : ws.errorCharIndex === charIdx
-                              ? theme.error
-                              : theme.textMuted
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          onTouchStart={() => showAudioSettings && setShowAudioSettings(false)}
+        >
+          {/* Sentence Display */}
+          <Animated.View style={[styles.sentenceCard, { opacity: Animated.subtract(1, errorAnimRef.current) }]}>
+            <View style={styles.wordContainer}>
+              {wordStatuses.map((ws, idx) => (
+                <View key={idx} style={styles.wordWrapper}>
+                  {ws.isPunctuation ? (
+                    <ThemedText variant="h4" color={theme.textPrimary}>
+                      {ws.displayText}
+                    </ThemedText>
+                  ) : (
+                    <TouchableOpacity 
+                      style={styles.wordBox}
+                      onPress={() => handleWordPress(ws)}
+                      activeOpacity={0.7}
+                    >
+                      {ws.displayText.split('').map((char, charIdx) => {
+                        // 判断显示内容
+                        let displayChar = char;
+                        if (!ws.revealed) {
+                          if (hintWordIndex === ws.index) {
+                            // 提示模式：显示完整单词
+                            displayChar = char;
+                          } else if (ws.revealedChars[charIdx]) {
+                            displayChar = char;
+                          } else {
+                            displayChar = '_';
                           }
-                          style={[
-                            styles.char,
-                            !ws.revealed && hintWordIndex !== ws.index && !ws.revealedChars[charIdx] && styles.hiddenChar,
-                            ws.errorCharIndex === charIdx && styles.errorChar,
-                          ]}
-                        >
-                          {displayChar}
+                        }
+                        
+                        return (
+                          <ThemedText
+                            key={charIdx}
+                            variant="h4"
+                            color={
+                              ws.revealed
+                                ? theme.success
+                                : hintWordIndex === ws.index
+                                ? theme.primary // 提示模式下所有字母高亮
+                                : ws.revealedChars[charIdx]
+                                ? theme.textPrimary
+                                : ws.errorCharIndex === charIdx
+                                ? theme.error
+                                : theme.textMuted
+                            }
+                            style={[
+                              styles.char,
+                              !ws.revealed && hintWordIndex !== ws.index && !ws.revealedChars[charIdx] && styles.hiddenChar,
+                              ws.errorCharIndex === charIdx && styles.errorChar,
+                            ]}
+                          >
+                            {displayChar}
+                          </ThemedText>
+                        );
+                      })}
+                      {/* 单词翻译 */}
+                      {translationWordIndex === ws.index && ws.revealed && (
+                        <ThemedText variant="caption" color={theme.textSecondary} style={styles.wordHint}>
+                          {wordTranslations[ws.word] || '...'}
                         </ThemedText>
-                      );
-                    })}
-                    {/* 单词翻译 */}
-                    {translationWordIndex === ws.index && ws.revealed && (
-                      <ThemedText variant="caption" color={theme.textSecondary} style={styles.wordHint}>
-                        {wordTranslations[ws.word] || '...'}
-                      </ThemedText>
-                    )}
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
-          </View>
-        </Animated.View>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </View>
+          </Animated.View>
 
-        {/* Translation Display - 放在句子区域内 */}
-        {showTranslation && currentTranslation && (
-          <View style={styles.translationCard}>
-            <ThemedText variant="body" color={theme.textSecondary} style={{ textAlign: 'center' }}>
-              {currentTranslation}
-            </ThemedText>
-          </View>
-        )}
-      </ScrollView>
+          {/* Translation Display - 放在句子区域内 */}
+          {showTranslation && currentTranslation && (
+            <View style={styles.translationCard}>
+              <ThemedText variant="body" color={theme.textSecondary} style={{ textAlign: 'center' }}>
+                {currentTranslation}
+              </ThemedText>
+            </View>
+          )}
+        </ScrollView>
 
-      {/* Input Section - 固定在下方 */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      >
+        {/* Input Section - 紧跟句子区域 */}
         <View style={styles.inputSection}>
           <View style={styles.inputWrapper}>
             <TextInput
@@ -995,7 +995,6 @@ export default function PracticeScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
-    </View>
-  </Screen>
+    </Screen>
   );
 }

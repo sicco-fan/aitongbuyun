@@ -826,9 +826,13 @@ export default function SentencePracticeScreen() {
         </View>
       </TouchableOpacity>
 
-      {/* Main Content Area - 使用 flex 布局 */}
-      <View style={styles.mainContainer}>
-        {/* Sentence Section - 可滚动，限制高度 */}
+      {/* Content with Keyboard Avoiding */}
+      <KeyboardAvoidingView
+        style={styles.contentWrapper}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        {/* Sentence Section - 可滚动 */}
         <ScrollView
           style={styles.sentenceSection}
           contentContainerStyle={styles.sentenceScrollContent}
@@ -914,55 +918,50 @@ export default function SentencePracticeScreen() {
           )}
         </ScrollView>
 
-        {/* Input Section - 固定在下方 */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        >
-          <View style={styles.inputSection}>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.input}
-                value={currentInput}
-                onChangeText={handleInputChange}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoFocus
+        {/* Input Section - 紧跟句子区域 */}
+        <View style={styles.inputSection}>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.input}
+              value={currentInput}
+              onChangeText={handleInputChange}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoFocus
+            />
+            <TouchableOpacity
+              style={styles.inputVoiceBtn}
+              onPressIn={startRecording}
+              onPressOut={stopRecordingAndRecognize}
+            >
+              <FontAwesome6
+                name={isRecording ? "stop" : "microphone"}
+                size={18}
+                color={isRecording ? theme.error : theme.primary}
               />
-              <TouchableOpacity
-                style={styles.inputVoiceBtn}
-                onPressIn={startRecording}
-                onPressOut={stopRecordingAndRecognize}
-              >
-                <FontAwesome6
-                  name={isRecording ? "stop" : "microphone"}
-                  size={18}
-                  color={isRecording ? theme.error : theme.primary}
-                />
-              </TouchableOpacity>
-            </View>
-
-            {/* Navigation Buttons */}
-            <View style={styles.navButtons}>
-              <TouchableOpacity
-                style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
-                onPress={goToPrevSentence}
-                disabled={currentIndex === 0}
-              >
-                <FontAwesome6 name="chevron-left" size={18} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
-                onPress={goToNextSentence}
-                disabled={currentIndex === sentences.length - 1}
-              >
-                <FontAwesome6 name="chevron-right" size={18} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-      </View>
+
+          {/* Navigation Buttons */}
+          <View style={styles.navButtons}>
+            <TouchableOpacity
+              style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
+              onPress={goToPrevSentence}
+              disabled={currentIndex === 0}
+            >
+              <FontAwesome6 name="chevron-left" size={18} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
+              onPress={goToNextSentence}
+              disabled={currentIndex === sentences.length - 1}
+            >
+              <FontAwesome6 name="chevron-right" size={18} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
