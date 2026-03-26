@@ -711,31 +711,51 @@ export default function SentencePracticeScreen() {
     
     if (key === '空格') {
       // 空格确认当前单词
-      handleInputChange(currentInput + ' ');
+      setCurrentInput(prev => {
+        handleInputChange(prev + ' ');
+        return prev;
+      });
       return;
     }
     
     // 特殊符号直接输入
     if (['-', '\'', '&'].includes(key)) {
-      const newInput = currentInput + key;
-      setCurrentInput(newInput);
-      // 检查是否完成匹配
-      handleInputChange(newInput);
+      setCurrentInput(prev => {
+        const newInput = prev + key;
+        handleInputChange(newInput);
+        return newInput;
+      });
       return;
     }
     
     // 字母按键：智能匹配
-    const nextChar = getNextExpectedChar();
+    // 直接从 ref 获取最新的 wordStatuses 和当前输入
+    const currentWordStatuses = wordStatusesRef.current;
+    const incompleteWord = currentWordStatuses.find(w => !w.isPunctuation && !w.revealed);
     
-    if (nextChar && charBelongsToKey(nextChar, keyLetters)) {
-      // 找到了匹配的字符，输入它
-      const newInput = currentInput + nextChar;
-      setCurrentInput(newInput);
-      // 检查是否完成匹配
-      handleInputChange(newInput);
-    }
-    // 如果期望字符不在当前按键中，不输入任何内容（用户需要按正确的键）
-  }, [currentInput, getNextExpectedChar, charBelongsToKey, handleInputChange, setTargetWordIndexWithRef]);
+    if (!incompleteWord) return;
+    
+    const word = incompleteWord.word.toLowerCase();
+    
+    // 使用函数式更新获取最新的 currentInput
+    setCurrentInput(prev => {
+      const inputLength = prev.length;
+      if (inputLength >= word.length) return prev;
+      
+      const nextChar = word[inputLength];
+      const lowerKey = keyLetters.toLowerCase();
+      
+      // 检查期望字符是否在当前按键中
+      if (lowerKey.includes(nextChar)) {
+        const newInput = prev + nextChar;
+        handleInputChange(newInput);
+        return newInput;
+      }
+      
+      // 期望字符不在当前按键中，不输入
+      return prev;
+    });
+  }, [handleInputChange, setTargetWordIndexWithRef]);
 
   // 检查是否完成
   useEffect(() => {

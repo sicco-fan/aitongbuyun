@@ -142,10 +142,11 @@ export const createStyles = (theme: Theme) => {
     sentenceSection: {
       flex: 1,
       paddingHorizontal: Spacing.lg,
+      maxHeight: 280, // 限制最大高度，让键盘更靠上
     },
     sentenceScrollContent: {
-      paddingVertical: Spacing.lg,
-      paddingBottom: Spacing.md,
+      paddingVertical: Spacing.md,
+      paddingBottom: Spacing.sm,
     },
     
     // Sentence Card
@@ -268,13 +269,13 @@ export const createStyles = (theme: Theme) => {
     // Custom Keyboard
     customKeyboardContainer: {
       width: '100%',
-      marginTop: -Spacing.sm, // 向上移动
+      marginTop: -Spacing.md,
     },
     customInputRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: Spacing.sm,
-      marginBottom: Spacing.xs,
+      marginBottom: 4,
     },
     customInputDisplay: {
       flex: 1,
@@ -282,11 +283,11 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.lg,
       borderWidth: 2,
       borderColor: '#A5D6A7',
-      paddingVertical: Spacing.md,
+      paddingVertical: Spacing.sm,
       paddingHorizontal: Spacing.lg,
       alignItems: 'center',
       justifyContent: 'center',
-      minHeight: 48,
+      minHeight: 44,
     },
     navBtnSmall: {
       width: 40,
@@ -300,41 +301,41 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
       backgroundColor: '#D1D5DB',
       borderRadius: BorderRadius.lg,
-      padding: 8,
-      gap: 6,
-      height: 240, // 固定键盘总高度
+      padding: 6,
+      gap: 4,
+      height: 200,
     },
     keyboardColumn: {
       flexDirection: 'column',
-      gap: 6,
+      gap: 4,
       justifyContent: 'space-between',
     },
     keyboardLetterSection: {
       flex: 1,
       flexDirection: 'column',
-      gap: 6,
+      gap: 4,
       justifyContent: 'space-between',
     },
     keyboardRow: {
       flexDirection: 'row',
-      gap: 6,
-      flex: 1, // 每行自动扩展
+      gap: 4,
+      flex: 1,
     },
     keyButton: {
       borderRadius: 8,
       justifyContent: 'center',
       alignItems: 'center',
-      flex: 1, // 每个按键自动扩展填满行高
+      flex: 1,
     },
     symbolKey: {
-      width: 56,
+      width: 50,
       backgroundColor: '#9CA3AF',
     },
     letterKey: {
       backgroundColor: '#FFFFFF',
     },
     functionKey: {
-      width: 56,
+      width: 50,
       backgroundColor: '#9CA3AF',
     },
   });
