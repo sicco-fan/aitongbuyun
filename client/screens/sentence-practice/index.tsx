@@ -188,6 +188,7 @@ export default function SentencePracticeScreen() {
   const [resumingFromProgress, setResumingFromProgress] = useState(false); // 是否从进度恢复
   const [errorPriority, setErrorPriority] = useState(params.errorPriority || false); // 错题优先模式
   const [errorSentences, setErrorSentences] = useState<Array<{ sentence_index: number; totalErrors: number }>>([]); // 错题句子列表
+  const hasShownProgressAlert = useRef(false); // 是否已经显示过进度弹窗（防止重复弹出）
 
   // 单词状态
   const [wordStatuses, setWordStatuses] = useState<WordStatus[]>([]);
@@ -297,8 +298,9 @@ export default function SentencePracticeScreen() {
         if (params.sentenceIndex !== undefined && params.sentenceIndex < loadedSentences.length) {
           setCurrentIndex(params.sentenceIndex);
         } else {
-          // 获取学习进度
-          if (isAuthenticated && user?.id && !errorPriority) {
+          // 获取学习进度（只在首次进入时弹出提示）
+          if (isAuthenticated && user?.id && !errorPriority && !hasShownProgressAlert.current) {
+            hasShownProgressAlert.current = true; // 标记已显示过弹窗
             try {
               /**
                * 服务端文件：server/src/routes/learning.ts
