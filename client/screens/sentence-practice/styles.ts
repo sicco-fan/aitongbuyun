@@ -263,5 +263,75 @@ export const createStyles = (theme: Theme) => {
       borderWidth: 1,
       borderColor: theme.primary + '30',
     },
+    
+    // Custom Keyboard
+    customKeyboardContainer: {
+      width: '100%',
+    },
+    customInputDisplay: {
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.lg,
+      paddingVertical: Spacing.md,
+      paddingHorizontal: Spacing.lg,
+      marginBottom: Spacing.sm,
+      alignItems: 'center',
+      minHeight: 48,
+      justifyContent: 'center',
+    },
+    customKeyboard: {
+      flexDirection: 'row',
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.xs,
+      gap: Spacing.xs,
+    },
+    keyboardColumn: {
+      flexDirection: 'column',
+      gap: Spacing.xs,
+    },
+    keyboardLetterSection: {
+      flex: 1,
+      flexDirection: 'column',
+      gap: Spacing.xs,
+    },
+    keyboardRow: {
+      flexDirection: 'row',
+      gap: Spacing.xs,
+      justifyContent: 'center',
+    },
+    keyButton: {
+      borderRadius: BorderRadius.md,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: theme.backgroundDefault,
+      borderWidth: 1,
+      borderColor: theme.borderLight,
+    },
+    symbolKey: {
+      width: 44,
+      height: 44,
+      backgroundColor: theme.backgroundTertiary,
+    },
+    letterKey: {
+      flex: 1,
+      minHeight: 44,
+      backgroundColor: '#FFFFFF',
+    },
+    functionKey: {
+      width: 44,
+      height: 44,
+      backgroundColor: theme.backgroundTertiary,
+    },
+    spaceKey: {
+      height: 96, // 合并两行的高度
+    },
+    voiceKey: {
+      flex: 0.6,
+    },
+    keyButtonHighlighted: {
+      borderColor: theme.primary,
+      backgroundColor: theme.primary + '15',
+      borderWidth: 2,
+    },
   });
 };

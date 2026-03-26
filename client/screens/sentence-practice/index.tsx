@@ -210,6 +210,9 @@ export default function SentencePracticeScreen() {
   const volumeRef = useRef(1.0);
   const playbackRateRef = useRef(1.0);
 
+  // 键盘类型：'system' 手机键盘 | 'custom' 自建键盘
+  const [keyboardType, setKeyboardType] = useState<'system' | 'custom'>('system');
+
   // 错误闪烁动画
   const errorAnimRef = useRef<Animated.Value>(new Animated.Value(0));
 
@@ -643,6 +646,101 @@ export default function SentencePracticeScreen() {
     setCurrentInput(text);
   }, [updateWordStatusesWithRef, setTargetWordIndexWithRef]);
 
+  // ==================== 自建键盘相关 ====================
+  
+  // T9 键盘布局
+  const T9_KEYS = useMemo(() => [
+    // 第一列：特殊符号
+    { type: 'symbol', keys: ['-', '\'', '&'] },
+    // 第二列
+    { type: 'letters', keys: ['ABC', 'DEF'] },
+    { type: 'letters', keys: ['GHI', 'JKL', 'MNO'] },
+    { type: 'letters', keys: ['PQRS', 'TUV', 'WXYZ'] },
+    // 最后一列：功能键
+    { type: 'function', keys: ['⌫', '清空', '空格'] },
+  ], []);
+
+  // 获取当前需要输入的下一个字符
+  const getNextExpectedChar = useCallback((): string | null => {
+    const currentWordStatuses = wordStatusesRef.current;
+    
+    // 找到第一个未完成的单词
+    const incompleteWord = currentWordStatuses.find(w => !w.isPunctuation && !w.revealed);
+    if (!incompleteWord) return null;
+    
+    // 获取当前已输入的长度
+    const inputLength = currentInput.length;
+    const word = incompleteWord.word.toLowerCase();
+    
+    // 如果输入长度已经等于或超过单词长度，返回 null
+    if (inputLength >= word.length) return null;
+    
+    return word[inputLength];
+  }, [currentInput]);
+
+  // 判断字符是否属于某个 T9 按键
+  const charBelongsToKey = useCallback((char: string, keyLetters: string): boolean => {
+    const lowerChar = char.toLowerCase();
+    const lowerKey = keyLetters.toLowerCase();
+    
+    // 直接匹配
+    if (lowerKey.includes(lowerChar)) return true;
+    
+    // 引号类字符匹配
+    if (isSingleQuoteLike(char) && (lowerKey.includes("'") || lowerKey.includes("'"))) return true;
+    
+    // 破折号类字符匹配
+    if (isDashLike(char) && lowerKey.includes('-')) return true;
+    
+    return false;
+  }, []);
+
+  // 处理自建键盘按键
+  const handleCustomKeyPress = useCallback((key: string, keyLetters: string) => {
+    if (key === '⌫') {
+      // 退格
+      setCurrentInput(prev => prev.slice(0, -1));
+      return;
+    }
+    
+    if (key === '清空') {
+      setCurrentInput('');
+      setTargetWordIndexWithRef(null);
+      return;
+    }
+    
+    if (key === '空格') {
+      // 空格确认当前单词
+      handleInputChange(currentInput + ' ');
+      return;
+    }
+    
+    // 特殊符号直接输入
+    if (['-', '\'', '&'].includes(key)) {
+      const newInput = currentInput + key;
+      setCurrentInput(newInput);
+      // 检查是否完成匹配
+      handleInputChange(newInput);
+      return;
+    }
+    
+    // 字母按键：智能匹配
+    const nextChar = getNextExpectedChar();
+    
+    if (nextChar && charBelongsToKey(nextChar, keyLetters)) {
+      // 找到了匹配的字符，输入它
+      const newInput = currentInput + nextChar;
+      setCurrentInput(newInput);
+      // 检查是否完成匹配
+      handleInputChange(newInput);
+    } else {
+      // 没有找到匹配，输入第一个字母作为默认
+      const newInput = currentInput + keyLetters[0].toLowerCase();
+      setCurrentInput(newInput);
+      handleInputChange(newInput);
+    }
+  }, [currentInput, getNextExpectedChar, charBelongsToKey, handleInputChange, setTargetWordIndexWithRef]);
+
   // 检查是否完成
   useEffect(() => {
     if (wordStatuses.length === 0) return;
@@ -876,6 +974,13 @@ export default function SentencePracticeScreen() {
         </View>
         {/* 右侧小控制按钮 */}
         <View style={styles.headerControls}>
+          {/* 键盘切换按钮 */}
+          <TouchableOpacity
+            style={[styles.smallControlBtn, keyboardType === 'custom' && styles.smallControlBtnActive]}
+            onPress={() => setKeyboardType(prev => prev === 'system' ? 'custom' : 'system')}
+          >
+            <FontAwesome6 name={keyboardType === 'custom' ? "keyboard" : "mobile-screen"} size={14} color={keyboardType === 'custom' ? theme.primary : theme.textMuted} />
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.smallControlBtn, showAudioSettings && styles.smallControlBtnActive]}
             onPress={() => setShowAudioSettings(prev => !prev)}
@@ -1050,27 +1155,163 @@ export default function SentencePracticeScreen() {
 
         {/* Input Section - 紧跟句子区域 */}
         <View style={styles.inputSection}>
-          <View style={styles.inputWrapper}>
-            <TextInput
-              style={styles.input}
-              value={currentInput}
-              onChangeText={handleInputChange}
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-            />
-            <TouchableOpacity
-              style={styles.inputVoiceBtn}
-              onPressIn={startRecording}
-              onPressOut={stopRecordingAndRecognize}
-            >
-              <FontAwesome6
-                name={isRecording ? "stop" : "microphone"}
-                size={18}
-                color={isRecording ? theme.error : theme.primary}
+          {/* 手机键盘模式 */}
+          {keyboardType === 'system' && (
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                value={currentInput}
+                onChangeText={handleInputChange}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
               />
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                style={styles.inputVoiceBtn}
+                onPressIn={startRecording}
+                onPressOut={stopRecordingAndRecognize}
+              >
+                <FontAwesome6
+                  name={isRecording ? "stop" : "microphone"}
+                  size={18}
+                  color={isRecording ? theme.error : theme.primary}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* 自建键盘模式 */}
+          {keyboardType === 'custom' && (
+            <View style={styles.customKeyboardContainer}>
+              {/* 当前输入显示 */}
+              <View style={styles.customInputDisplay}>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                  {currentInput || '点击下方按键输入...'}
+                </ThemedText>
+              </View>
+              
+              {/* 自建键盘 */}
+              <View style={styles.customKeyboard}>
+                {/* 第一列：特殊符号 */}
+                <View style={styles.keyboardColumn}>
+                  {['-', '\'', '&'].map((symbol, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[styles.keyButton, styles.symbolKey]}
+                      onPress={() => handleCustomKeyPress(symbol, symbol)}
+                    >
+                      <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                        {symbol === '\'' ? "'" : symbol}
+                      </ThemedText>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* 第二到第四列：字母 */}
+                <View style={styles.keyboardLetterSection}>
+                  {/* 第一行 */}
+                  <View style={styles.keyboardRow}>
+                    {['ABC', 'DEF'].map((letters, idx) => {
+                      const nextChar = getNextExpectedChar();
+                      const isHighlighted = nextChar && charBelongsToKey(nextChar, letters);
+                      return (
+                        <TouchableOpacity
+                          key={idx}
+                          style={[styles.keyButton, styles.letterKey, isHighlighted && styles.keyButtonHighlighted]}
+                          onPress={() => handleCustomKeyPress(letters, letters)}
+                        >
+                          <ThemedText variant="bodyMedium" color={isHighlighted ? theme.primary : theme.textPrimary}>
+                            {letters}
+                          </ThemedText>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  
+                  {/* 第二行 */}
+                  <View style={styles.keyboardRow}>
+                    {['GHI', 'JKL', 'MNO'].map((letters, idx) => {
+                      const nextChar = getNextExpectedChar();
+                      const isHighlighted = nextChar && charBelongsToKey(nextChar, letters);
+                      return (
+                        <TouchableOpacity
+                          key={idx}
+                          style={[styles.keyButton, styles.letterKey, isHighlighted && styles.keyButtonHighlighted]}
+                          onPress={() => handleCustomKeyPress(letters, letters)}
+                        >
+                          <ThemedText variant="bodyMedium" color={isHighlighted ? theme.primary : theme.textPrimary}>
+                            {letters}
+                          </ThemedText>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  
+                  {/* 第三行 */}
+                  <View style={styles.keyboardRow}>
+                    {['PQRS', 'TUV', 'WXYZ'].map((letters, idx) => {
+                      const nextChar = getNextExpectedChar();
+                      const isHighlighted = nextChar && charBelongsToKey(nextChar, letters);
+                      return (
+                        <TouchableOpacity
+                          key={idx}
+                          style={[styles.keyButton, styles.letterKey, isHighlighted && styles.keyButtonHighlighted]}
+                          onPress={() => handleCustomKeyPress(letters, letters)}
+                        >
+                          <ThemedText variant="bodyMedium" color={isHighlighted ? theme.primary : theme.textPrimary}>
+                            {letters}
+                          </ThemedText>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  
+                  {/* 第四行：123 和语音 */}
+                  <View style={styles.keyboardRow}>
+                    <TouchableOpacity
+                      style={[styles.keyButton, styles.letterKey]}
+                      onPress={() => {}} // 暂不实现数字切换
+                    >
+                      <ThemedText variant="bodyMedium" color={theme.textMuted}>123</ThemedText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.keyButton, styles.letterKey, styles.voiceKey]}
+                      onPressIn={startRecording}
+                      onPressOut={stopRecordingAndRecognize}
+                    >
+                      <FontAwesome6
+                        name={isRecording ? "stop" : "microphone"}
+                        size={20}
+                        color={isRecording ? theme.error : theme.primary}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* 第五列：功能键 */}
+                <View style={styles.keyboardColumn}>
+                  <TouchableOpacity
+                    style={[styles.keyButton, styles.functionKey]}
+                    onPress={() => handleCustomKeyPress('⌫', '')}
+                  >
+                    <FontAwesome6 name="delete-left" size={18} color={theme.textPrimary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.keyButton, styles.functionKey]}
+                    onPress={() => handleCustomKeyPress('清空', '')}
+                  >
+                    <ThemedText variant="caption" color={theme.textPrimary}>清空</ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.keyButton, styles.functionKey, styles.spaceKey]}
+                    onPress={() => handleCustomKeyPress('空格', '')}
+                  >
+                    <ThemedText variant="caption" color={theme.textPrimary}>空格</ThemedText>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
 
           {/* Navigation Buttons */}
           <View style={styles.navButtons}>
