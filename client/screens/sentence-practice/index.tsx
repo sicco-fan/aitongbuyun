@@ -393,8 +393,15 @@ export default function SentencePracticeScreen() {
   }, []);
 
   const handleInputChange = useCallback((text: string) => {
-    const inputLower = text.toLowerCase();
     const currentWordStatuses = wordStatusesRef.current;
+
+    // 检测是否输入了空格或回车（用户确认单词）
+    const lastChar = text[text.length - 1];
+    const isConfirmChar = lastChar === ' ' || lastChar === '\n';
+    
+    // 提取实际单词内容（去掉末尾的空格/回车）
+    const actualInput = isConfirmChar ? text.slice(0, -1) : text;
+    const inputLower = actualInput.toLowerCase();
 
     // 空输入时重置
     if (inputLower.length === 0) {
@@ -406,11 +413,35 @@ export default function SentencePracticeScreen() {
     // 获取未完成的单词
     const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
     if (incompleteWords.length === 0) {
-      setCurrentInput(text);
+      setCurrentInput('');
       return;
     }
 
-    // 检查是否完全匹配某个单词
+    // 如果用户按了空格/回车，强制匹配当前输入
+    if (isConfirmChar) {
+      const matchedWord = incompleteWords.find(w => w.word.toLowerCase() === inputLower);
+      
+      if (matchedWord) {
+        // 匹配成功，显示单词
+        updateWordStatusesWithRef(prev => prev.map(ws => {
+          if (ws.index === matchedWord.index) {
+            return {
+              ...ws,
+              revealed: true,
+              revealedChars: new Array(ws.word.length).fill(true),
+              errorCharIndex: -1,
+            };
+          }
+          return ws;
+        }));
+      }
+      // 无论匹配成功与否，都清空输入框
+      setCurrentInput('');
+      setTargetWordIndexWithRef(null);
+      return;
+    }
+
+    // 正常输入流程：检查是否完全匹配某个单词
     const matchedWord = incompleteWords.find(w => w.word.toLowerCase() === inputLower);
 
     // 检查是否有其他单词以当前输入开头（说明用户可能还在输入）
@@ -439,7 +470,7 @@ export default function SentencePracticeScreen() {
       return;
     }
 
-    // 输入过程中只保留用户输入，不显示任何提示
+    // 输入过程中只保留用户输入
     setCurrentInput(text);
   }, [updateWordStatusesWithRef, setTargetWordIndexWithRef]);
 
