@@ -19,6 +19,27 @@ import { Audio } from 'expo-av';
 // 后端服务地址
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
+// 语速设定：每分钟150个单词
+const WORDS_PER_MINUTE = 150;
+
+/**
+ * 根据句子文本计算预估时长（秒）
+ * @param text 句子文本
+ * @returns 预估时长（秒）
+ */
+const calculateEstimatedDuration = (text: string): number => {
+  // 统计单词数量（按空格分割，过滤空字符串）
+  const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+  const wordCount = words.length;
+  
+  // 计算时长：单词数 / (150单词/分钟) = 分钟数，转换为秒
+  const durationMinutes = wordCount / WORDS_PER_MINUTE;
+  const durationSeconds = durationMinutes * 60;
+  
+  // 至少给0.5秒，避免太短
+  return Math.max(0.5, durationSeconds);
+};
+
 interface SentenceItem {
   id: number;
   sentence_file_id: number;
@@ -105,28 +126,64 @@ export default function EditSentenceAudioScreen() {
         console.log('[loadFile] 音频 URL:', result.file.original_audio_signed_url);
         console.log('[loadFile] 音频时长:', result.file.original_duration);
 
+        // 设置音频时长（后端字段是 original_duration，单位是毫秒）
+        if (result.file.original_duration) {
+          setDuration(result.file.original_duration / 1000); // 转换为秒
+        }
+
         // 如果已经有句子数据，加载它们
         if (result.file.sentences && result.file.sentences.length > 0) {
-          setSentences(result.file.sentences);
-          // 设置音频时长（后端字段是 original_duration，单位是毫秒）
-          if (result.file.original_duration) {
-            setDuration(result.file.original_duration / 1000); // 转换为秒
-          }
+          // 对句子进行时间预估处理
+          const processedSentences = result.file.sentences.map((sentence: SentenceItem, index: number, arr: SentenceItem[]) => {
+            // 如果已经保存过时间，保持不变
+            if (sentence.start_time !== null && sentence.end_time !== null) {
+              return sentence;
+            }
+            
+            // 没有保存过时间，计算预估时间
+            const estimatedDuration = calculateEstimatedDuration(sentence.text);
+            
+            // 开始时间：上一句的结束时间，或者0
+            let startTime = 0;
+            if (index > 0 && arr[index - 1].end_time !== null) {
+              startTime = arr[index - 1].end_time!;
+            }
+            
+            // 结束时间 = 开始时间 + 预估时长
+            const endTime = startTime + estimatedDuration;
+            
+            return {
+              ...sentence,
+              start_time: startTime,
+              end_time: endTime,
+            };
+          });
+          
+          setSentences(processedSentences);
+          console.log('[loadFile] 加载已有句子:', processedSentences.length, '个');
         } else if (result.file.text_content) {
-          // 否则从文本内容创建句子
+          // 从文本内容创建句子，并计算预估时间
           const lines = result.file.text_content.split(/\n\s*\n/);
+          let currentTime = 0;
+          
           const newSentences = lines
             .map((line: string) => line.trim())
             .filter((line: string) => line.length > 0)
-            .map((line: string, index: number) => ({
-              id: 0,
-              sentence_file_id: fileId,
-              text: line,
-              order_number: index + 1,
-              start_time: null,
-              end_time: null,
-              audio_url: null,
-            }));
+            .map((line: string, index: number) => {
+              const estimatedDuration = calculateEstimatedDuration(line);
+              const sentence = {
+                id: 0,
+                sentence_file_id: fileId,
+                text: line,
+                order_number: index + 1,
+                start_time: currentTime,
+                end_time: currentTime + estimatedDuration,
+                audio_url: null,
+              };
+              // 更新当前时间，供下一句使用
+              currentTime = sentence.end_time;
+              return sentence;
+            });
           setSentences(newSentences);
           console.log('[loadFile] 从文本创建句子:', newSentences.length, '个');
         }
@@ -416,7 +473,7 @@ export default function EditSentenceAudioScreen() {
     setSentences(newSentences);
   };
 
-  // 确认并跳转下一句，同时自动调整下一句的开始时间
+  // 确认并跳转下一句，同时自动调整下一句的开始时间和预估结束时间
   const confirmAndNext = () => {
     if (currentIndex < sentences.length - 1) {
       const nextIndex = currentIndex + 1;
@@ -425,12 +482,21 @@ export default function EditSentenceAudioScreen() {
       if (currentEnd) {
         // 下一句的开始时间 = 当前句子的结束时间
         const newSentences = [...sentences];
+        const nextSentence = newSentences[nextIndex];
+        
+        // 计算预估时长
+        const estimatedDuration = calculateEstimatedDuration(nextSentence.text);
+        
         newSentences[nextIndex] = {
-          ...newSentences[nextIndex],
+          ...nextSentence,
           start_time: currentEnd,
+          // 如果下一句还没有结束时间，或者结束时间小于新的开始时间，设置预估结束时间
+          end_time: nextSentence.end_time && nextSentence.end_time > currentEnd 
+            ? nextSentence.end_time 
+            : currentEnd + estimatedDuration,
         };
         setSentences(newSentences);
-        console.log(`自动设置第 ${nextIndex + 1} 句开始时间: ${currentEnd}s`);
+        console.log(`自动设置第 ${nextIndex + 1} 句: 开始=${currentEnd}s, 预估结束=${newSentences[nextIndex].end_time}s`);
       }
 
       setCurrentIndex(nextIndex);
@@ -611,6 +677,10 @@ export default function EditSentenceAudioScreen() {
     ? currentSentence.end_time - currentSentence.start_time
     : 0;
 
+  // 计算预估时长
+  const estimatedDuration = currentSentence ? calculateEstimatedDuration(currentSentence.text) : 0;
+  const wordCount = currentSentence ? currentSentence.text.trim().split(/\s+/).filter(w => w.length > 0).length : 0;
+
   const hasValidTime = currentSentence && currentSentence.start_time !== null && currentSentence.end_time !== null && currentSentence.end_time > currentSentence.start_time;
 
   // 加载中
@@ -692,6 +762,9 @@ export default function EditSentenceAudioScreen() {
             <Text style={styles.durationLabel}>时长</Text>
             <Text style={styles.durationValue}>
               {hasValidTime ? formatTime(sentenceDuration) : '--:--.--'}
+            </Text>
+            <Text style={styles.durationHintTextSmall}>
+              {wordCount} 词 / 预估 {formatTime(estimatedDuration)}
             </Text>
           </View>
           <View style={styles.durationDivider} />
@@ -914,6 +987,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+  },
+  durationHintTextSmall: {
+    color: '#666',
+    fontSize: 10,
+    marginTop: 4,
   },
 
   // 音频时长提示
