@@ -733,12 +733,8 @@ export default function SentencePracticeScreen() {
       setCurrentInput(newInput);
       // 检查是否完成匹配
       handleInputChange(newInput);
-    } else {
-      // 没有找到匹配，输入第一个字母作为默认
-      const newInput = currentInput + keyLetters[0].toLowerCase();
-      setCurrentInput(newInput);
-      handleInputChange(newInput);
     }
+    // 如果期望字符不在当前按键中，不输入任何内容（用户需要按正确的键）
   }, [currentInput, getNextExpectedChar, charBelongsToKey, handleInputChange, setTargetWordIndexWithRef]);
 
   // 检查是否完成

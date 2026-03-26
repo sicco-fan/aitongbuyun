@@ -197,7 +197,8 @@ export const createStyles = (theme: Theme) => {
     // Input Section - 紧跟句子区域
     inputSection: {
       paddingHorizontal: Spacing.lg,
-      paddingVertical: Spacing.md,
+      paddingTop: Spacing.sm,
+      paddingBottom: Spacing.sm,
       backgroundColor: theme.backgroundRoot,
     },
     inputWrapper: {
@@ -267,12 +268,13 @@ export const createStyles = (theme: Theme) => {
     // Custom Keyboard
     customKeyboardContainer: {
       width: '100%',
+      marginTop: -Spacing.sm, // 向上移动
     },
     customInputRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: Spacing.sm,
-      marginBottom: Spacing.sm,
+      marginBottom: Spacing.xs,
     },
     customInputDisplay: {
       flex: 1,
@@ -280,11 +282,11 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.lg,
       borderWidth: 2,
       borderColor: '#A5D6A7',
-      paddingVertical: Spacing.lg,
+      paddingVertical: Spacing.md,
       paddingHorizontal: Spacing.lg,
       alignItems: 'center',
       justifyContent: 'center',
-      minHeight: 56,
+      minHeight: 48,
     },
     navBtnSmall: {
       width: 40,
