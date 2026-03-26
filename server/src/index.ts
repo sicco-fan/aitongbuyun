@@ -11,6 +11,7 @@ import authRouter from "./routes/auth";
 import statsRouter from "./routes/stats";
 import shareRouter from "./routes/share";
 import myFilesRouter from "./routes/my-files";
+import errorWordsRouter from "./routes/error-words";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -52,6 +53,9 @@ app.use('/api/v1/share', shareRouter);
 
 // 我的句库路由
 app.use('/api/v1/my-files', myFilesRouter);
+
+// 错题本路由
+app.use('/api/v1/error-words', errorWordsRouter);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

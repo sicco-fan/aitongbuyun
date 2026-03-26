@@ -115,5 +115,31 @@ export const createStyles = (theme: Theme) => {
     emptySubtext: {
       textAlign: 'center',
     },
+    errorCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.lg,
+      marginBottom: Spacing.xl,
+      borderWidth: 1,
+    },
+    errorIconContainer: {
+      width: 44,
+      height: 44,
+      borderRadius: BorderRadius.lg,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    errorInfo: {
+      flex: 1,
+      marginLeft: Spacing.md,
+    },
+    errorBadge: {
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.xs,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.backgroundTertiary,
+      marginRight: Spacing.sm,
+    },
   });
 };

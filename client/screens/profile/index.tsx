@@ -9,7 +9,6 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
-import { getErrorWords } from '@/utils/learningStorage';
 import { Spacing, BorderRadius } from '@/constants/theme';
 
 // 后端服务地址
@@ -60,8 +59,11 @@ export default function ProfileScreen() {
         
         // 获取学习记录统计（如果有登录）
         let learnedSentences = 0;
+        let errorWordsCount = 0;
+        
         if (isAuthenticated && user?.id) {
           try {
+            // 获取学习记录统计
             const statsResponse = await fetch(
               `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/stats?user_id=${user.id}`
             );
@@ -69,19 +71,26 @@ export default function ProfileScreen() {
             if (statsData.success) {
               learnedSentences = statsData.data?.learnedSentences || 0;
             }
+            
+            // 获取错题统计
+            const errorResponse = await fetch(
+              `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/error-words/stats?user_id=${user.id}`
+            );
+            const errorData = await errorResponse.json();
+            if (errorData.success) {
+              errorWordsCount = errorData.data?.uniqueWords || 0;
+            }
           } catch (e) {
             console.log('获取学习统计失败:', e);
           }
         }
-
-        const errorWords = await getErrorWords();
 
         setStats({
           totalFiles,
           totalSentences,
           learnedSentences,
           totalAttempts: 0,
-          errorWordsCount: errorWords.length,
+          errorWordsCount,
         });
       }
     } catch (error) {

@@ -176,7 +176,7 @@ export default function SentencePracticeScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
-  const params = useSafeSearchParams<{ fileId: number; title: string }>();
+  const params = useSafeSearchParams<{ fileId: number; title: string; sentenceIndex?: number; errorPriority?: boolean }>();
   const { user, isAuthenticated } = useAuth();
 
   const fileId = params.fileId;
@@ -186,6 +186,8 @@ export default function SentencePracticeScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [resumingFromProgress, setResumingFromProgress] = useState(false); // 是否从进度恢复
+  const [errorPriority, setErrorPriority] = useState(params.errorPriority || false); // 错题优先模式
+  const [errorSentences, setErrorSentences] = useState<Array<{ sentence_index: number; totalErrors: number }>>([]); // 错题句子列表
 
   // 单词状态
   const [wordStatuses, setWordStatuses] = useState<WordStatus[]>([]);
@@ -256,51 +258,88 @@ export default function SentencePracticeScreen() {
 
       if (data.sentences) {
         setFile(data.file);
-        setSentences(data.sentences);
+        let loadedSentences = data.sentences;
         console.log(`[句库学习] 加载了 ${data.sentences.length} 个可学习句子`);
         
-        // 获取学习进度
-        if (isAuthenticated && user?.id) {
+        // 如果是错题优先模式，获取错题句子列表并重新排序
+        if (errorPriority && isAuthenticated && user?.id) {
           try {
             /**
-             * 服务端文件：server/src/routes/learning.ts
-             * 接口：GET /api/v1/learning-records/progress/:fileId
-             * Query 参数：user_id: string
+             * 服务端文件：server/src/routes/error-words.ts
+             * 接口：GET /api/v1/error-words/sentences
+             * Query 参数：user_id: string, sentence_file_id: number
              */
-            const progressResponse = await fetch(
-              `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${fileId}?user_id=${user.id}`
+            const errorResponse = await fetch(
+              `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/error-words/sentences?user_id=${user.id}&sentence_file_id=${fileId}`
             );
-            const progressData = await progressResponse.json();
+            const errorData = await errorResponse.json();
             
-            if (progressData.success && progressData.progress) {
-              const savedIndex = progressData.progress.lastSentenceIndex;
-              // 如果有进度且不是第一句，询问是否继续
-              if (savedIndex > 0 && savedIndex < data.sentences.length) {
-                setResumingFromProgress(true);
-                Alert.alert(
-                  '继续学习',
-                  `上次学习到第 ${savedIndex + 1} 句，是否继续？`,
-                  [
-                    { 
-                      text: '从头开始', 
-                      onPress: () => {
-                        setCurrentIndex(0);
-                        setResumingFromProgress(false);
-                      }
-                    },
-                    { 
-                      text: '继续学习', 
-                      onPress: () => {
-                        setCurrentIndex(savedIndex);
-                        setResumingFromProgress(false);
-                      }
-                    }
-                  ]
-                );
-              }
+            if (errorData.success && errorData.data && errorData.data.length > 0) {
+              setErrorSentences(errorData.data);
+              
+              const errorIndexSet = new Set(errorData.data.map((e: { sentence_index: number }) => e.sentence_index));
+              
+              // 将有错题的句子移到前面
+              const errorSentencesList = loadedSentences.filter((s: Sentence) => errorIndexSet.has(s.sentence_index));
+              const normalSentencesList = loadedSentences.filter((s: Sentence) => !errorIndexSet.has(s.sentence_index));
+              
+              loadedSentences = [...errorSentencesList, ...normalSentencesList];
+              console.log(`[错题优先] 已将 ${errorSentencesList.length} 个错题句子移到前面`);
             }
-          } catch (progressError) {
-            console.log('[学习进度] 获取进度失败:', progressError);
+          } catch (errorError) {
+            console.log('[错题优先] 获取错题句子失败:', errorError);
+          }
+        }
+        
+        setSentences(loadedSentences);
+        
+        // 如果有传入指定的句子索引，直接跳转
+        if (params.sentenceIndex !== undefined && params.sentenceIndex < loadedSentences.length) {
+          setCurrentIndex(params.sentenceIndex);
+        } else {
+          // 获取学习进度
+          if (isAuthenticated && user?.id && !errorPriority) {
+            try {
+              /**
+               * 服务端文件：server/src/routes/learning.ts
+               * 接口：GET /api/v1/learning-records/progress/:fileId
+               * Query 参数：user_id: string
+               */
+              const progressResponse = await fetch(
+                `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${fileId}?user_id=${user.id}`
+              );
+              const progressData = await progressResponse.json();
+              
+              if (progressData.success && progressData.progress) {
+                const savedIndex = progressData.progress.lastSentenceIndex;
+                // 如果有进度且不是第一句，询问是否继续
+                if (savedIndex > 0 && savedIndex < loadedSentences.length) {
+                  setResumingFromProgress(true);
+                  Alert.alert(
+                    '继续学习',
+                    `上次学习到第 ${savedIndex + 1} 句，是否继续？`,
+                    [
+                      { 
+                        text: '从头开始', 
+                        onPress: () => {
+                          setCurrentIndex(0);
+                          setResumingFromProgress(false);
+                        }
+                      },
+                      { 
+                        text: '继续学习', 
+                        onPress: () => {
+                          setCurrentIndex(savedIndex);
+                          setResumingFromProgress(false);
+                        }
+                      }
+                    ]
+                  );
+                }
+              }
+            } catch (progressError) {
+              console.log('[学习进度] 获取进度失败:', progressError);
+            }
           }
         }
       }
@@ -309,7 +348,7 @@ export default function SentencePracticeScreen() {
     } finally {
       setLoading(false);
     }
-  }, [fileId, isAuthenticated, user?.id]);
+  }, [fileId, isAuthenticated, user?.id, errorPriority, params.sentenceIndex]);
 
   // 保存学习进度
   const saveProgress = useCallback(async (sentenceIndex: number) => {
@@ -959,8 +998,23 @@ export default function SentencePracticeScreen() {
       setTimeout(() => {
         setHintWordIndex(null);
       }, 1000);
+      
+      // 记录错题：用户查看提示说明不知道这个单词
+      if (isAuthenticated && user?.id && fileId && currentSentence) {
+        fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/error-words`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user.id,
+            sentence_file_id: fileId,
+            sentence_index: currentSentence.sentence_index,
+            word: ws.word,
+            sentence_text: currentSentence.text,
+          }),
+        }).catch(e => console.log('记录错题失败:', e));
+      }
     }
-  }, [wordTranslations]);
+  }, [wordTranslations, isAuthenticated, user?.id, fileId, currentSentence]);
 
   // 跳转到上一句
   const goToPrevSentence = useCallback(() => {

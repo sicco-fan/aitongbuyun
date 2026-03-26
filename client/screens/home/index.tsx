@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   ScrollView,
   TouchableOpacity,
@@ -9,6 +9,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/contexts/AuthContext';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -25,13 +26,20 @@ interface SentenceFile {
   original_duration: number;
 }
 
+interface ErrorStats {
+  uniqueWords: number;
+  totalErrors: number;
+}
+
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
 export default function HomeScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
+  const { user, isAuthenticated } = useAuth();
   const [sentenceFiles, setSentenceFiles] = useState<SentenceFile[]>([]);
+  const [errorStats, setErrorStats] = useState<ErrorStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -45,13 +53,28 @@ export default function HomeScreen() {
         const filesWithReady = sentenceFilesData.files.filter((f: SentenceFile) => f.ready_sentences_count > 0);
         setSentenceFiles(filesWithReady);
       }
+      
+      // 获取错题统计
+      if (isAuthenticated && user?.id) {
+        try {
+          const errorRes = await fetch(
+            `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/error-words/stats?user_id=${user.id}`
+          );
+          const errorData = await errorRes.json();
+          if (errorData.success) {
+            setErrorStats(errorData.data);
+          }
+        } catch (e) {
+          console.log('获取错题统计失败:', e);
+        }
+      }
     } catch (error) {
       console.error('获取数据失败:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isAuthenticated, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -101,6 +124,33 @@ export default function HomeScreen() {
             开始学习
           </ThemedText>
         </ThemedView>
+
+        {/* 错题本快捷入口 */}
+        {isAuthenticated && errorStats && errorStats.uniqueWords > 0 && (
+          <TouchableOpacity
+            style={[styles.errorCard, { backgroundColor: theme.error + '10', borderColor: theme.error + '30' }]}
+            onPress={() => router.push('/error-words')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.errorIconContainer, { backgroundColor: theme.error + '20' }]}>
+              <FontAwesome6 name="exclamation-triangle" size={20} color={theme.error} />
+            </View>
+            <View style={styles.errorInfo}>
+              <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                待攻克词汇
+              </ThemedText>
+              <ThemedText variant="small" color={theme.textSecondary}>
+                {errorStats.uniqueWords} 个薄弱词汇等你练习
+              </ThemedText>
+            </View>
+            <View style={styles.errorBadge}>
+              <ThemedText variant="smallMedium" color={theme.error}>
+                {errorStats.totalErrors} 次错误
+              </ThemedText>
+            </View>
+            <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+          </TouchableOpacity>
+        )}
 
         {/* 句库学习 Section */}
         {sentenceFiles.length > 0 && (
