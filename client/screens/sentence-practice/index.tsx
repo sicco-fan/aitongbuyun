@@ -1200,7 +1200,7 @@ export default function SentencePracticeScreen() {
                       style={[styles.keyButton, styles.symbolKey]}
                       onPress={() => handleCustomKeyPress(symbol, symbol)}
                     >
-                      <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                      <ThemedText variant="h4" color={theme.textPrimary}>
                         {symbol === '\'' ? "'" : symbol}
                       </ThemedText>
                     </TouchableOpacity>
@@ -1211,68 +1211,71 @@ export default function SentencePracticeScreen() {
                 <View style={styles.keyboardLetterSection}>
                   {/* 第一行 */}
                   <View style={styles.keyboardRow}>
-                    {['ABC', 'DEF'].map((letters, idx) => {
-                      const nextChar = getNextExpectedChar();
-                      const isHighlighted = nextChar && charBelongsToKey(nextChar, letters);
-                      return (
-                        <TouchableOpacity
-                          key={idx}
-                          style={[styles.keyButton, styles.letterKey, isHighlighted && styles.keyButtonHighlighted]}
-                          onPress={() => handleCustomKeyPress(letters, letters)}
-                        >
-                          <ThemedText variant="bodyMedium" color={isHighlighted ? theme.primary : theme.textPrimary}>
-                            {letters}
-                          </ThemedText>
-                        </TouchableOpacity>
-                      );
-                    })}
+                    <TouchableOpacity
+                      style={[styles.keyButton, styles.letterKey]}
+                      onPress={() => handleCustomKeyPress('ABC', 'ABC')}
+                    >
+                      <ThemedText variant="h4" color={theme.textPrimary}>ABC</ThemedText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.keyButton, styles.letterKey]}
+                      onPress={() => handleCustomKeyPress('DEF', 'DEF')}
+                    >
+                      <ThemedText variant="h4" color={theme.textPrimary}>DEF</ThemedText>
+                    </TouchableOpacity>
                   </View>
                   
                   {/* 第二行 */}
                   <View style={styles.keyboardRow}>
-                    {['GHI', 'JKL', 'MNO'].map((letters, idx) => {
-                      const nextChar = getNextExpectedChar();
-                      const isHighlighted = nextChar && charBelongsToKey(nextChar, letters);
-                      return (
-                        <TouchableOpacity
-                          key={idx}
-                          style={[styles.keyButton, styles.letterKey, isHighlighted && styles.keyButtonHighlighted]}
-                          onPress={() => handleCustomKeyPress(letters, letters)}
-                        >
-                          <ThemedText variant="bodyMedium" color={isHighlighted ? theme.primary : theme.textPrimary}>
-                            {letters}
-                          </ThemedText>
-                        </TouchableOpacity>
-                      );
-                    })}
+                    <TouchableOpacity
+                      style={[styles.keyButton, styles.letterKey]}
+                      onPress={() => handleCustomKeyPress('GHI', 'GHI')}
+                    >
+                      <ThemedText variant="h4" color={theme.textPrimary}>GHI</ThemedText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.keyButton, styles.letterKey]}
+                      onPress={() => handleCustomKeyPress('JKL', 'JKL')}
+                    >
+                      <ThemedText variant="h4" color={theme.textPrimary}>JKL</ThemedText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.keyButton, styles.letterKey]}
+                      onPress={() => handleCustomKeyPress('MNO', 'MNO')}
+                    >
+                      <ThemedText variant="h4" color={theme.textPrimary}>MNO</ThemedText>
+                    </TouchableOpacity>
                   </View>
                   
                   {/* 第三行 */}
                   <View style={styles.keyboardRow}>
-                    {['PQRS', 'TUV', 'WXYZ'].map((letters, idx) => {
-                      const nextChar = getNextExpectedChar();
-                      const isHighlighted = nextChar && charBelongsToKey(nextChar, letters);
-                      return (
-                        <TouchableOpacity
-                          key={idx}
-                          style={[styles.keyButton, styles.letterKey, isHighlighted && styles.keyButtonHighlighted]}
-                          onPress={() => handleCustomKeyPress(letters, letters)}
-                        >
-                          <ThemedText variant="bodyMedium" color={isHighlighted ? theme.primary : theme.textPrimary}>
-                            {letters}
-                          </ThemedText>
-                        </TouchableOpacity>
-                      );
-                    })}
+                    <TouchableOpacity
+                      style={[styles.keyButton, styles.letterKey]}
+                      onPress={() => handleCustomKeyPress('PQRS', 'PQRS')}
+                    >
+                      <ThemedText variant="h4" color={theme.textPrimary}>PQRS</ThemedText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.keyButton, styles.letterKey]}
+                      onPress={() => handleCustomKeyPress('TUV', 'TUV')}
+                    >
+                      <ThemedText variant="h4" color={theme.textPrimary}>TUV</ThemedText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.keyButton, styles.letterKey]}
+                      onPress={() => handleCustomKeyPress('WXYZ', 'WXYZ')}
+                    >
+                      <ThemedText variant="h4" color={theme.textPrimary}>WXYZ</ThemedText>
+                    </TouchableOpacity>
                   </View>
                   
                   {/* 第四行：123 和语音 */}
                   <View style={styles.keyboardRow}>
                     <TouchableOpacity
                       style={[styles.keyButton, styles.letterKey]}
-                      onPress={() => {}} // 暂不实现数字切换
+                      onPress={() => {}}
                     >
-                      <ThemedText variant="bodyMedium" color={theme.textMuted}>123</ThemedText>
+                      <ThemedText variant="body" color={theme.textMuted}>123</ThemedText>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.keyButton, styles.letterKey, styles.voiceKey]}
@@ -1281,7 +1284,7 @@ export default function SentencePracticeScreen() {
                     >
                       <FontAwesome6
                         name={isRecording ? "stop" : "microphone"}
-                        size={20}
+                        size={22}
                         color={isRecording ? theme.error : theme.primary}
                       />
                     </TouchableOpacity>
@@ -1294,19 +1297,19 @@ export default function SentencePracticeScreen() {
                     style={[styles.keyButton, styles.functionKey]}
                     onPress={() => handleCustomKeyPress('⌫', '')}
                   >
-                    <FontAwesome6 name="delete-left" size={18} color={theme.textPrimary} />
+                    <FontAwesome6 name="delete-left" size={20} color={theme.textPrimary} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.keyButton, styles.functionKey]}
                     onPress={() => handleCustomKeyPress('清空', '')}
                   >
-                    <ThemedText variant="caption" color={theme.textPrimary}>清空</ThemedText>
+                    <ThemedText variant="body" color={theme.textPrimary}>清空</ThemedText>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.keyButton, styles.functionKey, styles.spaceKey]}
                     onPress={() => handleCustomKeyPress('空格', '')}
                   >
-                    <ThemedText variant="caption" color={theme.textPrimary}>空格</ThemedText>
+                    <ThemedText variant="body" color={theme.textPrimary}>空格</ThemedText>
                   </TouchableOpacity>
                 </View>
               </View>

@@ -280,58 +280,49 @@ export const createStyles = (theme: Theme) => {
     },
     customKeyboard: {
       flexDirection: 'row',
-      backgroundColor: theme.backgroundDefault,
+      backgroundColor: '#D1D5DB', // 浅灰底色
       borderRadius: BorderRadius.lg,
-      padding: Spacing.xs,
-      gap: Spacing.xs,
+      padding: 6,
+      gap: 4,
     },
     keyboardColumn: {
       flexDirection: 'column',
-      gap: Spacing.xs,
+      gap: 4,
     },
     keyboardLetterSection: {
       flex: 1,
       flexDirection: 'column',
-      gap: Spacing.xs,
+      gap: 4,
     },
     keyboardRow: {
       flexDirection: 'row',
-      gap: Spacing.xs,
-      justifyContent: 'center',
+      gap: 4,
     },
     keyButton: {
-      borderRadius: BorderRadius.md,
+      borderRadius: 6,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: theme.backgroundDefault,
-      borderWidth: 1,
-      borderColor: theme.borderLight,
     },
     symbolKey: {
-      width: 44,
-      height: 44,
-      backgroundColor: theme.backgroundTertiary,
+      width: 48,
+      height: 48,
+      backgroundColor: '#9CA3AF', // 深灰色
     },
     letterKey: {
       flex: 1,
-      minHeight: 44,
-      backgroundColor: '#FFFFFF',
+      height: 48,
+      backgroundColor: '#FFFFFF', // 白色
     },
     functionKey: {
-      width: 44,
-      height: 44,
-      backgroundColor: theme.backgroundTertiary,
+      width: 48,
+      height: 48,
+      backgroundColor: '#9CA3AF', // 深灰色
     },
     spaceKey: {
-      height: 96, // 合并两行的高度
+      height: 100, // 合并两行
     },
     voiceKey: {
-      flex: 0.6,
-    },
-    keyButtonHighlighted: {
-      borderColor: theme.primary,
-      backgroundColor: theme.primary + '15',
-      borderWidth: 2,
+      flex: 1,
     },
   });
 };
