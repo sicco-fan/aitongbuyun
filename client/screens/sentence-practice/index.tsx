@@ -703,70 +703,29 @@ export default function SentencePracticeScreen() {
 
   // 当前按键序列
   const [currentKeySequence, setCurrentKeySequence] = useState<string[]>([]);
-  
-  // 候选词列表
-  const [candidates, setCandidates] = useState<{ word: string; index: number }[]>([]);
-
-  // 根据按键序列更新候选词
-  const updateCandidates = useCallback((sequence: string[]) => {
-    if (sequence.length === 0) {
-      setCandidates([]);
-      return;
-    }
-    
-    // 找到所有匹配的单词
-    const matched = wordKeySequences.filter(item => {
-      const targetSeq = item.keySequence;
-      if (sequence.length > targetSeq.length) return false;
-      return sequence.every((k, i) => k === targetSeq[i]);
-    });
-    
-    // 按完全匹配优先、然后按单词长度排序
-    matched.sort((a, b) => {
-      const aExact = a.keySequence.length === sequence.length;
-      const bExact = b.keySequence.length === sequence.length;
-      if (aExact && !bExact) return -1;
-      if (!aExact && bExact) return 1;
-      return a.word.length - b.word.length;
-    });
-    
-    setCandidates(matched.map(item => ({ word: item.word, index: item.index })));
-  }, [wordKeySequences]);
-
-  // 点击候选词确认
-  const handleCandidatePress = useCallback((word: string, index: number) => {
-    handleInputChange(word);
-    setCurrentInput('');
-    setCurrentKeySequence([]);
-    setCandidates([]);
-    setTargetWordIndexWithRef(null);
-  }, [handleInputChange, setTargetWordIndexWithRef]);
 
   // 处理自建键盘按键
   const handleCustomKeyPress = useCallback((key: string, keyLetters: string) => {
     if (key === '⌫') {
       setCurrentInput(prev => prev.slice(0, -1));
-      setCurrentKeySequence(prev => {
-        const newSeq = prev.slice(0, -1);
-        updateCandidates(newSeq);
-        return newSeq;
-      });
+      setCurrentKeySequence(prev => prev.slice(0, -1));
       return;
     }
     
     if (key === '清空') {
       setCurrentInput('');
       setCurrentKeySequence([]);
-      setCandidates([]);
       setTargetWordIndexWithRef(null);
       return;
     }
     
     if (key === '空格') {
-      // 空格键：确认第一个候选词
-      if (candidates.length > 0) {
-        const first = candidates[0];
-        handleCandidatePress(first.word, first.index);
+      // 空格键：确认当前输入
+      if (currentInput.length > 0) {
+        handleInputChange(currentInput);
+        setCurrentInput('');
+        setCurrentKeySequence([]);
+        setTargetWordIndexWithRef(null);
       }
       return;
     }
@@ -777,29 +736,46 @@ export default function SentencePracticeScreen() {
     setCurrentKeySequence(prev => {
       const newSequence = [...prev, pressedKey];
       
-      // 更新候选词
-      updateCandidates(newSequence);
-      
-      // 显示第一个候选词的前缀（如果有匹配）
+      // 找到所有匹配的单词
       const matched = wordKeySequences.filter(item => {
         const targetSeq = item.keySequence;
         if (newSequence.length > targetSeq.length) return false;
         return newSequence.every((k, i) => k === targetSeq[i]);
       });
       
-      if (matched.length > 0) {
-        // 显示第一个匹配单词的前缀
-        const firstMatch = matched[0];
-        const wordChars = firstMatch.word.slice(0, newSequence.length);
-        setCurrentInput(wordChars);
-        setTargetWordIndexWithRef(firstMatch.index);
+      if (matched.length === 0) {
+        // 没有匹配，不更新序列
+        return prev;
+      }
+      
+      // 检查是否有完全匹配（按键序列长度等于单词按键序列长度）
+      const exactMatches = matched.filter(item => item.keySequence.length === newSequence.length);
+      
+      if (exactMatches.length > 0) {
+        // 有完全匹配，自动确认第一个
+        const word = exactMatches[0];
+        setCurrentInput(word.word);
+        setTargetWordIndexWithRef(word.index);
+        
+        // 延迟确认，让用户看到单词
+        setTimeout(() => {
+          handleInputChange(word.word);
+          setCurrentInput('');
+          setCurrentKeySequence([]);
+          setTargetWordIndexWithRef(null);
+        }, 100);
+        
         return newSequence;
       }
       
-      // 没有匹配，不更新序列
-      return prev;
+      // 没有完全匹配，显示第一个匹配单词的前缀
+      const firstMatch = matched[0];
+      const wordChars = firstMatch.word.slice(0, newSequence.length);
+      setCurrentInput(wordChars);
+      setTargetWordIndexWithRef(firstMatch.index);
+      return newSequence;
     });
-  }, [wordKeySequences, updateCandidates, setTargetWordIndexWithRef]);
+  }, [wordKeySequences, handleInputChange, setTargetWordIndexWithRef]);
 
   // 检查是否完成
   useEffect(() => {
@@ -1271,22 +1247,6 @@ export default function SentencePracticeScreen() {
               </View>
               
               {/* 候选词列表 */}
-              {candidates.length > 0 && (
-                <View style={styles.candidatesRow}>
-                  {candidates.map((candidate, idx) => (
-                    <TouchableOpacity
-                      key={candidate.word + idx}
-                      style={styles.candidateBtn}
-                      onPress={() => handleCandidatePress(candidate.word, candidate.index)}
-                    >
-                      <ThemedText variant="body" color={theme.primary}>
-                        {candidate.word}
-                      </ThemedText>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-              
               {/* 自建键盘 */}
               <View style={styles.customKeyboard}>
                 {/* 第一列：特殊符号 - 3行均匀分布 */}

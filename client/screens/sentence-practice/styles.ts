@@ -296,21 +296,6 @@ export const createStyles = (theme: Theme) => {
       justifyContent: 'center',
       alignItems: 'center',
     },
-    candidatesRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: Spacing.sm,
-      marginBottom: Spacing.sm,
-      paddingHorizontal: Spacing.xs,
-    },
-    candidateBtn: {
-      paddingHorizontal: Spacing.lg,
-      paddingVertical: Spacing.sm,
-      backgroundColor: theme.primary + '15',
-      borderRadius: BorderRadius.lg,
-      borderWidth: 1,
-      borderColor: theme.primary + '40',
-    },
     customKeyboard: {
       flexDirection: 'row',
       backgroundColor: '#D1D5DB',
