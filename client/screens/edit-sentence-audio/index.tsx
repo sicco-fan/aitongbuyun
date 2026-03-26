@@ -92,12 +92,43 @@ export default function EditSentenceAudioScreen() {
     sentenceId: null,
   });
 
+  // 文件列表（用于选择文件）
+  const [fileList, setFileList] = useState<SentenceFile[]>([]);
+  const [loadingList, setLoadingList] = useState(false);
+
   const currentSentence = sentences[currentIndex];
 
-  // 如果有fileId参数，直接加载该文件
+  // 加载文件列表
+  const loadFileList = async () => {
+    setLoadingList(true);
+    try {
+      /**
+       * 服务端文件：server/src/routes/sentence-files.ts
+       * 接口：GET /api/v1/sentence-files
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`);
+      const result = await response.json();
+      
+      if (result.files) {
+        // 只显示有文本内容的文件（text_ready 或 completed 状态）
+        const editableFiles = result.files.filter((f: SentenceFile) => 
+          f.status === 'text_ready' || f.status === 'completed' || f.status === 'audio_ready'
+        );
+        setFileList(editableFiles);
+      }
+    } catch (error) {
+      console.error('加载文件列表失败:', error);
+    } finally {
+      setLoadingList(false);
+    }
+  };
+
+  // 如果有fileId参数，直接加载该文件；否则加载文件列表
   useEffect(() => {
     if (params.fileId) {
       loadFile(params.fileId);
+    } else {
+      loadFileList();
     }
     return () => {
       if (soundRef.current) {
@@ -684,7 +715,7 @@ export default function EditSentenceAudioScreen() {
   const hasValidTime = currentSentence && currentSentence.start_time !== null && currentSentence.end_time !== null && currentSentence.end_time > currentSentence.start_time;
 
   // 加载中
-  if (loading) {
+  if (loading || loadingList) {
     return (
       <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
         <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a' }}>
@@ -695,15 +726,79 @@ export default function EditSentenceAudioScreen() {
     );
   }
 
+  // 没有指定文件ID，显示文件列表让用户选择
+  if (!params.fileId && fileList.length > 0) {
+    return (
+      <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
+        {/* 顶部状态栏 */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.headerTitle}>选择文件</Text>
+            <Text style={styles.headerInfo}>请选择要编辑的文件</Text>
+          </View>
+          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+            <FontAwesome6 name="xmark" size={20} color="#888" />
+          </TouchableOpacity>
+        </View>
+
+        {/* 文件列表 */}
+        <View style={{ flex: 1, padding: 16 }}>
+          {fileList.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#2a2a2a',
+                padding: 16,
+                borderRadius: 12,
+                marginBottom: 12,
+              }}
+              onPress={() => router.push('/edit-sentence-audio', { fileId: item.id })}
+            >
+              <View style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: '#00ff8820',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginRight: 12,
+              }}>
+                <FontAwesome6 name="music" size={18} color="#00ff88" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                <Text style={{ color: '#888', fontSize: 12, marginTop: 4 }}>
+                  {item.status === 'text_ready' ? '待设置时间轴' : 
+                   item.status === 'audio_ready' ? '时间轴已设置' : 
+                   item.status === 'completed' ? '已完成' : item.status}
+                </Text>
+              </View>
+              <FontAwesome6 name="chevron-right" size={16} color="#666" />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Screen>
+    );
+  }
+
   // 没有文件
   if (!file || sentences.length === 0) {
     return (
       <Screen backgroundColor="#1a1a1a" statusBarStyle="light">
         <ThemedView level="root" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a' }}>
           <FontAwesome6 name="folder-open" size={48} color="#666" />
-          <Text style={{ color: '#888', marginTop: 16 }}>没有找到文件</Text>
-          <TouchableOpacity style={{ marginTop: 24, padding: 16, backgroundColor: '#00ff88', borderRadius: 8 }} onPress={() => router.back()}>
-            <Text style={{ color: '#000', fontWeight: '600' }}>返回</Text>
+          <Text style={{ color: '#888', marginTop: 16, textAlign: 'center', paddingHorizontal: 32 }}>
+            {fileList.length === 0 ? '没有可编辑的文件\n请先上传音频并编辑文本' : '文件数据为空'}
+          </Text>
+          <TouchableOpacity 
+            style={{ marginTop: 24, padding: 16, backgroundColor: '#00ff88', borderRadius: 8 }} 
+            onPress={() => router.push('/create-sentence-file')}
+          >
+            <Text style={{ color: '#000', fontWeight: '600' }}>去上传</Text>
           </TouchableOpacity>
         </ThemedView>
       </Screen>
