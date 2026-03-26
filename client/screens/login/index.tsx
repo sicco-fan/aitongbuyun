@@ -98,7 +98,7 @@ export default function LoginScreen() {
       <View style={styles.container}>
         {/* 标题 */}
         <View style={styles.header}>
-          <ThemedText variant="h2" color={theme.textPrimary}>欢迎来到啃句大师</ThemedText>
+          <ThemedText variant="h2" color={theme.textPrimary}>欢迎来到AI听写云</ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.subtitle}>
             登录后可同步学习进度
           </ThemedText>
