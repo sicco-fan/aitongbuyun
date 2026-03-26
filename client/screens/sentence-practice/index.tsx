@@ -726,11 +726,13 @@ export default function SentencePracticeScreen() {
     }
     
     if (key === '空格') {
-      // 空格键：仅用于单词匹配成功后的确认
-      // 不应该用于强制确认不完整的单词
+      // 空格键：确认当前输入的单词
+      // 即使有更长的单词匹配，也确认当前输入
       const seq = currentKeySequenceRef.current;
       
-      // 检查当前输入是否完全匹配某个单词
+      if (seq.length === 0) return;
+      
+      // 找到当前按键序列对应的单词（完全匹配当前长度）
       const matchedWord = wordKeySequences.find(item => {
         const targetSeq = item.keySequence;
         return seq.length === targetSeq.length && 
@@ -743,7 +745,7 @@ export default function SentencePracticeScreen() {
         setCurrentKeySequence([]);
         setCurrentInput('');
       }
-      // 没有完全匹配，不做任何操作
+      // 没有匹配到任何单词，不做操作
       return;
     }
     
@@ -753,7 +755,21 @@ export default function SentencePracticeScreen() {
     setCurrentKeySequence(prev => {
       const newSequence = [...prev, pressedKey];
       
-      // 检查是否匹配任何单词
+      // 优先查找完全匹配的单词
+      const exactMatch = wordKeySequences.find(item => {
+        const targetSeq = item.keySequence;
+        if (newSequence.length !== targetSeq.length) return false;
+        return newSequence.every((k, i) => k === targetSeq[i]);
+      });
+      
+      if (exactMatch) {
+        // 完全匹配，显示单词但不自动完成（等用户按空格确认）
+        setCurrentInput(exactMatch.word);
+        setTargetWordIndexWithRef(exactMatch.index);
+        return newSequence;
+      }
+      
+      // 没有完全匹配，查找前缀匹配的单词
       for (const item of wordKeySequences) {
         const targetSeq = item.keySequence;
         
@@ -772,13 +788,6 @@ export default function SentencePracticeScreen() {
             const wordChars = item.word.slice(0, newSequence.length);
             setCurrentInput(wordChars);
             setTargetWordIndexWithRef(item.index);
-            
-            // 如果完全匹配，触发完成
-            if (newSequence.length === targetSeq.length) {
-              setTimeout(() => {
-                handleInputChange(item.word);
-              }, 0);
-            }
             
             return newSequence;
           }
