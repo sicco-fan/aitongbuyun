@@ -185,6 +185,8 @@ export const createStyles = (theme: Theme) => {
     inputWrapper: {
       width: '85%',
       position: 'relative',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     input: {
       width: '100%',
@@ -209,7 +211,6 @@ export const createStyles = (theme: Theme) => {
       justifyContent: 'center',
       alignItems: 'center',
       flexDirection: 'row',
-      flexWrap: 'wrap',
     },
     inputChar: {
       fontSize: 24,
@@ -221,11 +222,6 @@ export const createStyles = (theme: Theme) => {
     },
     inputCharWrong: {
       color: theme.error,
-    },
-    inputPlaceholder: {
-      fontSize: 18,
-      color: theme.textMuted,
-      fontWeight: '400',
     },
     inputVoiceBtn: {
       position: 'absolute',

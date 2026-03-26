@@ -377,9 +377,9 @@ export default function PracticeScreen() {
 
   // 处理输入变化（支持任意顺序输入单词）
   const handleInputChange = useCallback((text: string) => {
-    const inputLower = text.toLowerCase().trim();
-    
-    // 如果输入为空，清除所有未完成单词的显示状态
+    const inputLower = text.toLowerCase();
+
+    // 空输入时重置状态
     if (inputLower.length === 0) {
       setWordStatuses(prev => prev.map(ws => {
         if (ws.isPunctuation || ws.revealed) return ws;
@@ -392,17 +392,15 @@ export default function PracticeScreen() {
       setCurrentInput('');
       return;
     }
-    
-    // 获取所有未完成的单词
+
     const incompleteWords = wordStatuses.filter(w => !w.isPunctuation && !w.revealed);
-    
     if (incompleteWords.length === 0) return;
-    
-    // 检查输入是否完全匹配某个未完成的单词
+
+    // 检查是否完全匹配任意单词
     const exactMatch = incompleteWords.find(w => w.word.toLowerCase() === inputLower);
-    
+
     if (exactMatch) {
-      // 完全匹配！标记该单词为完成
+      // 完全匹配！标记完成并清空输入框
       setWordStatuses(prev => prev.map(ws => {
         if (ws.index === exactMatch.index) {
           return {
@@ -412,60 +410,69 @@ export default function PracticeScreen() {
             errorCharIndex: -1,
           };
         }
-        // 清除其他单词的显示状态
-        if (!ws.revealed && !ws.isPunctuation) {
-          return {
-            ...ws,
-            revealedChars: new Array(ws.word.length).fill(false),
-            errorCharIndex: -1,
-          };
-        }
         return ws;
       }));
+      // 清空输入框，继续下一个单词
       setCurrentInput('');
       return;
     }
+
+    // 部分匹配逻辑：找到最佳匹配的单词
+    // 优先匹配按顺序的第一个未完成单词，如果不匹配再检查其他单词
+    const firstIncomplete = incompleteWords[0];
     
-    // 没有完全匹配，找最佳部分匹配
-    let bestMatch: { index: number; matchedChars: boolean[]; matchedCount: number } | null = null;
-    
-    for (const word of incompleteWords) {
+    // 计算每个未完成单词的匹配情况
+    const matchResults = incompleteWords.map(word => {
       const targetWord = word.word.toLowerCase();
       const matchedChars: boolean[] = [];
-      let matchedCount = 0;
-      let hasError = false;
+      let correctCount = 0;
       
-      for (let j = 0; j < targetWord.length; j++) {
-        if (j < inputLower.length) {
-          if (inputLower[j] === targetWord[j]) {
-            matchedChars.push(true);
-            matchedCount++;
-          } else {
-            matchedChars.push(false);
-            hasError = true;
-          }
+      for (let i = 0; i < targetWord.length; i++) {
+        if (i < inputLower.length) {
+          const isMatch = inputLower[i] === targetWord[i];
+          matchedChars.push(isMatch);
+          if (isMatch) correctCount++;
         } else {
           matchedChars.push(false);
         }
       }
       
-      // 检查输入是否比单词长（多余字符）
-      if (inputLower.length > targetWord.length) {
-        hasError = true;
-      }
+      // 检查是否有错误字符（输入长度内的不匹配）
+      const hasError = inputLower.length > targetWord.length || 
+                       matchedChars.slice(0, inputLower.length).includes(false);
       
-      // 如果没有错误且匹配数最多，这是最佳匹配
-      if (!hasError && matchedCount > (bestMatch?.matchedCount || 0)) {
-        bestMatch = { index: word.index, matchedChars, matchedCount };
+      return {
+        word,
+        matchedChars,
+        correctCount,
+        hasError,
+        // 计算匹配得分：正确字符数减去错误惩罚
+        score: hasError ? -1 : correctCount,
+      };
+    });
+
+    // 选择最佳匹配：优先选择第一个未完成单词（如果匹配），否则选择得分最高的
+    let bestMatch = matchResults[0]; // 默认第一个
+    
+    // 检查第一个未完成单词是否匹配（无错误）
+    const firstMatch = matchResults.find(r => r.word.index === firstIncomplete.index);
+    if (firstMatch && !firstMatch.hasError) {
+      bestMatch = firstMatch;
+    } else {
+      // 第一个不匹配，找其他匹配的单词
+      const otherMatches = matchResults.filter(r => !r.hasError && r.correctCount > 0);
+      if (otherMatches.length > 0) {
+        bestMatch = otherMatches.reduce((best, curr) => 
+          curr.correctCount > best.correctCount ? curr : best
+        );
       }
     }
-    
-    // 更新显示状态
+
+    // 更新单词状态
     setWordStatuses(prev => prev.map(ws => {
       if (ws.revealed || ws.isPunctuation) return ws;
       
-      // 如果是最佳匹配的单词，显示匹配进度
-      if (bestMatch && ws.index === bestMatch.index) {
+      if (ws.index === bestMatch.word.index) {
         return {
           ...ws,
           revealedChars: bestMatch.matchedChars,
@@ -480,44 +487,10 @@ export default function PracticeScreen() {
         errorCharIndex: -1,
       };
     }));
-    
-    // 如果没有找到任何匹配（所有单词都不匹配开头），显示错误
-    if (!bestMatch) {
-      showErrorFlash();
-      
-      // 记录错误（取最可能的目标单词）
-      const likelyTargetWord = incompleteWords[0]?.word;
-      if (likelyTargetWord && currentSentence && materialId) {
-        // 记录错题
-        recordErrorWord(likelyTargetWord, currentSentence.text);
-        // 记录句子错误（用于难度分级）
-        recordSentenceError(materialId, currentSentence.id);
-      }
-      
-      // 尝试找到一个可能匹配的单词，保留最长匹配前缀
-      for (const word of incompleteWords) {
-        const targetWord = word.word.toLowerCase();
-        let prefixLen = 0;
-        for (let i = 0; i < Math.min(inputLower.length, targetWord.length); i++) {
-          if (inputLower[i] === targetWord[i]) {
-            prefixLen = i + 1;
-          } else {
-            break;
-          }
-        }
-        if (prefixLen > 0) {
-          // 保留正确的前缀部分
-          setCurrentInput(inputLower.slice(0, prefixLen));
-          return;
-        }
-      }
-      // 完全不匹配，清空输入
-      setCurrentInput('');
-      return;
-    }
-    
-    setCurrentInput(text.trim());
-  }, [wordStatuses, showErrorFlash]);
+
+    // 保留用户输入（不自动清空，让用户手动删除错误）
+    setCurrentInput(text);
+  }, [wordStatuses]);
 
   // 检查是否完成
   useEffect(() => {
@@ -862,30 +835,54 @@ export default function PracticeScreen() {
               autoFocus
             />
             {/* 输入反馈覆盖层 */}
-            <View style={styles.inputOverlay} pointerEvents="none">
-              {currentInput.length === 0 ? (
-                <ThemedText style={styles.inputPlaceholder}>输入单词...</ThemedText>
-              ) : (
-                currentInput.split('').map((char, idx) => {
+            {currentInput.length > 0 && (
+              <View style={styles.inputOverlay} pointerEvents="none">
+                {(() => {
                   // 找到当前正在匹配的目标单词
                   const incompleteWords = wordStatuses.filter(w => !w.isPunctuation && !w.revealed);
-                  const targetWord = incompleteWords[0]?.word.toLowerCase() || '';
-                  const isCorrect = idx < targetWord.length && char.toLowerCase() === targetWord[idx];
+                  const inputLower = currentInput.toLowerCase();
                   
-                  return (
-                    <ThemedText
-                      key={idx}
-                      style={[
-                        styles.inputChar,
-                        isCorrect ? styles.inputCharCorrect : styles.inputCharWrong,
-                      ]}
-                    >
-                      {char}
-                    </ThemedText>
-                  );
-                })
-              )}
-            </View>
+                  // 找到匹配的单词
+                  let targetWord = '';
+                  for (const w of incompleteWords) {
+                    const word = w.word.toLowerCase();
+                    // 检查当前输入是否匹配这个单词的前缀
+                    let isMatch = true;
+                    for (let i = 0; i < inputLower.length && i < word.length; i++) {
+                      if (inputLower[i] !== word[i]) {
+                        isMatch = false;
+                        break;
+                      }
+                    }
+                    if (isMatch) {
+                      targetWord = word;
+                      break;
+                    }
+                  }
+                  
+                  // 如果没找到匹配的，使用第一个未完成单词来判断错误
+                  if (!targetWord) {
+                    targetWord = incompleteWords[0]?.word.toLowerCase() || '';
+                  }
+                  
+                  return currentInput.split('').map((char, idx) => {
+                    const isCorrect = idx < targetWord.length && char.toLowerCase() === targetWord[idx];
+                    
+                    return (
+                      <ThemedText
+                        key={idx}
+                        style={[
+                          styles.inputChar,
+                          isCorrect ? styles.inputCharCorrect : styles.inputCharWrong,
+                        ]}
+                      >
+                        {char}
+                      </ThemedText>
+                    );
+                  });
+                })()}
+              </View>
+            )}
             <TouchableOpacity
               style={styles.inputVoiceBtn}
               onPressIn={startRecording}
