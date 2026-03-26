@@ -1075,10 +1075,10 @@ router.post('/:id/generate-audio', async (req: Request, res: Response) => {
       // 清理临时文件
       await fs.rm(tempDir, { recursive: true, force: true });
       
-      // 更新文件状态
+      // 更新文件状态为已完成
       await supabase
         .from('sentence_files')
-        .update({ status: 'audio_ready' })
+        .update({ status: 'completed' })
         .eq('id', id);
       
       console.log(`[生成音频] 处理完成: 成功 ${successCount}, 失败 ${failCount}`);
