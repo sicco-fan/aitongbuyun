@@ -413,73 +413,28 @@ export default function PracticeScreen() {
   const handleInputChange = useCallback((text: string) => {
     const inputLower = text.toLowerCase();
     const currentWordStatuses = wordStatusesRef.current;
-    const currentTargetIndex = targetWordIndexRef.current;
 
-    // 空输入时重置状态
+    // 空输入时重置
     if (inputLower.length === 0) {
-      updateWordStatusesWithRef(prev => prev.map(ws => {
-        if (ws.isPunctuation || ws.revealed) return ws;
-        return {
-          ...ws,
-          revealedChars: new Array(ws.word.length).fill(false),
-          errorCharIndex: -1,
-        };
-      }));
       setCurrentInput('');
       setTargetWordIndexWithRef(null);
       return;
     }
 
-    // 获取未完成的单词（使用最新的状态）
+    // 获取未完成的单词
     const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
-    if (incompleteWords.length === 0) return;
-
-    // 确定目标单词
-    let targetIndex = currentTargetIndex;
-    
-    // 如果没有锁定目标，或者锁定的目标已经完成，选择第一个未完成的单词
-    const targetWordStatus = currentWordStatuses.find(w => w.index === targetIndex);
-    if (targetIndex === null || !targetWordStatus || targetWordStatus.revealed) {
-      targetIndex = incompleteWords[0].index;
-      setTargetWordIndexWithRef(targetIndex);
+    if (incompleteWords.length === 0) {
+      setCurrentInput(text);
+      return;
     }
 
-    // 找到当前目标单词
-    const currentTargetWord = currentWordStatuses.find(w => w.index === targetIndex);
-    if (!currentTargetWord) return;
+    // 检查是否完全匹配任何未完成的单词
+    const matchedWord = incompleteWords.find(w => w.word.toLowerCase() === inputLower);
 
-    const currentWordLower = currentTargetWord.word.toLowerCase();
-
-    // 检查当前输入是否与目标单词匹配（第一个字母匹配）
-    const firstCharMatches = inputLower[0] === currentWordLower[0];
-
-    // 如果第一个字母不匹配，检查是否有其他未完成单词匹配
-    if (!firstCharMatches) {
-      // 在未完成的单词中查找首字母匹配的单词
-      const matchingWord = incompleteWords.find(w => {
-        const wordLower = w.word.toLowerCase();
-        return inputLower[0] === wordLower[0];
-      });
-
-      if (matchingWord) {
-        // 找到匹配的单词，切换目标
-        targetIndex = matchingWord.index;
-        setTargetWordIndexWithRef(targetIndex);
-      }
-      // 如果没找到匹配的单词，保持当前目标，显示错误
-    }
-
-    // 找到目标单词
-    const targetWord = currentWordStatuses.find(w => w.index === targetIndex);
-    if (!targetWord) return;
-
-    const wordLower = targetWord.word.toLowerCase();
-
-    // 检查是否完全匹配目标单词
-    if (inputLower === wordLower) {
+    if (matchedWord) {
       // 完全匹配！标记完成并清空输入框
       updateWordStatusesWithRef(prev => prev.map(ws => {
-        if (ws.index === targetIndex) {
+        if (ws.index === matchedWord.index) {
           return {
             ...ws,
             revealed: true,
@@ -489,14 +444,13 @@ export default function PracticeScreen() {
         }
         return ws;
       }));
-      // 清空输入框，继续下一个单词
+      // 清空输入框
       setCurrentInput('');
       setTargetWordIndexWithRef(null);
       return;
     }
 
-    // 输入过程中不更新文本框显示，只在输入框中保留用户输入
-    // 单词完成后才会在文本框中显示绿色
+    // 输入过程中只保留用户输入，不显示任何提示
     setCurrentInput(text);
   }, [updateWordStatusesWithRef, setTargetWordIndexWithRef]);
 
