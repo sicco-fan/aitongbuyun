@@ -79,6 +79,7 @@ export const fileLearningSummary = pgTable("file_learning_summary", {
 	learnCount: integer("learn_count").default(0),
 	totalDuration: integer("total_duration").default(0), // 秒
 	totalScore: doublePrecision("total_score").default(0),
+	lastSentenceIndex: integer("last_sentence_index").default(0), // 上次学习到的句子索引
 	lastLearnedAt: timestamp("last_learned_at", { withTimezone: true, mode: 'string' }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),

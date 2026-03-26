@@ -5,6 +5,135 @@ import { getSupabaseClient } from '../storage/database/supabase-client';
 const router = Router();
 
 /**
+ * GET /api/v1/learning-records/progress/:fileId
+ * 获取句库的学习进度
+ * Query: user_id
+ */
+router.get('/progress/:fileId', async (req: Request, res: Response) => {
+  try {
+    const fileId = Array.isArray(req.params.fileId) ? req.params.fileId[0] : req.params.fileId;
+    const { user_id } = req.query;
+    
+    if (!user_id) {
+      return res.status(400).json({ error: '缺少用户ID' });
+    }
+    
+    const supabase = getSupabaseClient();
+    
+    // 获取学习汇总记录
+    const { data: summary, error } = await supabase
+      .from('file_learning_summary')
+      .select('*')
+      .eq('user_id', user_id)
+      .eq('sentence_file_id', fileId)
+      .maybeSingle();
+    
+    if (error) {
+      throw new Error(error.message);
+    }
+    
+    res.json({
+      success: true,
+      progress: {
+        lastSentenceIndex: summary?.last_sentence_index || 0,
+        learnCount: summary?.learn_count || 0,
+        totalDuration: summary?.total_duration || 0,
+        totalScore: summary?.total_score || 0,
+        lastLearnedAt: summary?.last_learned_at || null,
+      },
+    });
+  } catch (error) {
+    console.error('获取学习进度失败:', error);
+    res.status(500).json({ error: '获取学习进度失败' });
+  }
+});
+
+/**
+ * POST /api/v1/learning-records/progress/:fileId
+ * 保存句库的学习进度
+ * Body: { user_id: string, sentence_index: number, score?: number, duration_seconds?: number }
+ */
+router.post('/progress/:fileId', async (req: Request, res: Response) => {
+  try {
+    const fileId = Array.isArray(req.params.fileId) ? req.params.fileId[0] : req.params.fileId;
+    const { user_id, sentence_index, score, duration_seconds } = req.body;
+    
+    if (!user_id) {
+      return res.status(400).json({ error: '缺少用户ID' });
+    }
+    
+    if (sentence_index === undefined || sentence_index === null) {
+      return res.status(400).json({ error: '缺少句子索引' });
+    }
+    
+    const supabase = getSupabaseClient();
+    
+    // 检查是否已有记录
+    const { data: existing, error: fetchError } = await supabase
+      .from('file_learning_summary')
+      .select('*')
+      .eq('user_id', user_id)
+      .eq('sentence_file_id', fileId)
+      .maybeSingle();
+    
+    if (fetchError) {
+      throw new Error(fetchError.message);
+    }
+    
+    const now = new Date().toISOString();
+    
+    if (existing) {
+      // 更新记录
+      const updateData: Record<string, unknown> = {
+        last_sentence_index: sentence_index,
+        last_learned_at: now,
+        updated_at: now,
+        learn_count: (existing.learn_count || 0) + 1,
+      };
+      
+      if (score !== undefined) {
+        updateData.total_score = (existing.total_score || 0) + score;
+      }
+      
+      if (duration_seconds !== undefined) {
+        updateData.total_duration = (existing.total_duration || 0) + duration_seconds;
+      }
+      
+      const { error: updateError } = await supabase
+        .from('file_learning_summary')
+        .update(updateData)
+        .eq('id', existing.id);
+      
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+    } else {
+      // 创建新记录
+      const { error: insertError } = await supabase
+        .from('file_learning_summary')
+        .insert({
+          user_id,
+          sentence_file_id: parseInt(fileId),
+          last_sentence_index: sentence_index,
+          last_learned_at: now,
+          learn_count: 1,
+          total_score: score || 0,
+          total_duration: duration_seconds || 0,
+        });
+      
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('保存学习进度失败:', error);
+    res.status(500).json({ error: '保存学习进度失败' });
+  }
+});
+
+/**
  * POST /api/v1/learning-records
  * 更新或创建学习记录
  * Body: { sentence_id: number, attempts: number, is_completed: boolean }

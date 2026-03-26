@@ -14,6 +14,7 @@ import { Audio } from 'expo-av';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/contexts/AuthContext';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -176,6 +177,7 @@ export default function SentencePracticeScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
   const params = useSafeSearchParams<{ fileId: number; title: string }>();
+  const { user, isAuthenticated } = useAuth();
 
   const fileId = params.fileId;
 
@@ -183,6 +185,7 @@ export default function SentencePracticeScreen() {
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [resumingFromProgress, setResumingFromProgress] = useState(false); // 是否从进度恢复
 
   // 单词状态
   const [wordStatuses, setWordStatuses] = useState<WordStatus[]>([]);
@@ -255,13 +258,82 @@ export default function SentencePracticeScreen() {
         setFile(data.file);
         setSentences(data.sentences);
         console.log(`[句库学习] 加载了 ${data.sentences.length} 个可学习句子`);
+        
+        // 获取学习进度
+        if (isAuthenticated && user?.id) {
+          try {
+            /**
+             * 服务端文件：server/src/routes/learning.ts
+             * 接口：GET /api/v1/learning-records/progress/:fileId
+             * Query 参数：user_id: string
+             */
+            const progressResponse = await fetch(
+              `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${fileId}?user_id=${user.id}`
+            );
+            const progressData = await progressResponse.json();
+            
+            if (progressData.success && progressData.progress) {
+              const savedIndex = progressData.progress.lastSentenceIndex;
+              // 如果有进度且不是第一句，询问是否继续
+              if (savedIndex > 0 && savedIndex < data.sentences.length) {
+                setResumingFromProgress(true);
+                Alert.alert(
+                  '继续学习',
+                  `上次学习到第 ${savedIndex + 1} 句，是否继续？`,
+                  [
+                    { 
+                      text: '从头开始', 
+                      onPress: () => {
+                        setCurrentIndex(0);
+                        setResumingFromProgress(false);
+                      }
+                    },
+                    { 
+                      text: '继续学习', 
+                      onPress: () => {
+                        setCurrentIndex(savedIndex);
+                        setResumingFromProgress(false);
+                      }
+                    }
+                  ]
+                );
+              }
+            }
+          } catch (progressError) {
+            console.log('[学习进度] 获取进度失败:', progressError);
+          }
+        }
       }
     } catch (error) {
       console.error('加载句子失败:', error);
     } finally {
       setLoading(false);
     }
-  }, [fileId]);
+  }, [fileId, isAuthenticated, user?.id]);
+
+  // 保存学习进度
+  const saveProgress = useCallback(async (sentenceIndex: number) => {
+    if (!isAuthenticated || !user?.id || !fileId) return;
+    
+    try {
+      /**
+       * 服务端文件：server/src/routes/learning.ts
+       * 接口：POST /api/v1/learning-records/progress/:fileId
+       * Body 参数：user_id: string, sentence_index: number
+       */
+      await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${fileId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          sentence_index: sentenceIndex,
+        }),
+      });
+      console.log(`[学习进度] 已保存进度: 第 ${sentenceIndex + 1} 句`);
+    } catch (error) {
+      console.error('[学习进度] 保存失败:', error);
+    }
+  }, [fileId, isAuthenticated, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -271,8 +343,12 @@ export default function SentencePracticeScreen() {
       return () => {
         isMountedRef.current = false;
         stopPlayback();
+        // 退出时保存当前进度
+        if (currentIndex > 0) {
+          saveProgress(currentIndex);
+        }
       };
-    }, [fetchSentences])
+    }, [fetchSentences, currentIndex, saveProgress])
   );
 
   // 提取单词和标点
@@ -813,6 +889,9 @@ export default function SentencePracticeScreen() {
     isLoopingRef.current = false;
     setIsLooping(false);
     pauseAudio();
+    
+    // 保存学习进度（当前句子已完成，准备进入下一句）
+    saveProgress(currentIndex);
 
     // 获取翻译并显示
     try {
@@ -836,7 +915,7 @@ export default function SentencePracticeScreen() {
         goToNextSentence();
       }, 600);
     }
-  }, [currentSentence, pauseAudio]);
+  }, [currentSentence, pauseAudio, currentIndex, saveProgress]);
 
   // 处理单词点击
   const handleWordPress = useCallback((ws: WordStatus) => {
