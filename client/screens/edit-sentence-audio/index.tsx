@@ -19,22 +19,25 @@ import { Audio } from 'expo-av';
 // 后端服务地址
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
-// 语速设定：每分钟150个单词
-const WORDS_PER_MINUTE = 150;
+/**
+ * 统计文本中的单词数量
+ * @param text 文本
+ * @returns 单词数量
+ */
+const countWords = (text: string): number => {
+  const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+  return words.length;
+};
 
 /**
- * 根据句子文本计算预估时长（秒）
- * @param text 句子文本
+ * 根据单词数和每个单词的平均时长计算预估时长（秒）
+ * @param wordCount 单词数量
+ * @param avgSecondsPerWord 每个单词的平均时长（秒）
  * @returns 预估时长（秒）
  */
-const calculateEstimatedDuration = (text: string): number => {
-  // 统计单词数量（按空格分割，过滤空字符串）
-  const words = text.trim().split(/\s+/).filter(w => w.length > 0);
-  const wordCount = words.length;
-  
-  // 计算时长：单词数 / (150单词/分钟) = 分钟数，转换为秒
-  const durationMinutes = wordCount / WORDS_PER_MINUTE;
-  const durationSeconds = durationMinutes * 60;
+const calculateEstimatedDuration = (wordCount: number, avgSecondsPerWord: number): number => {
+  // 计算时长：单词数 * 每个单词平均时长
+  const durationSeconds = wordCount * avgSecondsPerWord;
   
   // 至少给0.5秒，避免太短
   return Math.max(0.5, durationSeconds);
@@ -57,6 +60,7 @@ interface SentenceFile {
   text_content: string | null;
   status: string;
   duration?: number;  // 秒
+  original_duration?: number;  // 原始音频时长（毫秒）
 }
 
 export default function EditSentenceAudioScreen() {
@@ -95,6 +99,9 @@ export default function EditSentenceAudioScreen() {
   // 文件列表（用于选择文件）
   const [fileList, setFileList] = useState<SentenceFile[]>([]);
   const [loadingList, setLoadingList] = useState(false);
+  
+  // 每个单词的平均时长（秒），用于预估
+  const [avgSecondsPerWord, setAvgSecondsPerWord] = useState(0.4); // 默认 150 词/分钟
 
   const currentSentence = sentences[currentIndex];
 
@@ -164,15 +171,29 @@ export default function EditSentenceAudioScreen() {
 
         // 如果已经有句子数据，加载它们
         if (result.file.sentences && result.file.sentences.length > 0) {
+          // 计算总单词数和每个单词的平均时长
+          const sentences = result.file.sentences;
+          const totalWords = sentences.reduce((sum: number, s: SentenceItem) => sum + countWords(s.text), 0);
+          
+          // 获取音频总时长（秒），后端返回的是毫秒
+          const audioTotalDuration = (result.file.original_duration || 0) / 1000;
+          
+          // 计算每个单词的平均时长
+          const calculatedAvgSeconds = totalWords > 0 ? audioTotalDuration / totalWords : 60 / 150; // 默认 150 词/分钟
+          setAvgSecondsPerWord(calculatedAvgSeconds);
+          
+          console.log(`[loadFile] 音频总时长: ${audioTotalDuration}s, 总单词数: ${totalWords}, 平均每词: ${calculatedAvgSeconds.toFixed(2)}s`);
+          
           // 对句子进行时间预估处理
-          const processedSentences = result.file.sentences.map((sentence: SentenceItem, index: number, arr: SentenceItem[]) => {
+          const processedSentences = sentences.map((sentence: SentenceItem, index: number, arr: SentenceItem[]) => {
             // 如果已经保存过时间，保持不变
             if (sentence.start_time !== null && sentence.end_time !== null) {
               return sentence;
             }
             
-            // 没有保存过时间，计算预估时间
-            const estimatedDuration = calculateEstimatedDuration(sentence.text);
+            // 没有保存过时间，基于单词数计算预估时间
+            const wordCount = countWords(sentence.text);
+            const estimatedDuration = calculateEstimatedDuration(wordCount, calculatedAvgSeconds);
             
             // 开始时间：上一句的结束时间，或者0
             let startTime = 0;
@@ -193,28 +214,40 @@ export default function EditSentenceAudioScreen() {
           setSentences(processedSentences);
           console.log('[loadFile] 加载已有句子:', processedSentences.length, '个');
         } else if (result.file.text_content) {
-          // 从文本内容创建句子，并计算预估时间
+          // 从文本内容创建句子
           const lines = result.file.text_content.split(/\n\s*\n/);
+          const filteredLines = lines.map((line: string) => line.trim()).filter((line: string) => line.length > 0);
+          
+          // 计算总单词数和每个单词的平均时长
+          const totalWords = filteredLines.reduce((sum: number, line: string) => sum + countWords(line), 0);
+          
+          // 获取音频总时长（秒），后端返回的是毫秒
+          const audioTotalDuration = (result.file.original_duration || 0) / 1000;
+          
+          // 计算每个单词的平均时长
+          const calculatedAvgSeconds = totalWords > 0 ? audioTotalDuration / totalWords : 60 / 150; // 默认 150 词/分钟
+          setAvgSecondsPerWord(calculatedAvgSeconds);
+          
+          console.log(`[loadFile] 音频总时长: ${audioTotalDuration}s, 总单词数: ${totalWords}, 平均每词: ${calculatedAvgSeconds.toFixed(2)}s`);
+          
           let currentTime = 0;
           
-          const newSentences = lines
-            .map((line: string) => line.trim())
-            .filter((line: string) => line.length > 0)
-            .map((line: string, index: number) => {
-              const estimatedDuration = calculateEstimatedDuration(line);
-              const sentence = {
-                id: 0,
-                sentence_file_id: fileId,
-                text: line,
-                order_number: index + 1,
-                start_time: currentTime,
-                end_time: currentTime + estimatedDuration,
-                audio_url: null,
-              };
-              // 更新当前时间，供下一句使用
-              currentTime = sentence.end_time;
-              return sentence;
-            });
+          const newSentences = filteredLines.map((line: string, index: number) => {
+            const wordCount = countWords(line);
+            const estimatedDuration = calculateEstimatedDuration(wordCount, calculatedAvgSeconds);
+            const sentence = {
+              id: 0,
+              sentence_file_id: fileId,
+              text: line,
+              order_number: index + 1,
+              start_time: currentTime,
+              end_time: currentTime + estimatedDuration,
+              audio_url: null,
+            };
+            // 更新当前时间，供下一句使用
+            currentTime = sentence.end_time;
+            return sentence;
+          });
           setSentences(newSentences);
           console.log('[loadFile] 从文本创建句子:', newSentences.length, '个');
         }
@@ -515,8 +548,9 @@ export default function EditSentenceAudioScreen() {
         const newSentences = [...sentences];
         const nextSentence = newSentences[nextIndex];
         
-        // 计算预估时长
-        const estimatedDuration = calculateEstimatedDuration(nextSentence.text);
+        // 计算预估时长（基于单词数）
+        const wordCount = countWords(nextSentence.text);
+        const estimatedDuration = calculateEstimatedDuration(wordCount, avgSecondsPerWord);
         
         newSentences[nextIndex] = {
           ...nextSentence,
@@ -708,9 +742,9 @@ export default function EditSentenceAudioScreen() {
     ? currentSentence.end_time - currentSentence.start_time
     : 0;
 
-  // 计算预估时长
-  const estimatedDuration = currentSentence ? calculateEstimatedDuration(currentSentence.text) : 0;
-  const wordCount = currentSentence ? currentSentence.text.trim().split(/\s+/).filter(w => w.length > 0).length : 0;
+  // 计算预估时长（基于单词数和平均时长）
+  const wordCount = currentSentence ? countWords(currentSentence.text) : 0;
+  const estimatedDuration = currentSentence ? calculateEstimatedDuration(wordCount, avgSecondsPerWord) : 0;
 
   const hasValidTime = currentSentence && currentSentence.start_time !== null && currentSentence.end_time !== null && currentSentence.end_time > currentSentence.start_time;
 

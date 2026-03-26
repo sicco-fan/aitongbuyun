@@ -26,9 +26,10 @@ export function TimeControl({
   const lastAngle = useSharedValue(0);
   const accumulatedDelta = useSharedValue(0);
   
-  // 长按相关 - 使用 ref 和 state 结合
+  // 长按相关
   const longPressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const longPressDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPressingRef = useRef(false);
   const [isLongPressing, setIsLongPressing] = useState(false);
 
   // 格式化时间显示
@@ -49,18 +50,24 @@ export function TimeControl({
     onPlay?.();
   }, [onPlay, label]);
 
-  // 开始长按 - 先延迟200ms再开始连续触发
+  // 开始长按 - 先延迟150ms再开始连续触发
   const startLongPress = useCallback((delta: number) => {
     // 立即执行一次
     onChange(delta);
     
-    // 200ms 后开始连续触发
+    // 150ms 后开始连续触发
     longPressDelayRef.current = setTimeout(() => {
+      isLongPressingRef.current = true;
       setIsLongPressing(true);
+      
+      // 立即执行第二次
+      onChange(delta);
+      
+      // 开始连续触发
       longPressTimerRef.current = setInterval(() => {
         onChange(delta);
-      }, 80); // 每80ms执行一次
-    }, 200);
+      }, 60); // 每60ms执行一次，更快速
+    }, 150);
   }, [onChange]);
 
   // 停止长按
@@ -75,6 +82,7 @@ export function TimeControl({
       clearInterval(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    isLongPressingRef.current = false;
     setIsLongPressing(false);
   }, []);
 
@@ -110,7 +118,7 @@ export function TimeControl({
     transform: [{ translateX: accumulatedDelta.value * 0.15 }],
   }));
 
-  // 渲染调整按钮
+  // 渲染调整按钮 - 使用更可靠的长按检测
   const renderAdjustButton = (delta: number, icon: string, text: string) => (
     <TouchableOpacity 
       style={[
@@ -120,8 +128,10 @@ export function TimeControl({
       ]}
       onPressIn={() => startLongPress(delta)}
       onPressOut={stopLongPress}
-      onPress={() => {}} // 防止 onPressIn 不触发时的回退
+      onPress={stopLongPress}
+      delayLongPress={150}
       activeOpacity={0.7}
+      hitSlop={{ top: 10, bottom: 10, left: 5, right: 5 }}
     >
       <FontAwesome6 name={icon} size={16} color={color} />
       <Text style={[styles.btnText, { color }]}>{text}</Text>
