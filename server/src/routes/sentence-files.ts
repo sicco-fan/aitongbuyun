@@ -1161,9 +1161,15 @@ router.post('/:id/generate-audio', async (req: Request, res: Response) => {
           
           const sentenceAudioPath = `${tempDir}/sentence_${sentence.id}.mp3`;
           
-          // 使用 ffmpeg 切分音频
-          const ffmpegCmd = `ffmpeg -y -ss ${startTime} -i "${originalAudioPath}" -t ${duration} -acodec libmp3lame -ab 128k "${sentenceAudioPath}"`;
-          console.log(`[生成音频] 切分句子 ${sentence.id}: ${ffmpegCmd}`);
+          // 计算淡入淡出时间（总时长的 5%，最少 10ms，最多 50ms）
+          const fadeTime = Math.min(0.05, Math.max(0.01, duration * 0.05));
+          const fadeOutStart = Math.max(0, duration - fadeTime);
+          
+          // 使用 ffmpeg 切分音频，添加淡入淡出效果消除毛边
+          // afade=t=in:st=0:d=X - 开头淡入
+          // afade=t=out:st=Y:d=Z - 结尾淡出（从 Y 秒开始，持续 Z 秒）
+          const ffmpegCmd = `ffmpeg -y -ss ${startTime} -i "${originalAudioPath}" -t ${duration} -af "afade=t=in:st=0:d=${fadeTime},afade=t=out:st=${fadeOutStart}:d=${fadeTime}" -acodec libmp3lame -ab 128k "${sentenceAudioPath}"`;
+          console.log(`[生成音频] 切分句子 ${sentence.id}: 时长 ${duration.toFixed(2)}s, 淡入淡出 ${fadeTime.toFixed(3)}s`);
           
           await execAsync(ffmpegCmd, { timeout: 30000 });
           
