@@ -268,19 +268,35 @@ export const createStyles = (theme: Theme) => {
     customKeyboardContainer: {
       width: '100%',
     },
-    customInputDisplay: {
-      backgroundColor: theme.backgroundTertiary,
-      borderRadius: BorderRadius.lg,
-      paddingVertical: Spacing.md,
-      paddingHorizontal: Spacing.lg,
-      marginBottom: Spacing.sm,
+    customInputRow: {
+      flexDirection: 'row',
       alignItems: 'center',
-      minHeight: 48,
+      gap: Spacing.sm,
+      marginBottom: Spacing.sm,
+    },
+    customInputDisplay: {
+      flex: 1,
+      backgroundColor: '#E8F5E9',
+      borderRadius: BorderRadius.lg,
+      borderWidth: 2,
+      borderColor: '#A5D6A7',
+      paddingVertical: Spacing.lg,
+      paddingHorizontal: Spacing.lg,
+      alignItems: 'center',
       justifyContent: 'center',
+      minHeight: 56,
+    },
+    navBtnSmall: {
+      width: 40,
+      height: 40,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.primary + '15',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     customKeyboard: {
       flexDirection: 'row',
-      backgroundColor: '#D1D5DB', // 浅灰底色
+      backgroundColor: '#D1D5DB',
       borderRadius: BorderRadius.lg,
       padding: 8,
       gap: 6,
@@ -304,25 +320,22 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
     },
     symbolKey: {
-      width: 52,
-      height: 56,
-      backgroundColor: '#9CA3AF', // 深灰色
+      width: 56,
+      height: 64,
+      backgroundColor: '#9CA3AF',
     },
     letterKey: {
       flex: 1,
-      height: 56,
-      backgroundColor: '#FFFFFF', // 白色
+      height: 64,
+      backgroundColor: '#FFFFFF',
     },
     functionKey: {
-      width: 52,
-      height: 56,
-      backgroundColor: '#9CA3AF', // 深灰色
+      width: 56,
+      height: 64,
+      backgroundColor: '#9CA3AF',
     },
     spaceKey: {
-      height: 118, // 合并两行
-    },
-    voiceKey: {
-      flex: 1,
+      height: 134,
     },
   });
 };

@@ -1183,18 +1183,36 @@ export default function SentencePracticeScreen() {
           {/* 自建键盘模式 */}
           {keyboardType === 'custom' && (
             <View style={styles.customKeyboardContainer}>
-              {/* 当前输入显示 */}
-              <View style={styles.customInputDisplay}>
-                <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-                  {currentInput || '点击下方按键输入...'}
-                </ThemedText>
+              {/* 当前输入显示 + 导航按钮 */}
+              <View style={styles.customInputRow}>
+                <TouchableOpacity
+                  style={[styles.navBtnSmall, currentIndex === 0 && styles.navBtnDisabled]}
+                  onPress={goToPrevSentence}
+                  disabled={currentIndex === 0}
+                >
+                  <FontAwesome6 name="chevron-left" size={16} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
+                </TouchableOpacity>
+                
+                <View style={styles.customInputDisplay}>
+                  <ThemedText variant="h4" color={theme.textPrimary}>
+                    {currentInput || '点击下方按键输入...'}
+                  </ThemedText>
+                </View>
+                
+                <TouchableOpacity
+                  style={[styles.navBtnSmall, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
+                  onPress={goToNextSentence}
+                  disabled={currentIndex === sentences.length - 1}
+                >
+                  <FontAwesome6 name="chevron-right" size={16} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
+                </TouchableOpacity>
               </View>
               
               {/* 自建键盘 */}
               <View style={styles.customKeyboard}>
                 {/* 第一列：特殊符号 */}
                 <View style={styles.keyboardColumn}>
-                  {/* 第一行空占位，因为符号在中间区域 */}
+                  {/* 第一行空占位 */}
                   <View style={[styles.keyButton, styles.symbolKey]} />
                   {/* 连接符 */}
                   <TouchableOpacity
@@ -1286,27 +1304,6 @@ export default function SentencePracticeScreen() {
                       <ThemedText variant="h4" color={theme.textPrimary}>WXYZ</ThemedText>
                     </TouchableOpacity>
                   </View>
-                  
-                  {/* 第四行：123 和语音 */}
-                  <View style={styles.keyboardRow}>
-                    <TouchableOpacity
-                      style={[styles.keyButton, styles.letterKey]}
-                      onPress={() => {}}
-                    >
-                      <ThemedText variant="body" color={theme.textMuted}>123</ThemedText>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.keyButton, styles.letterKey, styles.voiceKey]}
-                      onPressIn={startRecording}
-                      onPressOut={stopRecordingAndRecognize}
-                    >
-                      <FontAwesome6
-                        name={isRecording ? "stop" : "microphone"}
-                        size={22}
-                        color={isRecording ? theme.error : theme.primary}
-                      />
-                    </TouchableOpacity>
-                  </View>
                 </View>
 
                 {/* 第五列：功能键 */}
@@ -1315,7 +1312,7 @@ export default function SentencePracticeScreen() {
                     style={[styles.keyButton, styles.functionKey]}
                     onPress={() => handleCustomKeyPress('⌫', '')}
                   >
-                    <FontAwesome6 name="delete-left" size={20} color={theme.textPrimary} />
+                    <FontAwesome6 name="delete-left" size={22} color={theme.textPrimary} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.keyButton, styles.functionKey]}
@@ -1334,24 +1331,26 @@ export default function SentencePracticeScreen() {
             </View>
           )}
 
-          {/* Navigation Buttons */}
-          <View style={styles.navButtons}>
-            <TouchableOpacity
-              style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
-              onPress={goToPrevSentence}
-              disabled={currentIndex === 0}
-            >
-              <FontAwesome6 name="chevron-left" size={18} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
-            </TouchableOpacity>
+          {/* 手机键盘模式的导航按钮 */}
+          {keyboardType === 'system' && (
+            <View style={styles.navButtons}>
+              <TouchableOpacity
+                style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
+                onPress={goToPrevSentence}
+                disabled={currentIndex === 0}
+              >
+                <FontAwesome6 name="chevron-left" size={18} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
-              onPress={goToNextSentence}
-              disabled={currentIndex === sentences.length - 1}
-            >
-              <FontAwesome6 name="chevron-right" size={18} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
+                onPress={goToNextSentence}
+                disabled={currentIndex === sentences.length - 1}
+              >
+                <FontAwesome6 name="chevron-right" size={18} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </KeyboardAvoidingView>
     </Screen>
