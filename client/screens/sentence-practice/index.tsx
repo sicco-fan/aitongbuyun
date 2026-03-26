@@ -149,9 +149,15 @@ export default function SentencePracticeScreen() {
   const extractWords = useCallback((text: string) => {
     const result: { word: string; displayText: string; isPunctuation: boolean }[] = [];
     
+    // 先将文本中的各种引号和破折号统一为标准格式
+    const normalizedText = text
+      .replace(/[''′']/g, "'")  // 各种单引号 -> 直引号
+      .replace(/[""″"]/g, '"')  // 各种双引号 -> 直引号
+      .replace(/[—–−]/g, '-');  // 各种破折号 -> 连字符
+    
     // 使用正则分割：保留单词（包括内部的 - ' &）和纯标点符号
     // 纯标点符号：,.!?;: 等（不包括 - ' &）
-    const tokens = text.match(/[a-zA-Z0-9'\-&]+|[,.\!?;:()"]/g) || [];
+    const tokens = normalizedText.match(/[a-zA-Z0-9'\-&]+|[,.\!?;:()"]/g) || [];
 
     tokens.forEach((token) => {
       // 判断是否为纯标点符号（不包含字母数字、-'&）
