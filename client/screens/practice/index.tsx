@@ -803,47 +803,6 @@ export default function PracticeScreen() {
               autoCorrect={false}
               autoFocus
             />
-            {/* 输入反馈覆盖层 */}
-            {currentInput.length > 0 && (
-              <View style={styles.inputOverlay} pointerEvents="none">
-                {(() => {
-                  // 使用 targetWordIndex 确定目标单词
-                  let targetWord = '';
-                  
-                  if (targetWordIndex !== null) {
-                    // 使用已锁定的目标单词
-                    const targetWs = wordStatuses.find(w => w.index === targetWordIndex);
-                    if (targetWs) {
-                      targetWord = targetWs.word.toLowerCase();
-                    }
-                  }
-                  
-                  // 如果没有锁定，使用第一个未完成单词
-                  if (!targetWord) {
-                    const incompleteWords = wordStatuses.filter(w => !w.isPunctuation && !w.revealed);
-                    targetWord = incompleteWords[0]?.word.toLowerCase() || '';
-                  }
-                  
-                  const inputLower = currentInput.toLowerCase();
-                  
-                  return currentInput.split('').map((char, idx) => {
-                    const isCorrect = idx < targetWord.length && char.toLowerCase() === targetWord[idx];
-                    
-                    return (
-                      <ThemedText
-                        key={idx}
-                        style={[
-                          styles.inputChar,
-                          isCorrect ? styles.inputCharCorrect : styles.inputCharWrong,
-                        ]}
-                      >
-                        {char}
-                      </ThemedText>
-                    );
-                  });
-                })()}
-              </View>
-            )}
             <TouchableOpacity
               style={styles.inputVoiceBtn}
               onPressIn={startRecording}
