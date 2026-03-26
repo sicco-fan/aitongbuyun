@@ -164,6 +164,9 @@ export const createStyles = (theme: Theme) => {
     },
     wordBox: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     char: {
       fontSize: 26,
@@ -175,6 +178,14 @@ export const createStyles = (theme: Theme) => {
     },
     errorChar: {
       // 错误字符由 color 控制，无需额外样式
+    },
+    wordHint: {
+      position: 'absolute',
+      top: '100%',
+      left: 0,
+      right: 0,
+      textAlign: 'center',
+      marginTop: 2,
     },
     
     // Input Section

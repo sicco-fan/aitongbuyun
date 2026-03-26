@@ -76,6 +76,11 @@ export default function PracticeScreen() {
   const [wordStatuses, setWordStatuses] = useState<WordStatus[]>([]);
   const [currentInput, setCurrentInput] = useState('');
   const [targetWordIndex, setTargetWordIndex] = useState<number | null>(null); // 当前正在匹配的单词索引
+
+  // 单词提示和翻译
+  const [hintWordIndex, setHintWordIndex] = useState<number | null>(null); // 显示提示的单词
+  const [translationWordIndex, setTranslationWordIndex] = useState<number | null>(null); // 显示翻译的单词
+  const [wordTranslations, setWordTranslations] = useState<Record<string, string>>({}); // 单词翻译缓存
   
   // 翻译显示
   const [showTranslation, setShowTranslation] = useState(false);
@@ -553,6 +558,51 @@ export default function PracticeScreen() {
     }
   }, [currentSentence, materialId, pauseAudio]);
 
+  // 处理单词点击
+  const handleWordPress = useCallback((ws: WordStatus) => {
+    if (ws.isPunctuation) return;
+    
+    if (ws.revealed) {
+      // 已完成的单词：显示中文翻译
+      setTranslationWordIndex(ws.index);
+      
+      // 检查缓存
+      if (wordTranslations[ws.word]) {
+        // 已有缓存，直接显示
+        setTimeout(() => {
+          setTranslationWordIndex(null);
+        }, 1000);
+      } else {
+        // 获取翻译
+        fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: ws.displayText, type: 'word' }),
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data.translation) {
+              setWordTranslations(prev => ({
+                ...prev,
+                [ws.word]: data.translation,
+              }));
+            }
+          })
+          .catch(e => console.error('获取单词翻译失败:', e));
+        
+        setTimeout(() => {
+          setTranslationWordIndex(null);
+        }, 1000);
+      }
+    } else {
+      // 未完成的单词：显示提示（首字母 + 下划线）
+      setHintWordIndex(ws.index);
+      setTimeout(() => {
+        setHintWordIndex(null);
+      }, 1000);
+    }
+  }, [wordTranslations]);
+
   // 跳转到上一句
   const goToPrevSentence = useCallback(() => {
     if (currentIndex > 0) {
@@ -793,7 +843,11 @@ export default function PracticeScreen() {
                     {ws.displayText}
                   </ThemedText>
                 ) : (
-                  <View style={styles.wordBox}>
+                  <TouchableOpacity 
+                    style={styles.wordBox}
+                    onPress={() => handleWordPress(ws)}
+                    activeOpacity={0.7}
+                  >
                     {ws.displayText.split('').map((char, charIdx) => (
                       <ThemedText
                         key={charIdx}
@@ -816,7 +870,19 @@ export default function PracticeScreen() {
                         {ws.revealed || ws.revealedChars[charIdx] ? char : '_'}
                       </ThemedText>
                     ))}
-                  </View>
+                    {/* 单词提示 */}
+                    {hintWordIndex === ws.index && !ws.revealed && (
+                      <ThemedText variant="caption" color={theme.textSecondary} style={styles.wordHint}>
+                        {ws.displayText[0]}{'_'.repeat(ws.displayText.length - 1)}
+                      </ThemedText>
+                    )}
+                    {/* 单词翻译 */}
+                    {translationWordIndex === ws.index && ws.revealed && (
+                      <ThemedText variant="caption" color={theme.textSecondary} style={styles.wordHint}>
+                        {wordTranslations[ws.word] || '...'}
+                      </ThemedText>
+                    )}
+                  </TouchableOpacity>
                 )}
               </View>
             ))}

@@ -65,6 +65,11 @@ export default function SentencePracticeScreen() {
   const [currentInput, setCurrentInput] = useState('');
   const [targetWordIndex, setTargetWordIndex] = useState<number | null>(null); // 当前正在匹配的单词索引
 
+  // 单词提示和翻译
+  const [hintWordIndex, setHintWordIndex] = useState<number | null>(null); // 显示提示的单词
+  const [translationWordIndex, setTranslationWordIndex] = useState<number | null>(null); // 显示翻译的单词
+  const [wordTranslations, setWordTranslations] = useState<Record<string, string>>({}); // 单词翻译缓存
+
   // 翻译显示
   const [showTranslation, setShowTranslation] = useState(false);
   const [currentTranslation, setCurrentTranslation] = useState('');
@@ -515,6 +520,51 @@ export default function SentencePracticeScreen() {
     }
   }, [currentSentence, pauseAudio]);
 
+  // 处理单词点击
+  const handleWordPress = useCallback((ws: WordStatus) => {
+    if (ws.isPunctuation) return;
+    
+    if (ws.revealed) {
+      // 已完成的单词：显示中文翻译
+      setTranslationWordIndex(ws.index);
+      
+      // 检查缓存
+      if (wordTranslations[ws.word]) {
+        // 已有缓存，直接显示
+        setTimeout(() => {
+          setTranslationWordIndex(null);
+        }, 1000);
+      } else {
+        // 获取翻译
+        fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: ws.displayText, type: 'word' }),
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data.translation) {
+              setWordTranslations(prev => ({
+                ...prev,
+                [ws.word]: data.translation,
+              }));
+            }
+          })
+          .catch(e => console.error('获取单词翻译失败:', e));
+        
+        setTimeout(() => {
+          setTranslationWordIndex(null);
+        }, 1000);
+      }
+    } else {
+      // 未完成的单词：显示提示（首字母 + 下划线）
+      setHintWordIndex(ws.index);
+      setTimeout(() => {
+        setHintWordIndex(null);
+      }, 1000);
+    }
+  }, [wordTranslations]);
+
   // 跳转到上一句
   const goToPrevSentence = useCallback(() => {
     if (currentIndex > 0) {
@@ -752,38 +802,66 @@ export default function SentencePracticeScreen() {
         <Animated.View style={[styles.sentenceCard, { opacity: Animated.subtract(1, errorAnimRef.current) }]}>
           <View style={styles.wordContainer}>
             {wordStatuses.map((ws, idx) => (
-              <View key={idx} style={styles.wordWrapper}>
+              <TouchableOpacity 
+                key={idx} 
+                style={styles.wordWrapper}
+                onPress={() => handleWordPress(ws)}
+                activeOpacity={0.7}
+              >
                 {ws.isPunctuation ? (
                   <ThemedText variant="h4" color={theme.textPrimary}>
                     {ws.displayText}
                   </ThemedText>
                 ) : (
                   <View style={styles.wordBox}>
-                    {ws.displayText.split('').map((char, charIdx) => (
-                      <ThemedText
-                        key={charIdx}
-                        variant="h4"
-                        color={
-                          ws.revealed
-                            ? theme.success
-                            : ws.revealedChars[charIdx]
-                            ? theme.textPrimary
-                            : ws.errorCharIndex === charIdx
-                            ? theme.error
-                            : theme.textMuted
+                    <View style={styles.wordRow}>
+                      {ws.displayText.split('').map((char, charIdx) => {
+                        // 判断显示内容
+                        let displayChar = char;
+                        if (!ws.revealed) {
+                          if (hintWordIndex === ws.index) {
+                            // 提示模式：显示首字母，其余显示下划线
+                            displayChar = charIdx === 0 ? char : '_';
+                          } else {
+                            // 正常模式：显示下划线
+                            displayChar = '_';
+                          }
                         }
-                        style={[
-                          styles.char,
-                          !ws.revealed && !ws.revealedChars[charIdx] && styles.hiddenChar,
-                          ws.errorCharIndex === charIdx && styles.errorChar,
-                        ]}
+                        
+                        return (
+                          <ThemedText
+                            key={charIdx}
+                            variant="h4"
+                            color={
+                              ws.revealed
+                                ? theme.success
+                                : hintWordIndex === ws.index && charIdx === 0
+                                ? theme.primary // 提示的首字母高亮
+                                : theme.textMuted
+                            }
+                            style={[
+                              styles.char,
+                              !ws.revealed && hintWordIndex !== ws.index && styles.hiddenChar,
+                            ]}
+                          >
+                            {displayChar}
+                          </ThemedText>
+                        );
+                      })}
+                    </View>
+                    {/* 已完成单词显示翻译 */}
+                    {ws.revealed && translationWordIndex === ws.index && (
+                      <ThemedText 
+                        variant="caption" 
+                        color={theme.textSecondary}
+                        style={styles.translationText}
                       >
-                        {ws.revealed || ws.revealedChars[charIdx] ? char : '_'}
+                        {wordTranslations[ws.word] || '...'}
                       </ThemedText>
-                    ))}
+                    )}
                   </View>
                 )}
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </Animated.View>

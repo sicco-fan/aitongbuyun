@@ -163,7 +163,15 @@ export const createStyles = (theme: Theme) => {
       marginBottom: Spacing.xs,
     },
     wordBox: {
+      flexDirection: 'column',
+      alignItems: 'center',
+    },
+    wordRow: {
       flexDirection: 'row',
+    },
+    translationText: {
+      fontSize: 10,
+      lineHeight: 12,
     },
     char: {
       fontSize: 26,
