@@ -907,21 +907,24 @@ export default function SentencePracticeScreen() {
         return prev;
       }
       
-      // 2. 按位置排序：优先选择位置靠前的单词
-      matched.sort((a, b) => a.index - b.index);
-      
-      // 3. 检查是否有完全匹配（按键序列长度等于单词按键序列长度）
+      // 2. 检查是否有完全匹配
       const exactMatches = matched.filter(item => item.keySequence.length === newSequence.length);
       
-      if (exactMatches.length > 0) {
-        // 4. 最长匹配优先：在完全匹配中选择单词最长的那个
-        // 这样 "to" 和 "today" 都匹配时，优先选择 "today"
+      // 3. 检查是否有更长的前缀匹配（说明可能有更长的单词）
+      const hasLongerMatch = matched.some(item => item.keySequence.length > newSequence.length);
+      
+      // 4. 按位置排序：优先选择位置靠前的单词
+      matched.sort((a, b) => a.index - b.index);
+      
+      if (exactMatches.length > 0 && !hasLongerMatch) {
+        // 有完全匹配，且没有更长的前缀匹配 → 可以确认
+        // 最长匹配优先：在完全匹配中选择单词最长的那个
         exactMatches.sort((a, b) => b.word.length - a.word.length);
         const word = exactMatches[0];
         setCurrentInput(word.word);
         setTargetWordIndexWithRef(word.index);
         
-        // 5. 延迟确认：等待500ms，如果用户继续输入则取消确认
+        // 延迟确认：等待500ms，如果用户继续输入则取消确认
         confirmTimerRef.current = setTimeout(() => {
           handleInputChange(word.word);
           setCurrentInput('');
@@ -933,7 +936,8 @@ export default function SentencePracticeScreen() {
         return newSequence;
       }
       
-      // 没有完全匹配，显示第一个匹配单词（按位置优先）
+      // 有完全匹配但也有更长的前缀匹配，或者只有前缀匹配
+      // 显示第一个匹配单词的前缀（按位置优先）
       const firstMatch = matched[0];
       const wordChars = firstMatch.word.slice(0, newSequence.length);
       setCurrentInput(wordChars);
