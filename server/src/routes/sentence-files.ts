@@ -946,4 +946,158 @@ router.get('/:id/audio-url', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/v1/sentence-files/:id/generate-audio
+ * 生成句子语音片段
+ * 从原始音频中切分每个句子的语音片段
+ */
+router.post('/:id/generate-audio', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const supabase = getSupabaseClient();
+    
+    console.log(`[生成音频] 开始处理文件 ${id}`);
+    
+    // 获取文件信息
+    const { data: file, error: fileError } = await supabase
+      .from('sentence_files')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (fileError || !file) {
+      return res.status(404).json({ error: '文件不存在' });
+    }
+    
+    // 获取句子列表
+    const { data: sentences, error: sentencesError } = await supabase
+      .from('sentence_file_items')
+      .select('*')
+      .eq('sentence_file_id', id)
+      .order('sentence_index', { ascending: true });
+    
+    if (sentencesError || !sentences || sentences.length === 0) {
+      return res.status(400).json({ error: '没有可处理的句子' });
+    }
+    
+    // 过滤出有有效时间戳的句子（start_time > 0 且 end_time > 0）
+    const validSentences = sentences.filter(s => 
+      s.start_time != null && s.start_time > 0 && 
+      s.end_time != null && s.end_time > 0 &&
+      s.end_time > s.start_time
+    );
+    
+    if (validSentences.length === 0) {
+      return res.status(400).json({ error: '没有句子有有效的时间戳，请先设置时间轴' });
+    }
+    
+    console.log(`[生成音频] 共 ${sentences.length} 个句子，其中 ${validSentences.length} 个有有效时间戳`);
+    
+    // 生成原始音频的签名 URL
+    const audioUrl = await storage.generatePresignedUrl({
+      key: file.original_audio_url,
+      expireTime: 3600,
+    });
+    
+    // 创建临时目录
+    const tempDir = `/tmp/sentence_audio_${id}_${Date.now()}`;
+    await fs.mkdir(tempDir, { recursive: true });
+    
+    try {
+      // 下载原始音频
+      const originalAudioPath = `${tempDir}/original.mp3`;
+      console.log(`[生成音频] 下载原始音频: ${audioUrl}`);
+      
+      const audioResponse = await axios({
+        method: 'GET',
+        url: audioUrl,
+        responseType: 'arraybuffer',
+        timeout: 120000,
+      });
+      
+      await fs.writeFile(originalAudioPath, Buffer.from(audioResponse.data));
+      console.log(`[生成音频] 原始音频已下载: ${originalAudioPath}`);
+      
+      // 处理每个句子
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (const sentence of validSentences) {
+        try {
+          const startTime = sentence.start_time / 1000; // 转换为秒
+          const endTime = sentence.end_time / 1000;
+          const duration = endTime - startTime;
+          
+          const sentenceAudioPath = `${tempDir}/sentence_${sentence.id}.mp3`;
+          
+          // 使用 ffmpeg 切分音频
+          const ffmpegCmd = `ffmpeg -y -ss ${startTime} -i "${originalAudioPath}" -t ${duration} -acodec libmp3lame -ab 128k "${sentenceAudioPath}"`;
+          console.log(`[生成音频] 切分句子 ${sentence.id}: ${ffmpegCmd}`);
+          
+          await execAsync(ffmpegCmd, { timeout: 30000 });
+          
+          // 检查文件是否生成
+          const stat = await fs.stat(sentenceAudioPath);
+          if (stat.size === 0) {
+            throw new Error('生成的音频文件为空');
+          }
+          
+          // 上传到对象存储
+          const audioBuffer = await fs.readFile(sentenceAudioPath);
+          const audioKey = await storage.uploadFile({
+            fileContent: audioBuffer,
+            fileName: `sentence-audio/${id}/${sentence.id}.mp3`,
+            contentType: 'audio/mpeg',
+          });
+          
+          // 更新数据库
+          const { error: updateError } = await supabase
+            .from('sentence_file_items')
+            .update({ audio_url: audioKey })
+            .eq('id', sentence.id);
+          
+          if (updateError) {
+            console.error(`[生成音频] 更新数据库失败:`, updateError);
+            throw new Error('更新数据库失败');
+          }
+          
+          console.log(`[生成音频] 句子 ${sentence.id} 处理成功`);
+          successCount++;
+          
+        } catch (sentenceError) {
+          console.error(`[生成音频] 句子 ${sentence.id} 处理失败:`, sentenceError);
+          failCount++;
+        }
+      }
+      
+      // 清理临时文件
+      await fs.rm(tempDir, { recursive: true, force: true });
+      
+      // 更新文件状态
+      await supabase
+        .from('sentence_files')
+        .update({ status: 'audio_ready' })
+        .eq('id', id);
+      
+      console.log(`[生成音频] 处理完成: 成功 ${successCount}, 失败 ${failCount}`);
+      
+      res.json({
+        success: true,
+        message: `音频生成完成：成功 ${successCount} 个，失败 ${failCount} 个`,
+        successCount,
+        failCount,
+      });
+      
+    } catch (processError) {
+      // 清理临时文件
+      try { await fs.rm(tempDir, { recursive: true, force: true }); } catch (e) {}
+      throw processError;
+    }
+    
+  } catch (error) {
+    console.error('生成音频失败:', error);
+    res.status(500).json({ error: '生成失败', message: (error as Error).message });
+  }
+});
+
 export default router;
