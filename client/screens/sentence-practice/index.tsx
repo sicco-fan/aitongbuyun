@@ -711,82 +711,6 @@ export default function SentencePracticeScreen() {
     targetWordIndexRef.current = value; // 立即同步 ref
   }, []);
 
-  const handleInputChange = useCallback((text: string) => {
-    const currentWordStatuses = wordStatusesRef.current;
-
-    // 检测是否输入了空格或回车（用户确认单词）
-    const lastChar = text[text.length - 1];
-    const isConfirmChar = lastChar === ' ' || lastChar === '\n';
-    
-    // 提取实际单词内容（去掉末尾的空格/回车）
-    const actualInput = isConfirmChar ? text.slice(0, -1) : text;
-
-    // 空输入时重置
-    if (actualInput.length === 0) {
-      setCurrentInput('');
-      setTargetWordIndexWithRef(null);
-      return;
-    }
-
-    // 获取未完成的单词
-    const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
-    if (incompleteWords.length === 0) {
-      setCurrentInput('');
-      return;
-    }
-
-    // 如果用户按了空格/回车，强制匹配当前输入
-    if (isConfirmChar) {
-      const matchedWord = incompleteWords.find(w => wordsMatch(w.word, actualInput));
-      
-      if (matchedWord) {
-        // 匹配成功，显示单词
-        updateWordStatusesWithRef(prev => prev.map(ws => {
-          if (ws.index === matchedWord.index) {
-            return {
-              ...ws,
-              revealed: true,
-              revealedChars: new Array(ws.word.length).fill(true),
-              errorCharIndex: -1,
-            };
-          }
-          return ws;
-        }));
-      }
-      // 无论匹配成功与否，都清空输入框和按键序列
-      setCurrentInput('');
-      setCurrentKeySequence([]);
-      setTargetWordIndexWithRef(null);
-      return;
-    }
-
-    // 正常输入流程：检查是否完全匹配某个单词
-    const matchedWord = incompleteWords.find(w => wordsMatch(w.word, actualInput));
-
-    if (matchedWord) {
-      // 完全匹配，确认匹配
-      updateWordStatusesWithRef(prev => prev.map(ws => {
-        if (ws.index === matchedWord.index) {
-          return {
-            ...ws,
-            revealed: true,
-            revealedChars: new Array(ws.word.length).fill(true),
-            errorCharIndex: -1,
-          };
-        }
-        return ws;
-      }));
-      // 清空输入框和按键序列
-      setCurrentInput('');
-      setCurrentKeySequence([]);
-      setTargetWordIndexWithRef(null);
-      return;
-    }
-
-    // 输入过程中只保留用户输入
-    setCurrentInput(text);
-  }, [updateWordStatusesWithRef, setTargetWordIndexWithRef]);
-
   // ==================== 自建键盘相关 ====================
   
   // 字符到按键的映射
@@ -839,6 +763,147 @@ export default function SentencePracticeScreen() {
     
     return sequences;
   }, [wordStatuses, wordToKeySequence]);
+
+  // 检测句子中是否有相似前缀的单词对（需要延迟确认）
+  // 例如：i/I, to/today, a/an 等
+  const hasAmbiguousPrefixes = useMemo(() => {
+    if (wordKeySequences.length < 2) return false;
+    
+    // 检查是否存在一个单词的按键序列是另一个的前缀
+    for (let i = 0; i < wordKeySequences.length; i++) {
+      for (let j = i + 1; j < wordKeySequences.length; j++) {
+        const seq1 = wordKeySequences[i].keySequence;
+        const seq2 = wordKeySequences[j].keySequence;
+        
+        // 检查是否一个是另一个的前缀
+        const shorter = seq1.length < seq2.length ? seq1 : seq2;
+        const longer = seq1.length < seq2.length ? seq2 : seq1;
+        
+        if (shorter.length < longer.length) {
+          const isPrefix = shorter.every((k, idx) => k === longer[idx]);
+          if (isPrefix) {
+            return true; // 找到相似前缀对
+          }
+        }
+      }
+    }
+    return false;
+  }, [wordKeySequences]);
+
+  // 检测输入是否可能匹配更长的单词（用于手机键盘/电脑键盘）
+  const hasLongerPotentialMatch = useCallback((input: string) => {
+    const lowerInput = input.toLowerCase();
+    return wordKeySequences.some(item => 
+      item.word.toLowerCase().startsWith(lowerInput) && item.word.length > input.length
+    );
+  }, [wordKeySequences]);
+
+  // 处理手机键盘/电脑键盘输入
+  const handleInputChange = useCallback((text: string) => {
+    const currentWordStatuses = wordStatusesRef.current;
+
+    // 检测是否输入了空格或回车（用户确认单词）
+    const lastChar = text[text.length - 1];
+    const isConfirmChar = lastChar === ' ' || lastChar === '\n';
+    
+    // 提取实际单词内容（去掉末尾的空格/回车）
+    const actualInput = isConfirmChar ? text.slice(0, -1) : text;
+
+    // 空输入时重置
+    if (actualInput.length === 0) {
+      setCurrentInput('');
+      setTargetWordIndexWithRef(null);
+      return;
+    }
+
+    // 获取未完成的单词
+    const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
+    if (incompleteWords.length === 0) {
+      setCurrentInput('');
+      return;
+    }
+
+    // 如果用户按了空格/回车，强制匹配当前输入
+    if (isConfirmChar) {
+      // 取消待确认的定时器
+      if (confirmTimerRef.current) {
+        clearTimeout(confirmTimerRef.current);
+        confirmTimerRef.current = null;
+      }
+      
+      const matchedWord = incompleteWords.find(w => wordsMatch(w.word, actualInput));
+      
+      if (matchedWord) {
+        // 匹配成功，显示单词
+        updateWordStatusesWithRef(prev => prev.map(ws => {
+          if (ws.index === matchedWord.index) {
+            return {
+              ...ws,
+              revealed: true,
+              revealedChars: new Array(ws.word.length).fill(true),
+              errorCharIndex: -1,
+            };
+          }
+          return ws;
+        }));
+      }
+      // 无论匹配成功与否，都清空输入框和按键序列
+      setCurrentInput('');
+      setCurrentKeySequence([]);
+      setTargetWordIndexWithRef(null);
+      return;
+    }
+
+    // 正常输入流程：检查是否完全匹配某个单词
+    // 位置优先：找到第一个匹配的单词
+    const matchedWord = incompleteWords
+      .sort((a, b) => a.index - b.index)
+      .find(w => wordsMatch(w.word, actualInput));
+
+    if (matchedWord) {
+      // 检查是否有更长的可能匹配
+      const hasLonger = hasLongerPotentialMatch(actualInput);
+      
+      // 只有在句子中有相似前缀且有更长匹配时才延迟确认
+      if (hasAmbiguousPrefixes && hasLonger) {
+        // 显示匹配的单词，但延迟确认
+        setCurrentInput(actualInput);
+        setTargetWordIndexWithRef(matchedWord.index);
+        
+        // 取消之前的定时器
+        if (confirmTimerRef.current) {
+          clearTimeout(confirmTimerRef.current);
+        }
+        
+        // 延迟确认
+        confirmTimerRef.current = setTimeout(() => {
+          handleInputChange(actualInput + ' '); // 用空格触发确认
+          confirmTimerRef.current = null;
+        }, 250);
+      } else {
+        // 没有相似前缀或没有更长匹配，立即确认
+        updateWordStatusesWithRef(prev => prev.map(ws => {
+          if (ws.index === matchedWord.index) {
+            return {
+              ...ws,
+              revealed: true,
+              revealedChars: new Array(ws.word.length).fill(true),
+              errorCharIndex: -1,
+            };
+          }
+          return ws;
+        }));
+        setCurrentInput('');
+        setCurrentKeySequence([]);
+        setTargetWordIndexWithRef(null);
+      }
+      return;
+    }
+
+    // 输入过程中只保留用户输入
+    setCurrentInput(text);
+    setTargetWordIndexWithRef(null);
+  }, [updateWordStatusesWithRef, setTargetWordIndexWithRef, hasAmbiguousPrefixes, hasLongerPotentialMatch]);
 
   // 当前按键序列
   const [currentKeySequence, setCurrentKeySequence] = useState<string[]>([]);
@@ -924,14 +989,22 @@ export default function SentencePracticeScreen() {
         setCurrentInput(word.word);
         setTargetWordIndexWithRef(word.index);
         
-        // 延迟确认：等待500ms，如果用户继续输入则取消确认
-        confirmTimerRef.current = setTimeout(() => {
+        // 只有在句子中有相似前缀的情况下才延迟确认
+        if (hasAmbiguousPrefixes) {
+          confirmTimerRef.current = setTimeout(() => {
+            handleInputChange(word.word);
+            setCurrentInput('');
+            setCurrentKeySequence([]);
+            setTargetWordIndexWithRef(null);
+            confirmTimerRef.current = null;
+          }, 250);
+        } else {
+          // 没有相似前缀，立即确认
           handleInputChange(word.word);
           setCurrentInput('');
           setCurrentKeySequence([]);
           setTargetWordIndexWithRef(null);
-          confirmTimerRef.current = null;
-        }, 500);
+        }
         
         return newSequence;
       }
@@ -944,7 +1017,7 @@ export default function SentencePracticeScreen() {
       setTargetWordIndexWithRef(firstMatch.index);
       return newSequence;
     });
-  }, [wordKeySequences, handleInputChange, setTargetWordIndexWithRef, currentInput]);
+  }, [wordKeySequences, handleInputChange, setTargetWordIndexWithRef, currentInput, hasAmbiguousPrefixes]);
 
   // 检查是否完成
   useEffect(() => {
