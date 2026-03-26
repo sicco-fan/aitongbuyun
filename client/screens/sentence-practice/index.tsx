@@ -714,13 +714,18 @@ export default function SentencePracticeScreen() {
   const handleCustomKeyPress = useCallback((key: string, keyLetters: string) => {
     if (key === '⌫') {
       setCurrentInput(prev => prev.slice(0, -1));
-      setCurrentKeySequence(prev => prev.slice(0, -1));
+      setCurrentKeySequence(prev => {
+        const newSeq = prev.slice(0, -1);
+        currentKeySequenceRef.current = newSeq;
+        return newSeq;
+      });
       return;
     }
     
     if (key === '清空') {
       setCurrentInput('');
       setCurrentKeySequence([]);
+      currentKeySequenceRef.current = [];
       setTargetWordIndexWithRef(null);
       return;
     }
@@ -741,9 +746,10 @@ export default function SentencePracticeScreen() {
       
       if (matchedWord) {
         // 完全匹配，确认单词
-        handleInputChange(matchedWord.word);
         setCurrentKeySequence([]);
+        currentKeySequenceRef.current = []; // 同步更新 ref
         setCurrentInput('');
+        handleInputChange(matchedWord.word);
       }
       // 没有匹配到任何单词，不做操作
       return;
@@ -754,6 +760,9 @@ export default function SentencePracticeScreen() {
     
     setCurrentKeySequence(prev => {
       const newSequence = [...prev, pressedKey];
+      
+      // 同步更新 ref（避免竞态条件）
+      currentKeySequenceRef.current = newSequence;
       
       // 优先查找完全匹配的单词
       const exactMatch = wordKeySequences.find(item => {
@@ -795,6 +804,7 @@ export default function SentencePracticeScreen() {
       }
       
       // 没有匹配，不更新序列
+      currentKeySequenceRef.current = prev; // 恢复 ref
       return prev;
     });
   }, [wordKeySequences, handleInputChange, setTargetWordIndexWithRef]);
