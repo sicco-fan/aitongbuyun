@@ -142,7 +142,6 @@ export const createStyles = (theme: Theme) => {
     sentenceSection: {
       flex: 1,
       paddingHorizontal: Spacing.lg,
-      maxHeight: 280, // 限制最大高度，让键盘更靠上
     },
     sentenceScrollContent: {
       paddingVertical: Spacing.md,
@@ -269,13 +268,13 @@ export const createStyles = (theme: Theme) => {
     // Custom Keyboard
     customKeyboardContainer: {
       width: '100%',
-      marginTop: -Spacing.md,
+      marginBottom: Spacing.sm, // 稍微离底部高一点
     },
     customInputRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: Spacing.sm,
-      marginBottom: 4,
+      marginBottom: Spacing.sm,
     },
     customInputDisplay: {
       flex: 1,
@@ -283,11 +282,11 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.lg,
       borderWidth: 2,
       borderColor: '#A5D6A7',
-      paddingVertical: Spacing.sm,
+      paddingVertical: Spacing.md,
       paddingHorizontal: Spacing.lg,
       alignItems: 'center',
       justifyContent: 'center',
-      minHeight: 44,
+      minHeight: 48,
     },
     navBtnSmall: {
       width: 40,
@@ -301,24 +300,24 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
       backgroundColor: '#D1D5DB',
       borderRadius: BorderRadius.lg,
-      padding: 6,
-      gap: 4,
-      height: 200,
+      padding: 8,
+      gap: 6,
+      height: 220,
     },
     keyboardColumn: {
       flexDirection: 'column',
-      gap: 4,
+      gap: 6,
       justifyContent: 'space-between',
     },
     keyboardLetterSection: {
       flex: 1,
       flexDirection: 'column',
-      gap: 4,
+      gap: 6,
       justifyContent: 'space-between',
     },
     keyboardRow: {
       flexDirection: 'row',
-      gap: 4,
+      gap: 6,
       flex: 1,
     },
     keyButton: {
@@ -328,14 +327,14 @@ export const createStyles = (theme: Theme) => {
       flex: 1,
     },
     symbolKey: {
-      width: 50,
+      width: 54,
       backgroundColor: '#9CA3AF',
     },
     letterKey: {
       backgroundColor: '#FFFFFF',
     },
     functionKey: {
-      width: 50,
+      width: 54,
       backgroundColor: '#9CA3AF',
     },
   });

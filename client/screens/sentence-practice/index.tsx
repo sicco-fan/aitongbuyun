@@ -698,7 +698,6 @@ export default function SentencePracticeScreen() {
   // 处理自建键盘按键
   const handleCustomKeyPress = useCallback((key: string, keyLetters: string) => {
     if (key === '⌫') {
-      // 退格
       setCurrentInput(prev => prev.slice(0, -1));
       return;
     }
@@ -711,10 +710,21 @@ export default function SentencePracticeScreen() {
     
     if (key === '空格') {
       // 空格确认当前单词
-      setCurrentInput(prev => {
-        handleInputChange(prev + ' ');
-        return prev;
-      });
+      const currentWordStatuses = wordStatusesRef.current;
+      const incompleteWord = currentWordStatuses.find(w => !w.isPunctuation && !w.revealed);
+      
+      if (incompleteWord) {
+        // 检查当前输入是否匹配目标单词
+        const targetWord = incompleteWord.word.toLowerCase();
+        setCurrentInput(prev => {
+          const normalizedInput = prev.toLowerCase();
+          if (wordsMatch(normalizedInput, targetWord)) {
+            // 匹配成功，触发 handleInputChange 完成单词
+            handleInputChange(prev + ' ');
+          }
+          return '';
+        });
+      }
       return;
     }
     
@@ -722,37 +732,63 @@ export default function SentencePracticeScreen() {
     if (['-', '\'', '&'].includes(key)) {
       setCurrentInput(prev => {
         const newInput = prev + key;
-        handleInputChange(newInput);
+        // 检查是否完成匹配
+        const currentWordStatuses = wordStatusesRef.current;
+        const incompleteWord = currentWordStatuses.find(w => !w.isPunctuation && !w.revealed);
+        
+        if (incompleteWord) {
+          const targetWord = incompleteWord.word.toLowerCase();
+          // 如果输入长度等于目标单词长度，检查匹配
+          if (newInput.length === targetWord.length && wordsMatch(newInput, targetWord)) {
+            // 匹配成功，触发完成
+            setTimeout(() => handleInputChange(newInput), 0);
+          }
+        }
         return newInput;
       });
       return;
     }
     
     // 字母按键：智能匹配
-    // 直接从 ref 获取最新的 wordStatuses 和当前输入
     const currentWordStatuses = wordStatusesRef.current;
     const incompleteWord = currentWordStatuses.find(w => !w.isPunctuation && !w.revealed);
     
     if (!incompleteWord) return;
     
-    const word = incompleteWord.word.toLowerCase();
+    const targetWord = incompleteWord.word.toLowerCase();
+    const lowerKey = keyLetters.toLowerCase();
     
-    // 使用函数式更新获取最新的 currentInput
     setCurrentInput(prev => {
-      const inputLength = prev.length;
-      if (inputLength >= word.length) return prev;
+      const nextCharIndex = prev.length;
+      if (nextCharIndex >= targetWord.length) return prev;
       
-      const nextChar = word[inputLength];
-      const lowerKey = keyLetters.toLowerCase();
+      const expectedChar = targetWord[nextCharIndex];
       
       // 检查期望字符是否在当前按键中
-      if (lowerKey.includes(nextChar)) {
-        const newInput = prev + nextChar;
-        handleInputChange(newInput);
+      let foundChar: string | null = null;
+      for (const c of lowerKey) {
+        if (c === expectedChar) {
+          foundChar = expectedChar;
+          break;
+        }
+      }
+      
+      // 也检查引号类字符
+      if (!foundChar && isSingleQuoteLike(expectedChar)) {
+        foundChar = expectedChar;
+      }
+      
+      if (foundChar) {
+        const newInput = prev + foundChar;
+        
+        // 如果输入完成，检查匹配并触发完成
+        if (newInput.length === targetWord.length && wordsMatch(newInput, targetWord)) {
+          setTimeout(() => handleInputChange(newInput), 0);
+        }
+        
         return newInput;
       }
       
-      // 期望字符不在当前按键中，不输入
       return prev;
     });
   }, [handleInputChange, setTargetWordIndexWithRef]);
