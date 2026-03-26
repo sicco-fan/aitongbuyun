@@ -24,13 +24,6 @@ export default function RootLayout() {
             headerShown: false
           }}>
             <Stack.Screen name="(tabs)" options={{ title: "" }} />
-            <Stack.Screen name="practice" options={{ title: "练习" }} />
-            <Stack.Screen name="add-material" options={{ title: "添加材料" }} />
-            <Stack.Screen name="admin" options={{ title: "材料管理" }} />
-            <Stack.Screen name="admin-sentences" options={{ title: "句子编辑" }} />
-            <Stack.Screen name="text-split" options={{ title: "文本切分" }} />
-            <Stack.Screen name="timestamp-editor" options={{ title: "时间戳设置" }} />
-            <Stack.Screen name="letter-training" options={{ title: "字母发音采集" }} />
             <Stack.Screen name="error-words" options={{ title: "错题本" }} />
             <Stack.Screen name="sentence-workshop" options={{ title: "句库制作" }} />
             <Stack.Screen name="create-sentence-file" options={{ title: "创建句库文件" }} />

@@ -1410,13 +1410,13 @@ export default function EditSentenceAudioScreen() {
 
               <Text style={styles.helpSectionTitle}>推荐工作流</Text>
               <View style={styles.helpWorkflow}>
-                <Text style={styles.helpWorkflowItem}>1. 逐句调整时间戳，用"下一句"切换</Text>
-                <Text style={styles.helpWorkflowItem}>2. 阶段性点"保存"防止丢失</Text>
-                <Text style={styles.helpWorkflowItem}>3. 全部完成后点"完成切分"（可选）</Text>
+                <Text style={styles.helpWorkflowItem}>1. 逐句调整时间戳，用「下一句」切换</Text>
+                <Text style={styles.helpWorkflowItem}>2. 阶段性点「保存」防止丢失</Text>
+                <Text style={styles.helpWorkflowItem}>3. 全部完成后点「完成切分」（可选）</Text>
               </View>
 
               <Text style={styles.helpNote}>
-                💡 学习页面从原始音频 seek 播放，不点"完成切分"也能正常学习。独立音频片段是可选优化。
+                提示：学习页面从原始音频 seek 播放，不点「完成切分」也能正常学习。独立音频片段是可选优化。
               </Text>
             </ScrollView>
           </View>
