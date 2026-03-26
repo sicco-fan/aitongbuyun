@@ -703,12 +703,13 @@ router.put('/:id/text', async (req: Request, res: Response) => {
 
 /**
  * POST /api/v1/sentence-files/:id/split-sentences
- * 按文本切分句子（按空行分割）
- * Body: { }
+ * 按文本切分句子（按空行分割），智能合并已编辑的时间戳
+ * Body: { force?: boolean } - force=true 时强制重新切分，不保留时间戳
  */
 router.post('/:id/split-sentences', async (req: Request, res: Response) => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { force = false } = req.body;
     const supabase = getSupabaseClient();
     
     // 获取文件信息
@@ -727,34 +728,136 @@ router.post('/:id/split-sentences', async (req: Request, res: Response) => {
     }
     
     // 按空行分割句子
-    const sentences = file.text_content
+    const newSentences = file.text_content
       .split(/\n\s*\n/)  // 按空行分割
       .map((s: string) => s.trim())
       .filter((s: string) => s.length > 0);
     
-    console.log(`[切分句子] 共 ${sentences.length} 个句子`);
+    console.log(`[切分句子] 新文本共 ${newSentences.length} 个句子`);
     
-    // 删除旧句子
-    await supabase
+    // 获取现有句子
+    const { data: existingSentences, error: fetchError } = await supabase
       .from('sentence_file_items')
-      .delete()
-      .eq('sentence_file_id', id);
+      .select('*')
+      .eq('sentence_file_id', id)
+      .order('sentence_index');
     
-    // 插入新句子（初始时间戳为0）
-    const sentencesData = sentences.map((text: string, index: number) => ({
-      sentence_file_id: parseInt(id),
-      sentence_index: index,
-      text,
-      start_time: 0,
-      end_time: 0,
-    }));
+    if (fetchError) {
+      throw new Error(fetchError.message);
+    }
     
-    const { error: insertError } = await supabase
-      .from('sentence_file_items')
-      .insert(sentencesData);
+    // 检查是否有已编辑的时间戳
+    const hasEditedTimestamps = (existingSentences || []).some(
+      (s: any) => s.start_time !== null && s.start_time > 0
+    );
     
-    if (insertError) {
-      throw new Error(insertError.message);
+    // 统计信息
+    let stats = {
+      total: newSentences.length,
+      matched: 0,      // 文本匹配，保留时间戳
+      updated: 0,      // 文本有变化
+      added: 0,        // 新增
+      removed: 0,      // 删除
+    };
+    
+    if (force || !hasEditedTimestamps || !existingSentences || existingSentences.length === 0) {
+      // 强制重新切分 或 没有已编辑的时间戳 或 没有现有句子
+      // 删除旧句子
+      await supabase
+        .from('sentence_file_items')
+        .delete()
+        .eq('sentence_file_id', id);
+      
+      // 插入新句子（初始时间戳为 null）
+      const sentencesData = newSentences.map((text: string, index: number) => ({
+        sentence_file_id: parseInt(id),
+        sentence_index: index,
+        text,
+        start_time: null,
+        end_time: null,
+      }));
+      
+      const { error: insertError } = await supabase
+        .from('sentence_file_items')
+        .insert(sentencesData);
+      
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
+      
+      stats.added = newSentences.length;
+    } else {
+      // 智能合并：保留已编辑的时间戳
+      console.log(`[切分句子] 现有 ${existingSentences.length} 个句子，尝试智能合并`);
+      
+      // 创建文本到句子的映射（用于匹配）
+      const existingMap = new Map<string, any>();
+      existingSentences.forEach((s: any) => {
+        // 标准化文本用于匹配（去除多余空格）
+        const normalizedText = s.text.replace(/\s+/g, ' ').trim();
+        existingMap.set(normalizedText, s);
+      });
+      
+      // 处理新句子
+      const mergedSentences: any[] = [];
+      
+      for (let i = 0; i < newSentences.length; i++) {
+        const newText = newSentences[i];
+        const normalizedNewText = newText.replace(/\s+/g, ' ').trim();
+        
+        // 尝试匹配现有句子
+        const existing = existingMap.get(normalizedNewText);
+        
+        if (existing) {
+          // 文本匹配，保留时间戳
+          mergedSentences.push({
+            id: existing.id,
+            sentence_file_id: parseInt(id),
+            sentence_index: i,
+            text: newText,
+            start_time: existing.start_time,
+            end_time: existing.end_time,
+            audio_url: existing.audio_url,
+          });
+          stats.matched++;
+          // 从 map 中移除，表示已处理
+          existingMap.delete(normalizedNewText);
+        } else {
+          // 新句子，没有时间戳
+          mergedSentences.push({
+            sentence_file_id: parseInt(id),
+            sentence_index: i,
+            text: newText,
+            start_time: null,
+            end_time: null,
+          });
+          stats.added++;
+        }
+      }
+      
+      // 统计被删除的句子（仍在 map 中的）
+      stats.removed = existingMap.size;
+      
+      // 删除所有旧句子
+      await supabase
+        .from('sentence_file_items')
+        .delete()
+        .eq('sentence_file_id', id);
+      
+      // 插入合并后的句子
+      const { error: insertError } = await supabase
+        .from('sentence_file_items')
+        .insert(mergedSentences.map(s => ({
+          sentence_file_id: s.sentence_file_id,
+          sentence_index: s.sentence_index,
+          text: s.text,
+          start_time: s.start_time,
+          end_time: s.end_time,
+        })));
+      
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
     }
     
     // 更新文件状态
@@ -763,10 +866,13 @@ router.post('/:id/split-sentences', async (req: Request, res: Response) => {
       .update({ status: 'completed' })
       .eq('id', id);
     
+    console.log(`[切分句子] 合并完成:`, stats);
+    
     res.json({
       success: true,
-      count: sentences.length,
-      message: `成功切分 ${sentences.length} 个句子`,
+      count: newSentences.length,
+      stats,
+      message: `成功切分 ${newSentences.length} 个句子（匹配 ${stats.matched} 个已有时间戳，新增 ${stats.added} 个，移除 ${stats.removed} 个）`,
     });
   } catch (error) {
     console.error('切分句子失败:', error);

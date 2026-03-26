@@ -138,6 +138,13 @@ export default function EditSentenceAudioScreen() {
   // 文件列表（用于选择文件）
   const [fileList, setFileList] = useState<SentenceFile[]>([]);
   const [loadingList, setLoadingList] = useState(false);
+  
+  // 同步状态
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ visible: boolean; stats: any }>({
+    visible: false,
+    stats: null,
+  });
 
   const currentSentence = sentences[currentIndex];
 
@@ -299,6 +306,45 @@ export default function EditSentenceAudioScreen() {
       setErrorDialog({ visible: true, message: `加载失败：${(error as Error).message}` });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 同步最新文本切分
+  const handleSyncSentences = async () => {
+    if (!file) return;
+    
+    setSyncing(true);
+    try {
+      /**
+       * 服务端文件：server/src/routes/sentence-files.ts
+       * 接口：POST /api/v1/sentence-files/:id/split-sentences
+       * Path 参数：id: number
+       * Body 参数：force: boolean
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/${file.id}/split-sentences`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: false }),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setSyncResult({
+          visible: true,
+          stats: result.stats,
+        });
+        
+        // 重新加载文件
+        await loadFile(file.id);
+      } else {
+        throw new Error(result.error || '同步失败');
+      }
+    } catch (error) {
+      console.error('[同步句子] 失败:', error);
+      setErrorDialog({ visible: true, message: `同步失败：${(error as Error).message}` });
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -935,9 +981,23 @@ export default function EditSentenceAudioScreen() {
           <Text style={styles.headerTitle}>时间轴编辑</Text>
           <Text style={styles.headerInfo}>句子 {currentIndex + 1}/{sentences.length}</Text>
         </View>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
-          <FontAwesome6 name="xmark" size={20} color="#888" />
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          {/* 同步按钮 */}
+          <TouchableOpacity 
+            onPress={handleSyncSentences} 
+            style={styles.syncBtn}
+            disabled={syncing}
+          >
+            {syncing ? (
+              <ActivityIndicator size="small" color="#00ff88" />
+            ) : (
+              <FontAwesome6 name="rotate" size={16} color="#00ff88" />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+            <FontAwesome6 name="xmark" size={20} color="#888" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 句子导航 */}
@@ -1160,6 +1220,23 @@ export default function EditSentenceAudioScreen() {
           </View>
         </View>
       </Modal>
+      
+      {/* 同步结果对话框 */}
+      <ConfirmDialog
+        visible={syncResult.visible}
+        title="同步完成"
+        message={
+          syncResult.stats 
+            ? `句子总数: ${syncResult.stats.total}\n` +
+              `保留时间戳: ${syncResult.stats.matched} 句\n` +
+              `新增: ${syncResult.stats.added} 句\n` +
+              `移除: ${syncResult.stats.removed} 句`
+            : '同步完成'
+        }
+        confirmText="确定"
+        onConfirm={() => setSyncResult({ visible: false, stats: null })}
+        onCancel={() => setSyncResult({ visible: false, stats: null })}
+      />
     </Screen>
   );
 }
@@ -1189,6 +1266,19 @@ const styles = StyleSheet.create({
     color: '#00ff88',
     fontSize: 14,
     fontWeight: '500',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  syncBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#2a2a2a',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   closeBtn: {
     width: 36,
