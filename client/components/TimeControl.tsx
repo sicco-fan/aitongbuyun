@@ -97,12 +97,12 @@ export function TimeControl({
       
       {/* 调整按钮行 - 6个按钮充满整个宽度 */}
       <View style={styles.buttonRow}>
-        {renderAdjustButton(-1000, '«««')}
-        {renderAdjustButton(-100, '««')}
-        {renderAdjustButton(-10, '«')}
-        {renderAdjustButton(10, '»')}
-        {renderAdjustButton(100, '»»')}
-        {renderAdjustButton(1000, '»»»')}
+        {renderAdjustButton(-1000, '<<<')}
+        {renderAdjustButton(-100, '<<')}
+        {renderAdjustButton(-10, '<')}
+        {renderAdjustButton(10, '>')}
+        {renderAdjustButton(100, '>>')}
+        {renderAdjustButton(1000, '>>>')}
       </View>
       
       <Text style={styles.hint}>点击播放 | 滑动微调</Text>
@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   btnSymbol: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: '700',
     letterSpacing: -1,
   },
