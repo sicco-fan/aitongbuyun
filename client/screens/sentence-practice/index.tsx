@@ -194,6 +194,7 @@ export default function SentencePracticeScreen() {
   const [wordStatuses, setWordStatuses] = useState<WordStatus[]>([]);
   const [currentInput, setCurrentInput] = useState('');
   const [targetWordIndex, setTargetWordIndex] = useState<number | null>(null); // 当前正在匹配的单词索引
+  const confirmTimerRef = useRef<NodeJS.Timeout | null>(null); // 延迟确认定时器
 
   // 单词提示和翻译
   const [hintWordIndex, setHintWordIndex] = useState<number | null>(null); // 显示提示的单词
@@ -845,12 +846,22 @@ export default function SentencePracticeScreen() {
   // 处理自建键盘按键
   const handleCustomKeyPress = useCallback((key: string, keyLetters: string) => {
     if (key === '⌫') {
+      // 删除时，取消待确认的定时器
+      if (confirmTimerRef.current) {
+        clearTimeout(confirmTimerRef.current);
+        confirmTimerRef.current = null;
+      }
       setCurrentInput(prev => prev.slice(0, -1));
       setCurrentKeySequence(prev => prev.slice(0, -1));
       return;
     }
     
     if (key === '清空') {
+      // 清空时，取消待确认的定时器
+      if (confirmTimerRef.current) {
+        clearTimeout(confirmTimerRef.current);
+        confirmTimerRef.current = null;
+      }
       setCurrentInput('');
       setCurrentKeySequence([]);
       setTargetWordIndexWithRef(null);
@@ -858,7 +869,11 @@ export default function SentencePracticeScreen() {
     }
     
     if (key === '空格') {
-      // 空格键：确认当前输入
+      // 空格键：立即确认当前输入
+      if (confirmTimerRef.current) {
+        clearTimeout(confirmTimerRef.current);
+        confirmTimerRef.current = null;
+      }
       if (currentInput.length > 0) {
         handleInputChange(currentInput);
         setCurrentInput('');
@@ -868,13 +883,19 @@ export default function SentencePracticeScreen() {
       return;
     }
     
+    // 取消之前的延迟确认定时器（用户继续输入）
+    if (confirmTimerRef.current) {
+      clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = null;
+    }
+    
     // 添加按键到序列
     const pressedKey = ['-', '\'', '&'].includes(key) ? key : keyLetters;
     
     setCurrentKeySequence(prev => {
       const newSequence = [...prev, pressedKey];
       
-      // 找到所有匹配的单词
+      // 1. 找到所有匹配的单词（按键序列前缀匹配）
       const matched = wordKeySequences.filter(item => {
         const targetSeq = item.keySequence;
         if (newSequence.length > targetSeq.length) return false;
@@ -886,34 +907,40 @@ export default function SentencePracticeScreen() {
         return prev;
       }
       
-      // 检查是否有完全匹配（按键序列长度等于单词按键序列长度）
+      // 2. 按位置排序：优先选择位置靠前的单词
+      matched.sort((a, b) => a.index - b.index);
+      
+      // 3. 检查是否有完全匹配（按键序列长度等于单词按键序列长度）
       const exactMatches = matched.filter(item => item.keySequence.length === newSequence.length);
       
       if (exactMatches.length > 0) {
-        // 有完全匹配，自动确认第一个
+        // 4. 最长匹配优先：在完全匹配中选择单词最长的那个
+        // 这样 "to" 和 "today" 都匹配时，优先选择 "today"
+        exactMatches.sort((a, b) => b.word.length - a.word.length);
         const word = exactMatches[0];
         setCurrentInput(word.word);
         setTargetWordIndexWithRef(word.index);
         
-        // 延迟确认，让用户看到单词
-        setTimeout(() => {
+        // 5. 延迟确认：等待500ms，如果用户继续输入则取消确认
+        confirmTimerRef.current = setTimeout(() => {
           handleInputChange(word.word);
           setCurrentInput('');
           setCurrentKeySequence([]);
           setTargetWordIndexWithRef(null);
-        }, 100);
+          confirmTimerRef.current = null;
+        }, 500);
         
         return newSequence;
       }
       
-      // 没有完全匹配，显示第一个匹配单词的前缀
+      // 没有完全匹配，显示第一个匹配单词（按位置优先）
       const firstMatch = matched[0];
       const wordChars = firstMatch.word.slice(0, newSequence.length);
       setCurrentInput(wordChars);
       setTargetWordIndexWithRef(firstMatch.index);
       return newSequence;
     });
-  }, [wordKeySequences, handleInputChange, setTargetWordIndexWithRef]);
+  }, [wordKeySequences, handleInputChange, setTargetWordIndexWithRef, currentInput]);
 
   // 检查是否完成
   useEffect(() => {
@@ -1478,19 +1505,31 @@ export default function SentencePracticeScreen() {
                           key={num}
                           style={[styles.keyButton, styles.letterKey]}
                           onPress={() => {
+                            // 取消之前的延迟确认定时器
+                            if (confirmTimerRef.current) {
+                              clearTimeout(confirmTimerRef.current);
+                              confirmTimerRef.current = null;
+                            }
                             // 直接输入数字
                             const newInput = currentInput + num.toString();
                             setCurrentInput(newInput);
-                            // 检查是否匹配某个单词
-                            const matched = wordStatuses.find(ws => 
+                            // 位置优先：找到第一个匹配的单词（按位置排序）
+                            const allMatches = wordStatuses.filter(ws => 
                               !ws.isPunctuation && !ws.revealed && ws.word.toLowerCase() === newInput.toLowerCase()
                             );
-                            if (matched) {
-                              setTimeout(() => {
+                            if (allMatches.length > 0) {
+                              // 按位置排序，选择最靠前的
+                              const matched = allMatches.sort((a, b) => a.index - b.index)[0];
+                              setTargetWordIndexWithRef(matched.index);
+                              // 延迟确认
+                              confirmTimerRef.current = setTimeout(() => {
                                 handleInputChange(newInput);
                                 setCurrentInput('');
+                                setCurrentKeySequence([]);
+                                setTargetWordIndexWithRef(null);
                                 setShowNumberPanel(false);
-                              }, 100);
+                                confirmTimerRef.current = null;
+                              }, 500);
                             }
                           }}
                         >
@@ -1529,17 +1568,31 @@ export default function SentencePracticeScreen() {
                           key={num}
                           style={[styles.keyButton, styles.letterKey]}
                           onPress={() => {
+                            // 取消之前的延迟确认定时器
+                            if (confirmTimerRef.current) {
+                              clearTimeout(confirmTimerRef.current);
+                              confirmTimerRef.current = null;
+                            }
+                            // 直接输入数字
                             const newInput = currentInput + num.toString();
                             setCurrentInput(newInput);
-                            const matched = wordStatuses.find(ws => 
+                            // 位置优先：找到第一个匹配的单词（按位置排序）
+                            const allMatches = wordStatuses.filter(ws => 
                               !ws.isPunctuation && !ws.revealed && ws.word.toLowerCase() === newInput.toLowerCase()
                             );
-                            if (matched) {
-                              setTimeout(() => {
+                            if (allMatches.length > 0) {
+                              // 按位置排序，选择最靠前的
+                              const matched = allMatches.sort((a, b) => a.index - b.index)[0];
+                              setTargetWordIndexWithRef(matched.index);
+                              // 延迟确认
+                              confirmTimerRef.current = setTimeout(() => {
                                 handleInputChange(newInput);
                                 setCurrentInput('');
+                                setCurrentKeySequence([]);
+                                setTargetWordIndexWithRef(null);
                                 setShowNumberPanel(false);
-                              }, 100);
+                                confirmTimerRef.current = null;
+                              }, 500);
                             }
                           }}
                         >
