@@ -223,7 +223,7 @@ router.get('/:id/learnable', async (req: Request, res: Response) => {
 /**
  * POST /api/v1/sentence-files
  * 创建新句库文件（上传音频/视频）
- * Body: FormData { file: audio/video file, title: string, description?: string }
+ * Body: FormData { file: audio/video file, title: string, description?: string, user_id?: string }
  */
 router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   console.log('===== POST /api/v1/sentence-files =====');
@@ -235,8 +235,8 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       return res.status(400).json({ error: '请上传音频或视频文件' });
     }
 
-    const { title, description } = req.body;
-    console.log('请求参数:', { title, description, hasFile: !!req.file });
+    const { title, description, user_id } = req.body;
+    console.log('请求参数:', { title, description, user_id, hasFile: !!req.file });
     
     if (!title) {
       console.log('错误: 没有标题');
@@ -345,6 +345,7 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
         original_duration: duration,
         source_type: 'upload',
         status: 'audio_ready',
+        created_by: user_id || null,
       })
       .select()
       .single();
@@ -378,11 +379,11 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
 /**
  * POST /api/v1/sentence-files/from-link
  * 从链接创建句库文件
- * Body: { url: string, title?: string }
+ * Body: { url: string, title?: string, user_id?: string }
  */
 router.post('/from-link', async (req: Request, res: Response) => {
   try {
-    const { url, title } = req.body;
+    const { url, title, user_id } = req.body;
     
     if (!url) {
       return res.status(400).json({ error: '请提供链接' });
@@ -491,6 +492,7 @@ router.post('/from-link', async (req: Request, res: Response) => {
         source_type: 'link',
         source_url: url,
         status: 'audio_ready',
+        created_by: user_id || null,
       })
       .select()
       .single();

@@ -16,6 +16,7 @@ import * as Sharing from 'expo-sharing';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useFocusEffect } from 'expo-router';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/contexts/AuthContext';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -63,6 +64,7 @@ interface UploadedFile {
 
 export default function CreateSentenceFileScreen() {
   const { theme, isDark } = useTheme();
+  const { user } = useAuth();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
 
@@ -289,7 +291,7 @@ export default function CreateSentenceFileScreen() {
         const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files/from-link`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: linkUrl, title }),
+          body: JSON.stringify({ url: linkUrl, title, user_id: user?.id }),
         });
         
         const result = await response.json();
@@ -314,6 +316,9 @@ export default function CreateSentenceFileScreen() {
           formData.append('title', title);
           if (description) {
             formData.append('description', description);
+          }
+          if (user?.id) {
+            formData.append('user_id', user.id);
           }
           
           const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`, {
@@ -343,7 +348,11 @@ export default function CreateSentenceFileScreen() {
               httpMethod: 'POST',
               uploadType: 1, // MULTIPART (0 = BINARY_CONTENT, 1 = MULTIPART)
               fieldName: 'file',
-              parameters: { title, description },
+              parameters: { 
+                title, 
+                description,
+                ...(user?.id ? { user_id: user.id } : {}),
+              },
             }
           );
           
