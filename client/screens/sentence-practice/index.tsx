@@ -359,9 +359,23 @@ export default function SentencePracticeScreen() {
     ]).start();
   }, []);
 
-  // 处理输入变化
+  // 处理输入变化 - 使用 ref 存储最新的 wordStatuses，避免闭包问题
+  const wordStatusesRef = useRef(wordStatuses);
+  const targetWordIndexRef = useRef(targetWordIndex);
+  
+  // 同步 ref
+  useEffect(() => {
+    wordStatusesRef.current = wordStatuses;
+  }, [wordStatuses]);
+  
+  useEffect(() => {
+    targetWordIndexRef.current = targetWordIndex;
+  }, [targetWordIndex]);
+
   const handleInputChange = useCallback((text: string) => {
     const inputLower = text.toLowerCase();
+    const currentWordStatuses = wordStatusesRef.current;
+    const currentTargetIndex = targetWordIndexRef.current;
 
     // 空输入时重置状态
     if (inputLower.length === 0) {
@@ -374,11 +388,12 @@ export default function SentencePracticeScreen() {
         };
       }));
       setCurrentInput('');
-      setTargetWordIndex(null); // 清除目标单词
+      setTargetWordIndex(null);
       return;
     }
 
-    const incompleteWords = wordStatuses.filter(w => !w.isPunctuation && !w.revealed);
+    // 获取未完成的单词（使用最新的状态）
+    const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
     if (incompleteWords.length === 0) return;
 
     // 检查是否完全匹配任意单词
@@ -399,55 +414,32 @@ export default function SentencePracticeScreen() {
       }));
       // 清空输入框，继续下一个单词
       setCurrentInput('');
-      setTargetWordIndex(null); // 清除目标单词
+      setTargetWordIndex(null); // 清除目标单词，让下一个输入重新选择
       return;
     }
 
-    // 确定目标单词
-    let targetIndex = targetWordIndex;
+    // 确定目标单词 - 总是按顺序选择第一个未完成的单词
+    let targetIndex = currentTargetIndex;
     
-    if (targetIndex === null) {
-      // 没有锁定的目标单词，尝试找一个匹配的
-      // 优先找第一个未完成单词
-      const firstIncomplete = incompleteWords[0];
-      const firstWord = firstIncomplete.word.toLowerCase();
-      
-      // 检查输入是否匹配第一个单词的开头
-      if (inputLower[0] === firstWord[0]) {
-        targetIndex = firstIncomplete.index;
-      } else {
-        // 检查其他单词
-        for (const w of incompleteWords) {
-          const word = w.word.toLowerCase();
-          if (inputLower[0] === word[0]) {
-            targetIndex = w.index;
-            break;
-          }
-        }
-        // 如果都不匹配，默认使用第一个
-        if (targetIndex === null) {
-          targetIndex = firstIncomplete.index;
-        }
-      }
+    // 如果没有锁定目标，或者锁定的目标已经完成，选择第一个未完成的单词
+    const targetWordStatus = currentWordStatuses.find(w => w.index === targetIndex);
+    if (targetIndex === null || !targetWordStatus || targetWordStatus.revealed) {
+      // 按顺序选择第一个未完成的单词
+      targetIndex = incompleteWords[0].index;
       setTargetWordIndex(targetIndex);
     }
 
     // 找到目标单词
-    const targetWordStatus = wordStatuses.find(w => w.index === targetIndex);
-    if (!targetWordStatus) {
-      // 目标单词不存在（可能已完成），重新选择
-      const firstIncomplete = incompleteWords[0];
-      targetIndex = firstIncomplete.index;
-      setTargetWordIndex(targetIndex);
-    }
+    const targetWord = currentWordStatuses.find(w => w.index === targetIndex);
+    if (!targetWord) return;
 
-    const targetWord = (targetWordStatus || wordStatuses.find(w => w.index === targetIndex)!).word.toLowerCase();
+    const wordLower = targetWord.word.toLowerCase();
 
     // 计算匹配情况
     const matchedChars: boolean[] = [];
-    for (let i = 0; i < targetWord.length; i++) {
+    for (let i = 0; i < wordLower.length; i++) {
       if (i < inputLower.length) {
-        matchedChars.push(inputLower[i] === targetWord[i]);
+        matchedChars.push(inputLower[i] === wordLower[i]);
       } else {
         matchedChars.push(false);
       }
@@ -475,7 +467,7 @@ export default function SentencePracticeScreen() {
 
     // 保留用户输入
     setCurrentInput(text);
-  }, [wordStatuses, targetWordIndex]);
+  }, []);
 
   // 检查是否完成
   useEffect(() => {
