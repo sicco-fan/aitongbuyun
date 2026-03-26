@@ -18,7 +18,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": `啃句大师需要访问麦克风以播放音频内容。`
+        "NSMicrophoneUsageDescription": `啃句大师需要访问麦克风以播放音频内容。`,
+        "NSPhotoLibraryUsageDescription": `允许啃句大师访问您的相册，以便您上传或保存图片。`,
+        "NSCameraUsageDescription": `允许啃句大师使用您的相机，以便您直接拍摄照片上传。`
       }
     },
     "android": {
@@ -26,7 +28,17 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": `com.anonymous.x${projectId || '0'}`
+      "package": `com.anonymous.x${projectId || '0'}`,
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.INTERNET"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -74,7 +86,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "expo-media-library",
         {
           "photosPermission": `允许啃句大师访问您的相册，以便您上传视频文件。`,
-          "savePhotosPermission": `允许啃句大师保存图片到相册。`
+          "savePhotosPermission": `允许啃句大师保存图片到相册。`,
+          "isAccessMediaLocationEnabled": true
         }
       ]
     ],
