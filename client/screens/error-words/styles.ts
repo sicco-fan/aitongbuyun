@@ -14,30 +14,13 @@ export const createStyles = (theme: Theme) => {
     header: {
       marginBottom: Spacing.xl,
     },
-    tipCard: {
-      backgroundColor: theme.primary + '10',
-      borderRadius: BorderRadius.lg,
-      padding: Spacing.lg,
-      marginBottom: Spacing.lg,
-      borderWidth: 1,
-      borderColor: theme.primary + '30',
-    },
-    tipRow: {
+    headerRow: {
       flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: Spacing.md,
+      alignItems: 'center',
+      gap: Spacing.sm,
     },
-    tipIcon: {
-      marginTop: 2,
-    },
-    tipContent: {
-      flex: 1,
-    },
-    tipTitle: {
-      marginBottom: Spacing.xs,
-    },
-    tipText: {
-      lineHeight: 20,
+    tipIconBtn: {
+      padding: Spacing.xs,
     },
     statsRow: {
       flexDirection: 'row',
@@ -160,6 +143,43 @@ export const createStyles = (theme: Theme) => {
     },
     filterBtnTextActive: {
       color: theme.primary,
+    },
+    // Modal
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.4)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    tipModalContent: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.lg,
+      width: '85%',
+      maxWidth: 320,
+    },
+    tipModalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      marginBottom: Spacing.lg,
+    },
+    tipModalTitle: {
+      flex: 1,
+    },
+    tipModalClose: {
+      padding: Spacing.xs,
+    },
+    tipModalBody: {
+      gap: Spacing.md,
+    },
+    tipItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: Spacing.sm,
+    },
+    tipItemIcon: {
+      marginTop: 2,
     },
   });
 };

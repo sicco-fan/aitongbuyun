@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { ScrollView, View, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, TouchableOpacity, ActivityIndicator, Alert, Modal, Pressable } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/contexts/AuthContext';
@@ -39,6 +39,7 @@ export default function ErrorWordsScreen() {
   const [loading, setLoading] = useState(true);
   const [errorData, setErrorData] = useState<ErrorWordData | null>(null);
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
+  const [showTipModal, setShowTipModal] = useState(false);
 
   const fetchErrorWords = useCallback(async () => {
     if (!isAuthenticated || !user?.id) {
@@ -148,30 +149,21 @@ export default function ErrorWordsScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <ThemedView level="root" style={styles.header}>
-          <ThemedText variant="h2" color={theme.textPrimary}>
-            薄弱词汇
-          </ThemedText>
+          <View style={styles.headerRow}>
+            <ThemedText variant="h2" color={theme.textPrimary}>
+              薄弱词汇
+            </ThemedText>
+            <TouchableOpacity 
+              style={styles.tipIconBtn}
+              onPress={() => setShowTipModal(true)}
+            >
+              <FontAwesome6 name="circle-info" size={16} color={theme.textMuted} />
+            </TouchableOpacity>
+          </View>
           <ThemedText variant="body" color={theme.textSecondary} style={{ marginTop: 8 }}>
             点击单词查看详情，针对性练习提升
           </ThemedText>
         </ThemedView>
-
-        {/* Tips */}
-        <View style={styles.tipCard}>
-          <View style={styles.tipRow}>
-            <FontAwesome6 name="lightbulb" size={18} color={theme.primary} style={styles.tipIcon} />
-            <View style={styles.tipContent}>
-              <ThemedText variant="smallMedium" color={theme.primary} style={styles.tipTitle}>
-                学习小贴士
-              </ThemedText>
-              <ThemedText variant="caption" color={theme.textSecondary} style={styles.tipText}>
-                • 错题练习模式可获得 1.5 倍积分奖励{'\n'}
-                • 单词输入正确可减少错误次数{'\n'}
-                • 错误次数减至0后自动清除
-              </ThemedText>
-            </View>
-          </View>
-        </View>
 
         {/* Stats */}
         {errorData && (
@@ -261,6 +253,48 @@ export default function ErrorWordsScreen() {
           </ThemedView>
         )}
       </ScrollView>
+
+      {/* Tips Modal */}
+      <Modal
+        visible={showTipModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTipModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowTipModal(false)}>
+          <Pressable style={styles.tipModalContent} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.tipModalHeader}>
+              <FontAwesome6 name="lightbulb" size={20} color={theme.primary} />
+              <ThemedText variant="h4" color={theme.textPrimary} style={styles.tipModalTitle}>
+                学习小贴士
+              </ThemedText>
+              <TouchableOpacity onPress={() => setShowTipModal(false)} style={styles.tipModalClose}>
+                <FontAwesome6 name="xmark" size={18} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.tipModalBody}>
+              <View style={styles.tipItem}>
+                <FontAwesome6 name="star" size={14} color={theme.primary} style={styles.tipItemIcon} />
+                <ThemedText variant="body" color={theme.textSecondary}>
+                  错题练习模式可获得 <ThemedText variant="bodyMedium" color={theme.primary}>1.5 倍</ThemedText> 积分奖励
+                </ThemedText>
+              </View>
+              <View style={styles.tipItem}>
+                <FontAwesome6 name="arrow-trend-down" size={14} color={theme.primary} style={styles.tipItemIcon} />
+                <ThemedText variant="body" color={theme.textSecondary}>
+                  单词输入正确可减少错误次数
+                </ThemedText>
+              </View>
+              <View style={styles.tipItem}>
+                <FontAwesome6 name="check-circle" size={14} color={theme.success} style={styles.tipItemIcon} />
+                <ThemedText variant="body" color={theme.textSecondary}>
+                  错误次数减至 <ThemedText variant="bodyMedium" color={theme.success}>0</ThemedText> 后自动清除
+                </ThemedText>
+              </View>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
