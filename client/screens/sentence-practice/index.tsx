@@ -194,6 +194,7 @@ export default function SentencePracticeScreen() {
   const targetWord = params.targetWord ? (params.targetWord as string).toLowerCase() : null;
   const targetCorrectCount = params.targetCorrectCount ? Number(params.targetCorrectCount) : 0;
   const targetWordCorrectRef = useRef(0); // 目标单词已正确次数
+  const shouldReturnAfterSentenceRef = useRef(false); // 是否在句子完成后返回
 
   // 单词状态
   const [wordStatuses, setWordStatuses] = useState<WordStatus[]>([]);
@@ -789,16 +790,13 @@ export default function SentencePracticeScreen() {
       targetWordCorrectRef.current += 1;
       console.log(`[薄弱词汇练习] "${word}" 正确次数: ${targetWordCorrectRef.current}/${targetCorrectCount}`);
       
-      // 检查是否达到目标
+      // 检查是否达到目标，设置标记等句子完成后返回
       if (targetWordCorrectRef.current >= targetCorrectCount) {
-        console.log(`[薄弱词汇练习] 目标单词 "${word}" 已完成，自动返回`);
-        // 延迟返回，让用户看到最后一个单词完成的效果
-        setTimeout(() => {
-          router.back();
-        }, 500);
+        console.log(`[薄弱词汇练习] 目标单词 "${word}" 已完成，句子完成后自动返回`);
+        shouldReturnAfterSentenceRef.current = true;
       }
     }
-  }, [errorPriority, reduceErrorCount, recordScore, targetWord, targetCorrectCount, router]);
+  }, [errorPriority, reduceErrorCount, recordScore, targetWord, targetCorrectCount]);
 
   // ==================== 自建键盘相关 ====================
   
@@ -1210,6 +1208,29 @@ export default function SentencePracticeScreen() {
     // 重置累积积分（积分已在后台记录，无需显示）
     currentSentencePointsRef.current = 0;
 
+    // 检查是否需要在句子完成后返回薄弱词汇页面
+    if (shouldReturnAfterSentenceRef.current) {
+      // 获取翻译并显示后返回
+      try {
+        const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: currentSentence?.text, type: 'sentence' }),
+        });
+        const data = await response.json();
+        setCurrentTranslation(data.translation || '');
+        setShowTranslation(true);
+
+        setTimeout(() => {
+          router.back();
+        }, 1000);
+      } catch (e) {
+        console.error('获取翻译失败:', e);
+        router.back();
+      }
+      return;
+    }
+
     // 获取翻译并显示
     try {
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
@@ -1232,7 +1253,7 @@ export default function SentencePracticeScreen() {
         goToNextSentence();
       }, 600);
     }
-  }, [currentSentence, pauseAudio, currentIndex, saveProgress]);
+  }, [currentSentence, pauseAudio, currentIndex, saveProgress, router]);
 
   // 处理单词点击
   const handleWordPress = useCallback((ws: WordStatus) => {
@@ -1646,7 +1667,7 @@ export default function SentencePracticeScreen() {
                 onChangeText={handleInputChange}
                 autoCapitalize="none"
                 autoCorrect={false}
-                autoFocus={false}
+                autoFocus={true}
                 blurOnSubmit={false}
                 textContentType="none"
                 autoComplete="off"
