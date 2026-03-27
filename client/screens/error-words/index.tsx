@@ -152,16 +152,21 @@ export default function ErrorWordsScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <ThemedView level="root" style={styles.header}>
-          <View style={styles.headerRow}>
+          <View style={styles.titleRow}>
             <ThemedText variant="h2" color={theme.textPrimary}>
-              薄弱词汇
+              薄弱词
             </ThemedText>
-            <TouchableOpacity 
-              style={styles.tipIconBtn}
-              onPress={() => setShowTipModal(true)}
-            >
-              <FontAwesome6 name="circle-info" size={16} color={theme.textMuted} />
-            </TouchableOpacity>
+            <View style={styles.titleWithSuperscript}>
+              <ThemedText variant="h2" color={theme.textPrimary}>
+                汇
+              </ThemedText>
+              <TouchableOpacity 
+                style={styles.superscriptIcon}
+                onPress={() => setShowTipModal(true)}
+              >
+                <FontAwesome6 name="circle-info" size={10} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
           </View>
           <ThemedText variant="body" color={theme.textSecondary} style={{ marginTop: 8 }}>
             点击单词查看详情，针对性练习提升

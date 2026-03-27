@@ -14,13 +14,17 @@ export const createStyles = (theme: Theme) => {
     header: {
       marginBottom: Spacing.xl,
     },
-    headerRow: {
+    titleRow: {
       flexDirection: 'row',
-      alignItems: 'center',
-      gap: Spacing.sm,
+      alignItems: 'baseline',
     },
-    tipIconBtn: {
-      padding: Spacing.xs,
+    titleWithSuperscript: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+    },
+    superscriptIcon: {
+      marginLeft: 2,
+      marginTop: 2,
     },
     statsRow: {
       flexDirection: 'row',
