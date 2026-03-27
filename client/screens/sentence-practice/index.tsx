@@ -470,8 +470,11 @@ export default function SentencePracticeScreen() {
       // 时间转换为毫秒
       const startMs = currentSentence.start_time * 1000;
       const endMs = currentSentence.end_time * 1000;
+      
+      // 提前 30ms 停止，确保不会播放超出时间轴的内容
+      const stopThreshold = endMs - 30;
 
-      console.log(`[playAudio] 播放片段: ${startMs}ms - ${endMs}ms`);
+      console.log(`[playAudio] 播放片段: ${startMs}ms - ${endMs}ms (停止阈值: ${stopThreshold}ms)`);
 
       const { sound } = await Audio.Sound.createAsync(
         { uri: file.original_audio_signed_url },
@@ -484,8 +487,8 @@ export default function SentencePracticeScreen() {
         },
         (status) => {
           if (status.isLoaded) {
-            // 检查是否到达结束时间
-            if (status.positionMillis >= endMs) {
+            // 检查是否到达结束时间（使用提前阈值）
+            if (status.positionMillis >= stopThreshold) {
               sound.pauseAsync().catch(() => void 0);
               setIsPlaying(false);
 
@@ -537,7 +540,7 @@ export default function SentencePracticeScreen() {
         }
         try {
           const s = await soundRef.current.getStatusAsync();
-          if (s.isLoaded && s.positionMillis >= endMs) {
+          if (s.isLoaded && s.positionMillis >= stopThreshold) {
             await sound.pauseAsync().catch(() => void 0);
             setIsPlaying(false);
             clearInterval(checkInterval);
@@ -556,7 +559,7 @@ export default function SentencePracticeScreen() {
         } catch (e) {
           clearInterval(checkInterval);
         }
-      }, 50);
+      }, 30); // 缩短检查间隔到 30ms
 
     } catch (error) {
       console.error('[播放] 失败:', error);
