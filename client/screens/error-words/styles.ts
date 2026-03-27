@@ -14,6 +14,31 @@ export const createStyles = (theme: Theme) => {
     header: {
       marginBottom: Spacing.xl,
     },
+    tipCard: {
+      backgroundColor: theme.primary + '10',
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.lg,
+      marginBottom: Spacing.lg,
+      borderWidth: 1,
+      borderColor: theme.primary + '30',
+    },
+    tipRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: Spacing.md,
+    },
+    tipIcon: {
+      marginTop: 2,
+    },
+    tipContent: {
+      flex: 1,
+    },
+    tipTitle: {
+      marginBottom: Spacing.xs,
+    },
+    tipText: {
+      lineHeight: 20,
+    },
     statsRow: {
       flexDirection: 'row',
       gap: Spacing.md,

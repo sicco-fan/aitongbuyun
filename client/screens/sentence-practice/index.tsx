@@ -205,6 +205,12 @@ export default function SentencePracticeScreen() {
   const [showTranslation, setShowTranslation] = useState(false);
   const [currentTranslation, setCurrentTranslation] = useState('');
 
+  // 句子完成积分反馈
+  const [sentencePoints, setSentencePoints] = useState(0);
+  const [showPointsFeedback, setShowPointsFeedback] = useState(false);
+  const pointsAnimRef = useRef<Animated.Value>(new Animated.Value(0));
+  const currentSentencePointsRef = useRef(0); // 当前句子累积积分
+
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(true);
@@ -611,6 +617,9 @@ export default function SentencePracticeScreen() {
 
     stopPlayback();
 
+    // 重置句子积分
+    currentSentencePointsRef.current = 0;
+
     const tokens = extractWords(currentSentence.text);
     const newWordStatuses = tokens.map((token, index) => ({
       word: token.word,
@@ -766,6 +775,9 @@ export default function SentencePracticeScreen() {
     // 错题练习模式：减少错题次数 + 记录1.5积分
     // 普通模式：记录1积分
     const score = errorPriority ? 1.5 : 1;
+    
+    // 累积当前句子积分
+    currentSentencePointsRef.current += score;
     
     reduceErrorCount(word);
     recordScore(score);
@@ -1178,6 +1190,35 @@ export default function SentencePracticeScreen() {
     // 保存学习进度（当前句子已完成，准备进入下一句）
     saveProgress(currentIndex);
 
+    // 显示积分反馈
+    const earnedPoints = currentSentencePointsRef.current;
+    if (earnedPoints > 0) {
+      setSentencePoints(earnedPoints);
+      setShowPointsFeedback(true);
+      
+      // 积分动画
+      Animated.sequence([
+        Animated.timing(pointsAnimRef.current, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.delay(800),
+        Animated.timing(pointsAnimRef.current, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      
+      // 重置累积积分
+      currentSentencePointsRef.current = 0;
+      
+      // 等待积分动画完成
+      await new Promise(resolve => setTimeout(resolve, 1300));
+      setShowPointsFeedback(false);
+    }
+
     // 获取翻译并显示
     try {
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
@@ -1266,6 +1307,7 @@ export default function SentencePracticeScreen() {
   const goToPrevSentence = useCallback(() => {
     if (currentIndex > 0) {
       stopPlayback();
+      currentSentencePointsRef.current = 0; // 重置句子积分
       setCurrentIndex(prev => prev - 1);
     }
   }, [currentIndex, stopPlayback]);
@@ -1274,6 +1316,7 @@ export default function SentencePracticeScreen() {
   const goToNextSentence = useCallback(() => {
     if (currentIndex < sentences.length - 1) {
       stopPlayback();
+      currentSentencePointsRef.current = 0; // 重置句子积分
       setCurrentIndex(prev => prev + 1);
     } else {
       stopPlayback();
@@ -1598,6 +1641,27 @@ export default function SentencePracticeScreen() {
                 {currentTranslation}
               </ThemedText>
             </View>
+          )}
+
+          {/* Points Feedback - 句子完成积分反馈 */}
+          {showPointsFeedback && (
+            <Animated.View
+              style={[
+                styles.pointsFeedbackContainer,
+                {
+                  opacity: pointsAnimRef.current,
+                  transform: [
+                    { scale: pointsAnimRef.current.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.8, 1],
+                    })},
+                  ],
+                },
+              ]}
+            >
+              <ThemedText variant="h2" style={styles.pointsValue}>+{sentencePoints.toFixed(1)}</ThemedText>
+              <ThemedText variant="small" style={styles.pointsLabel}>积分</ThemedText>
+            </Animated.View>
           )}
         </ScrollView>
 

@@ -156,6 +156,23 @@ export default function ErrorWordsScreen() {
           </ThemedText>
         </ThemedView>
 
+        {/* Tips */}
+        <View style={styles.tipCard}>
+          <View style={styles.tipRow}>
+            <FontAwesome6 name="lightbulb" size={18} color={theme.primary} style={styles.tipIcon} />
+            <View style={styles.tipContent}>
+              <ThemedText variant="smallMedium" color={theme.primary} style={styles.tipTitle}>
+                学习小贴士
+              </ThemedText>
+              <ThemedText variant="caption" color={theme.textSecondary} style={styles.tipText}>
+                • 错题练习模式可获得 1.5 倍积分奖励{'\n'}
+                • 单词输入正确可减少错误次数{'\n'}
+                • 错误次数减至0后自动清除
+              </ThemedText>
+            </View>
+          </View>
+        </View>
+
         {/* Stats */}
         {errorData && (
           <View style={styles.statsRow}>
