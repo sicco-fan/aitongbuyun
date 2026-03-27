@@ -403,13 +403,23 @@ export default function SentencePracticeScreen() {
   useFocusEffect(
     useCallback(() => {
       isMountedRef.current = true;
+      isExitingRef.current = false; // 重置退出标记
+      hasShownProgressAlert.current = false; // 重置进度弹窗标记，允许每次进入时检查进度
       fetchSentences();
 
       return () => {
         isMountedRef.current = false;
         stopPlayback();
+        
+        // 如果用户还没有通过 BackHandler 处理退出（比如 Web 端），这里保存进度
+        // 注意：这个 cleanup 会在 BackHandler 的回调之后执行
+        if (!isExitingRef.current && currentIndex > 0) {
+          // 保存进度（不提交学习时长，因为用户可能是意外退出）
+          saveProgress(currentIndex);
+          console.log(`[学习进度] 退出时自动保存: 第 ${currentIndex + 1} 句`);
+        }
       };
-    }, [fetchSentences])
+    }, [fetchSentences, currentIndex, saveProgress])
   );
 
   // 处理返回键/退出 - 注意：这个函数在 calculateSessionDuration 和 submitLearningData 之后定义
