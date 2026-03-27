@@ -124,6 +124,7 @@ router.post('/progress/:fileId', async (req: Request, res: Response) => {
     }
     
     const now = new Date().toISOString();
+    const today = now.split('T')[0]; // YYYY-MM-DD
     
     if (existing) {
       // 更新记录
@@ -166,6 +167,43 @@ router.post('/progress/:fileId', async (req: Request, res: Response) => {
       
       if (insertError) {
         throw new Error(insertError.message);
+      }
+    }
+    
+    // 更新每日统计表 daily_stats
+    if (score !== undefined && score > 0) {
+      // 检查今日是否已有记录
+      const { data: existingDaily, error: dailyFetchError } = await supabase
+        .from('daily_stats')
+        .select('*')
+        .eq('user_id', user_id)
+        .eq('date', today)
+        .maybeSingle();
+      
+      if (dailyFetchError) {
+        console.error('获取每日统计失败:', dailyFetchError);
+      } else if (existingDaily) {
+        // 更新今日记录
+        await supabase
+          .from('daily_stats')
+          .update({
+            total_score: (existingDaily.total_score || 0) + score,
+            total_duration: (existingDaily.total_duration || 0) + (duration_seconds || 0),
+            sentences_completed: (existingDaily.sentences_completed || 0) + 1,
+            updated_at: now,
+          })
+          .eq('id', existingDaily.id);
+      } else {
+        // 创建今日记录
+        await supabase
+          .from('daily_stats')
+          .insert({
+            user_id,
+            date: today,
+            total_score: score,
+            total_duration: duration_seconds || 0,
+            sentences_completed: 1,
+          });
       }
     }
     

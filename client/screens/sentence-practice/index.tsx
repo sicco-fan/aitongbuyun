@@ -1226,7 +1226,7 @@ export default function SentencePracticeScreen() {
 
         setTimeout(() => {
           router.back();
-        }, 1000);
+        }, 2000);
       } catch (e) {
         console.error('获取翻译失败:', e);
         router.back();
@@ -1249,7 +1249,7 @@ export default function SentencePracticeScreen() {
         setShowTranslation(false);
         setCurrentTranslation('');
         goToNextSentence();
-      }, 1000);
+      }, 2000);
     } catch (e) {
       console.error('获取翻译失败:', e);
       setTimeout(() => {
