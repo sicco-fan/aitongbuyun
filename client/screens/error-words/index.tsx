@@ -164,7 +164,7 @@ export default function ErrorWordsScreen() {
                 style={styles.superscriptIcon}
                 onPress={() => setShowTipModal(true)}
               >
-                <FontAwesome6 name="circle-info" size={10} color={theme.textMuted} />
+                <FontAwesome6 name="circle-info" size={10} color={theme.border} />
               </TouchableOpacity>
             </View>
           </View>
