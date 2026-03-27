@@ -94,12 +94,18 @@ router.get('/progress/:fileId', async (req: Request, res: Response) => {
 /**
  * POST /api/v1/learning-records/progress/:fileId
  * 保存句库的学习进度
- * Body: { user_id: string, sentence_index: number, score?: number, duration_seconds?: number }
+ * Body: { 
+ *   user_id: string, 
+ *   sentence_index: number, 
+ *   score?: number, 
+ *   duration_seconds?: number,
+ *   sentence_completed?: boolean  // 是否完成了一个句子（用于统计句子完成数）
+ * }
  */
 router.post('/progress/:fileId', async (req: Request, res: Response) => {
   try {
     const fileId = Array.isArray(req.params.fileId) ? req.params.fileId[0] : req.params.fileId;
-    const { user_id, sentence_index, score, duration_seconds } = req.body;
+    const { user_id, sentence_index, score, duration_seconds, sentence_completed } = req.body;
     
     if (!user_id) {
       return res.status(400).json({ error: '缺少用户ID' });
@@ -171,7 +177,8 @@ router.post('/progress/:fileId', async (req: Request, res: Response) => {
     }
     
     // 更新每日统计表 daily_stats
-    if (score !== undefined && score > 0) {
+    // 只有当有积分或有学习时长时才更新
+    if ((score !== undefined && score > 0) || (duration_seconds !== undefined && duration_seconds > 0)) {
       // 检查今日是否已有记录
       const { data: existingDaily, error: dailyFetchError } = await supabase
         .from('daily_stats')
@@ -184,14 +191,26 @@ router.post('/progress/:fileId', async (req: Request, res: Response) => {
         console.error('获取每日统计失败:', dailyFetchError);
       } else if (existingDaily) {
         // 更新今日记录
+        const updateDailyData: Record<string, unknown> = {
+          updated_at: now,
+        };
+        
+        if (score !== undefined && score > 0) {
+          updateDailyData.total_score = (existingDaily.total_score || 0) + score;
+        }
+        
+        if (duration_seconds !== undefined && duration_seconds > 0) {
+          updateDailyData.total_duration = (existingDaily.total_duration || 0) + duration_seconds;
+        }
+        
+        // 只有当 sentence_completed 为 true 时才增加句子完成数
+        if (sentence_completed === true) {
+          updateDailyData.sentences_completed = (existingDaily.sentences_completed || 0) + 1;
+        }
+        
         await supabase
           .from('daily_stats')
-          .update({
-            total_score: (existingDaily.total_score || 0) + score,
-            total_duration: (existingDaily.total_duration || 0) + (duration_seconds || 0),
-            sentences_completed: (existingDaily.sentences_completed || 0) + 1,
-            updated_at: now,
-          })
+          .update(updateDailyData)
           .eq('id', existingDaily.id);
       } else {
         // 创建今日记录
@@ -200,9 +219,9 @@ router.post('/progress/:fileId', async (req: Request, res: Response) => {
           .insert({
             user_id,
             date: today,
-            total_score: score,
+            total_score: score || 0,
             total_duration: duration_seconds || 0,
-            sentences_completed: 1,
+            sentences_completed: sentence_completed === true ? 1 : 0,
           });
       }
     }

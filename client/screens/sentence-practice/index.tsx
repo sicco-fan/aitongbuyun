@@ -9,6 +9,7 @@ import {
   Animated,
   KeyboardAvoidingView,
   Platform,
+  BackHandler,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from 'expo-router';
@@ -215,6 +216,17 @@ export default function SentencePracticeScreen() {
   // 句子积分累积（仅后台记录，不显示弹窗）
   const currentSentencePointsRef = useRef(0);
 
+  // 学习时长计时器
+  const sessionStartTimeRef = useRef<number | null>(null); // 本次学习开始时间
+  const lastInputTimeRef = useRef<number>(Date.now()); // 最后一次输入时间
+  const accumulatedDurationRef = useRef<number>(0); // 已累计的学习时长（秒）
+  const idleCheckIntervalRef = useRef<NodeJS.Timeout | null>(null); // 空闲检查定时器
+  const IDLE_THRESHOLD = 60 * 1000; // 60秒空闲阈值
+  
+  // 存档状态
+  const [hasProgressToSave, setHasProgressToSave] = useState(false); // 是否有进度需要存档
+  const isExitingRef = useRef(false); // 是否正在退出（防止重复处理）
+
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(true);
@@ -396,13 +408,12 @@ export default function SentencePracticeScreen() {
       return () => {
         isMountedRef.current = false;
         stopPlayback();
-        // 退出时保存当前进度
-        if (currentIndex > 0) {
-          saveProgress(currentIndex);
-        }
       };
-    }, [fetchSentences, currentIndex, saveProgress])
+    }, [fetchSentences])
   );
+
+  // 处理返回键/退出 - 注意：这个函数在 calculateSessionDuration 和 submitLearningData 之后定义
+  // 所以 BackHandler 的 useEffect 需要在那些函数定义之后
 
   // 提取单词和标点
   const extractWords = useCallback((text: string) => {
@@ -754,14 +765,27 @@ export default function SentencePracticeScreen() {
   }, [isAuthenticated, user?.id, fileId, errorPriority, currentIndex]);
 
   // 记录积分
-  const recordScore = useCallback(async (score: number) => {
+  // 记录积分（单词正确时只累积，不更新统计）
+  const pendingScoreRef = useRef<number>(0); // 待提交的积分
+  const pendingWordsRef = useRef<Set<string>>(new Set()); // 待减少错题次数的单词
+
+  const recordScore = useCallback((score: number) => {
+    // 只累积积分，不立即提交
+    pendingScoreRef.current += score;
+  }, []);
+
+  // 提交学习数据（句子完成时调用）
+  const submitLearningData = useCallback(async (sentenceCompleted: boolean, durationSeconds?: number) => {
     if (!isAuthenticated || !user?.id || !fileId) return;
+    
+    const score = pendingScoreRef.current;
+    const duration = durationSeconds || 0;
     
     try {
       /**
        * 服务端文件：server/src/routes/learning.ts
        * 接口：POST /api/v1/learning-records/progress/:fileId
-       * Body 参数：user_id: string, sentence_index: number, score: number
+       * Body 参数：user_id: string, sentence_index: number, score: number, duration_seconds: number, sentence_completed: boolean
        */
       await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${fileId}`, {
         method: 'POST',
@@ -770,12 +794,58 @@ export default function SentencePracticeScreen() {
           user_id: user.id,
           sentence_index: currentIndex,
           score: score,
+          duration_seconds: duration,
+          sentence_completed: sentenceCompleted,
         }),
       });
+      console.log(`[学习数据] 已提交: 积分=${score}, 时长=${duration}秒, 句子完成=${sentenceCompleted}`);
+      
+      // 重置待提交数据
+      pendingScoreRef.current = 0;
     } catch (error) {
-      console.error('[积分] 记录积分失败:', error);
+      console.error('[学习数据] 提交失败:', error);
     }
   }, [isAuthenticated, user?.id, fileId, currentIndex]);
+
+  // 记录学习时长（用户输入时调用）
+  const recordLearningTime = useCallback(() => {
+    const now = Date.now();
+    
+    // 如果是第一次输入，开始计时
+    if (sessionStartTimeRef.current === null) {
+      sessionStartTimeRef.current = now;
+      setHasProgressToSave(true); // 标记有进度需要存档
+      console.log('[学习时长] 开始计时');
+    }
+    
+    // 更新最后输入时间
+    lastInputTimeRef.current = now;
+  }, []);
+
+  // 计算当前会话的有效学习时长
+  const calculateSessionDuration = useCallback(() => {
+    const now = Date.now();
+    
+    // 如果还没有开始计时，返回0
+    if (sessionStartTimeRef.current === null) {
+      return accumulatedDurationRef.current;
+    }
+    
+    // 计算从最后输入到现在的时长
+    const timeSinceLastInput = now - lastInputTimeRef.current;
+    
+    // 如果超过空闲阈值，只计算到最后一次输入的时间
+    if (timeSinceLastInput > IDLE_THRESHOLD) {
+      // 累计时长 = 已累计时长 + 最后输入时间 - 开始时间
+      const sessionDuration = (lastInputTimeRef.current - sessionStartTimeRef.current) / 1000;
+      console.log(`[学习时长] 空闲超时，本次会话时长: ${sessionDuration}秒`);
+      return accumulatedDurationRef.current + sessionDuration;
+    } else {
+      // 未超时，继续累计
+      const sessionDuration = (now - sessionStartTimeRef.current) / 1000;
+      return accumulatedDurationRef.current + sessionDuration;
+    }
+  }, []);
 
   // 处理单词正确输入（统一处理减少错题次数和记录积分）
   const handleWordCorrect = useCallback((word: string) => {
@@ -786,8 +856,14 @@ export default function SentencePracticeScreen() {
     // 累积当前句子积分
     currentSentencePointsRef.current += score;
     
-    reduceErrorCount(word);
+    // 记录积分（只累积，不提交）
     recordScore(score);
+    
+    // 记录需要减少错题次数的单词
+    pendingWordsRef.current.add(word.toLowerCase());
+    
+    // 减少错题次数（立即执行，不影响统计）
+    reduceErrorCount(word);
     
     // 薄弱词汇练习：追踪目标单词的正确次数
     if (targetWord && word.toLowerCase() === targetWord) {
@@ -801,6 +877,55 @@ export default function SentencePracticeScreen() {
       }
     }
   }, [errorPriority, reduceErrorCount, recordScore, targetWord, targetCorrectCount]);
+
+  // 处理返回键/退出
+  const handleBackPress = useCallback((): boolean => {
+    // 如果正在退出，不再处理
+    if (isExitingRef.current) return true;
+    
+    // 如果有进度需要存档，显示确认弹窗
+    if (hasProgressToSave && currentIndex > 0) {
+      Alert.alert(
+        '保存进度',
+        '是否保存当前学习进度？',
+        [
+          {
+            text: '不保存',
+            style: 'destructive',
+            onPress: () => {
+              isExitingRef.current = true;
+              router.back();
+            },
+          },
+          {
+            text: '保存并退出',
+            onPress: async () => {
+              isExitingRef.current = true;
+              // 计算并提交剩余的学习时长
+              const sessionDuration = calculateSessionDuration();
+              if (sessionDuration > 0) {
+                await submitLearningData(false, Math.round(sessionDuration));
+              }
+              // 保存进度
+              await saveProgress(currentIndex);
+              router.back();
+            },
+          },
+        ],
+        { cancelable: true }
+      );
+      return true; // 阻止默认返回行为
+    }
+    
+    // 没有进度需要保存，直接返回
+    return false;
+  }, [hasProgressToSave, currentIndex, calculateSessionDuration, submitLearningData, saveProgress, router]);
+
+  // 监听返回键
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
+    return () => subscription.remove();
+  }, [handleBackPress]);
 
   // ==================== 自建键盘相关 ====================
   
@@ -955,6 +1080,9 @@ export default function SentencePracticeScreen() {
 
   // 处理手机键盘/电脑键盘输入
   const handleInputChange = useCallback((text: string) => {
+    // 记录学习时间（用户有输入）
+    recordLearningTime();
+    
     const currentWordStatuses = wordStatusesRef.current;
 
     // 检测是否输入了空格或回车（用户确认单词）
@@ -962,7 +1090,7 @@ export default function SentencePracticeScreen() {
     const isConfirmChar = lastChar === ' ' || lastChar === '\n';
     
     // 提取实际单词内容（去掉末尾的空格/回车）
-    const actualInput = isConfirmChar ? text.slice(0, -1) : text;
+    const actualInput = isConfirmChar ? text.slice(0, -1) : text
 
     // 空输入时重置
     if (actualInput.length === 0) {
@@ -1206,10 +1334,20 @@ export default function SentencePracticeScreen() {
     setIsLooping(false);
     pauseAudio();
     
+    // 计算本次会话的学习时长
+    const sessionDuration = calculateSessionDuration();
+    
+    // 提交学习数据（积分和时长），标记句子完成
+    await submitLearningData(true, Math.round(sessionDuration));
+    
+    // 重置会话计时器（新句子重新计时）
+    sessionStartTimeRef.current = null;
+    accumulatedDurationRef.current = 0;
+    
     // 保存学习进度（当前句子已完成，准备进入下一句）
     saveProgress(currentIndex);
 
-    // 重置累积积分（积分已在后台记录，无需显示）
+    // 重置累积积分
     currentSentencePointsRef.current = 0;
 
     // 检查是否需要在句子完成后返回薄弱词汇页面
