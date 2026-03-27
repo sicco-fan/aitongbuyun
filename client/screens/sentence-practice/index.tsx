@@ -176,7 +176,7 @@ export default function SentencePracticeScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
-  const params = useSafeSearchParams<{ fileId: number; title: string; sentenceIndex?: number; errorPriority?: boolean }>();
+  const params = useSafeSearchParams<{ fileId: number; title: string; sentenceIndex?: number; errorPriority?: boolean; targetWord?: string; targetCorrectCount?: number }>();
   const { user, isAuthenticated } = useAuth();
 
   const fileId = params.fileId;
@@ -189,6 +189,11 @@ export default function SentencePracticeScreen() {
   const [errorPriority, setErrorPriority] = useState(params.errorPriority || false); // 错题优先模式
   const [errorSentences, setErrorSentences] = useState<Array<{ sentence_index: number; totalErrors: number }>>([]); // 错题句子列表
   const hasShownProgressAlert = useRef(false); // 是否已经显示过进度弹窗（防止重复弹出）
+  
+  // 薄弱词汇练习：目标单词追踪
+  const targetWord = params.targetWord ? (params.targetWord as string).toLowerCase() : null;
+  const targetCorrectCount = params.targetCorrectCount ? Number(params.targetCorrectCount) : 0;
+  const targetWordCorrectRef = useRef(0); // 目标单词已正确次数
 
   // 单词状态
   const [wordStatuses, setWordStatuses] = useState<WordStatus[]>([]);
@@ -205,11 +210,8 @@ export default function SentencePracticeScreen() {
   const [showTranslation, setShowTranslation] = useState(false);
   const [currentTranslation, setCurrentTranslation] = useState('');
 
-  // 句子完成积分反馈
-  const [sentencePoints, setSentencePoints] = useState(0);
-  const [showPointsFeedback, setShowPointsFeedback] = useState(false);
-  const pointsAnimRef = useRef<Animated.Value>(new Animated.Value(0));
-  const currentSentencePointsRef = useRef(0); // 当前句子累积积分
+  // 句子积分累积（仅后台记录，不显示弹窗）
+  const currentSentencePointsRef = useRef(0);
 
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
@@ -781,7 +783,22 @@ export default function SentencePracticeScreen() {
     
     reduceErrorCount(word);
     recordScore(score);
-  }, [errorPriority, reduceErrorCount, recordScore]);
+    
+    // 薄弱词汇练习：追踪目标单词的正确次数
+    if (targetWord && word.toLowerCase() === targetWord) {
+      targetWordCorrectRef.current += 1;
+      console.log(`[薄弱词汇练习] "${word}" 正确次数: ${targetWordCorrectRef.current}/${targetCorrectCount}`);
+      
+      // 检查是否达到目标
+      if (targetWordCorrectRef.current >= targetCorrectCount) {
+        console.log(`[薄弱词汇练习] 目标单词 "${word}" 已完成，自动返回`);
+        // 延迟返回，让用户看到最后一个单词完成的效果
+        setTimeout(() => {
+          router.back();
+        }, 500);
+      }
+    }
+  }, [errorPriority, reduceErrorCount, recordScore, targetWord, targetCorrectCount, router]);
 
   // ==================== 自建键盘相关 ====================
   
@@ -1190,34 +1207,8 @@ export default function SentencePracticeScreen() {
     // 保存学习进度（当前句子已完成，准备进入下一句）
     saveProgress(currentIndex);
 
-    // 显示积分反馈
-    const earnedPoints = currentSentencePointsRef.current;
-    if (earnedPoints > 0) {
-      setSentencePoints(earnedPoints);
-      setShowPointsFeedback(true);
-      
-      // 积分动画
-      Animated.sequence([
-        Animated.timing(pointsAnimRef.current, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.delay(800),
-        Animated.timing(pointsAnimRef.current, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-      
-      // 重置累积积分
-      currentSentencePointsRef.current = 0;
-      
-      // 等待积分动画完成
-      await new Promise(resolve => setTimeout(resolve, 1300));
-      setShowPointsFeedback(false);
-    }
+    // 重置累积积分（积分已在后台记录，无需显示）
+    currentSentencePointsRef.current = 0;
 
     // 获取翻译并显示
     try {
@@ -1641,27 +1632,6 @@ export default function SentencePracticeScreen() {
                 {currentTranslation}
               </ThemedText>
             </View>
-          )}
-
-          {/* Points Feedback - 句子完成积分反馈 */}
-          {showPointsFeedback && (
-            <Animated.View
-              style={[
-                styles.pointsFeedbackContainer,
-                {
-                  opacity: pointsAnimRef.current,
-                  transform: [
-                    { scale: pointsAnimRef.current.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.8, 1],
-                    })},
-                  ],
-                },
-              ]}
-            >
-              <ThemedText variant="h2" style={styles.pointsValue}>+{sentencePoints.toFixed(1)}</ThemedText>
-              <ThemedText variant="small" style={styles.pointsLabel}>积分</ThemedText>
-            </Animated.View>
           )}
         </ScrollView>
 

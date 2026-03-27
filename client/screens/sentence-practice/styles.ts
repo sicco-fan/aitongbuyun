@@ -267,29 +267,6 @@ export const createStyles = (theme: Theme) => {
       borderColor: theme.primary + '30',
     },
     
-    // Points Feedback
-    pointsFeedbackContainer: {
-      position: 'absolute',
-      top: '50%',
-      left: '50%',
-      transform: [{ translateX: -80 }, { translateY: -30 }],
-      backgroundColor: theme.primary + 'E6',
-      borderRadius: BorderRadius.xl,
-      paddingVertical: Spacing.md,
-      paddingHorizontal: Spacing.xl,
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 100,
-    },
-    pointsValue: {
-      color: '#FFFFFF',
-    },
-    pointsLabel: {
-      color: '#FFFFFF',
-      opacity: 0.9,
-      marginTop: 2,
-    },
-    
     // Custom Keyboard
     customKeyboardContainer: {
       width: '100%',

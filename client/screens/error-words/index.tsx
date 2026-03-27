@@ -81,6 +81,9 @@ export default function ErrorWordsScreen() {
       router.push('/sentence-practice', {
         fileId: firstSentence.sentence_file_id,
         sentenceIndex: firstSentence.sentence_index,
+        errorPriority: true,
+        targetWord: item.word.toLowerCase(),
+        targetCorrectCount: item.totalCount, // 需要正确输入的次数
       });
     }
   }, [router]);
