@@ -617,6 +617,75 @@ export default function EditSentenceAudioScreen() {
     }
   };
 
+  // 播放最后 0.5 秒（用于快速确认结束时间点）
+  const playLastHalfSecond = async () => {
+    console.log('[playLastHalfSecond] 开始执行');
+    console.log('[playLastHalfSecond] end_time:', currentSentence?.end_time);
+
+    // 加载音频
+    if (!soundRef.current) {
+      const loadedDuration = await loadAudio();
+      if (!loadedDuration) {
+        console.log('[playLastHalfSecond] 音频加载失败');
+        setErrorDialog({ visible: true, message: '音频加载失败，请检查网络连接' });
+        return;
+      }
+    }
+
+    if (!soundRef.current) {
+      console.log('[playLastHalfSecond] soundRef 为空');
+      return;
+    }
+
+    await handleStopPlaying();
+
+    const status = await soundRef.current.getStatusAsync();
+    if (!status.isLoaded) {
+      console.log('[playLastHalfSecond] 音频未加载');
+      return;
+    }
+
+    const actualDurationMs = status.durationMillis || 0;
+
+    // 计算播放位置：结束时间前 0.5 秒
+    let endMs = 0;
+    if (currentSentence?.end_time !== null && currentSentence?.end_time !== undefined) {
+      endMs = currentSentence.end_time * 1000;
+    } else {
+      // 没有结束时间，使用音频总时长
+      endMs = actualDurationMs;
+    }
+
+    // 开始位置 = 结束位置 - 500ms，确保不小于 0
+    const startMs = Math.max(0, endMs - 500);
+
+    console.log('[playLastHalfSecond] 播放片段:', startMs, 'ms -', endMs, 'ms');
+
+    try {
+      await soundRef.current.setPositionAsync(startMs);
+      await soundRef.current.playAsync();
+      setIsPlaying(true);
+
+      // 监听播放位置，到达结束时间时停止
+      const checkInterval = setInterval(async () => {
+        if (!soundRef.current) {
+          clearInterval(checkInterval);
+          return;
+        }
+        const s = await soundRef.current.getStatusAsync();
+        if (s.isLoaded && s.positionMillis >= endMs - 30) { // 提前 30ms 停止
+          await soundRef.current.pauseAsync();
+          setIsPlaying(false);
+          clearInterval(checkInterval);
+          console.log('[playLastHalfSecond] 播放结束');
+        }
+      }, 30);
+    } catch (e) {
+      console.error('[playLastHalfSecond] 播放失败:', e);
+      setErrorDialog({ visible: true, message: '播放失败，请重试' });
+    }
+  };
+
   // 调整开始时间
   const handleStartTimeChange = (deltaMs: number) => {
     if (!currentSentence) return;
@@ -1192,6 +1261,15 @@ export default function EditSentenceAudioScreen() {
           label="结束"
           color="#ff8800"
         />
+
+        {/* 播放最后0.5秒按钮 */}
+        <TouchableOpacity 
+          style={styles.lastHalfSecondBtn}
+          onPress={playLastHalfSecond}
+        >
+          <FontAwesome6 name="play" size={12} color="#ff8800" />
+          <Text style={styles.lastHalfSecondText}>播放最后 0.5 秒</Text>
+        </TouchableOpacity>
       </View>
 
       {/* 音频时长提示 */}
@@ -1572,6 +1650,24 @@ const styles = StyleSheet.create({
   wpmText: {
     color: '#666',
     fontSize: 12,
+  },
+
+  // 播放最后0.5秒按钮
+  lastHalfSecondBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    marginTop: 8,
+    backgroundColor: '#ff880020',
+    borderRadius: 8,
+    marginHorizontal: 16,
+  },
+  lastHalfSecondText: {
+    color: '#ff8800',
+    fontSize: 13,
+    fontWeight: '500',
   },
 
   // 音频时长提示
