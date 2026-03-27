@@ -303,4 +303,91 @@ router.get('/stats', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/v1/error-words/reduce
+ * 减少错题的错误次数（练习正确时调用）
+ * Body: { user_id, sentence_file_id, sentence_index, word }
+ * 返回: { success, remaining_count, cleared } - remaining_count 为剩余错误次数，cleared 表示是否已清零
+ */
+router.post('/reduce', async (req: Request, res: Response) => {
+  try {
+    const { user_id, sentence_file_id, sentence_index, word } = req.body;
+    
+    if (!user_id || !sentence_file_id || sentence_index === undefined || !word) {
+      return res.status(400).json({ error: '缺少必要参数' });
+    }
+    
+    const supabase = getSupabaseClient();
+    const now = new Date().toISOString();
+    
+    // 查找错题记录
+    const { data: existing, error: fetchError } = await supabase
+      .from('error_words')
+      .select('*')
+      .eq('user_id', user_id)
+      .eq('sentence_file_id', sentence_file_id)
+      .eq('sentence_index', sentence_index)
+      .eq('word', word.toLowerCase())
+      .maybeSingle();
+    
+    if (fetchError) {
+      throw new Error(fetchError.message);
+    }
+    
+    if (!existing) {
+      // 没有错题记录，直接返回
+      return res.json({
+        success: true,
+        remaining_count: 0,
+        cleared: true,
+        message: '该单词没有错题记录',
+      });
+    }
+    
+    const newCount = existing.error_count - 1;
+    
+    if (newCount <= 0) {
+      // 错误次数清零，删除记录
+      const { error: deleteError } = await supabase
+        .from('error_words')
+        .delete()
+        .eq('id', existing.id);
+      
+      if (deleteError) {
+        throw new Error(deleteError.message);
+      }
+      
+      res.json({
+        success: true,
+        remaining_count: 0,
+        cleared: true,
+        message: '恭喜！该单词的错误次数已清零',
+      });
+    } else {
+      // 减少错误次数
+      const { error: updateError } = await supabase
+        .from('error_words')
+        .update({
+          error_count: newCount,
+          updated_at: now,
+        })
+        .eq('id', existing.id);
+      
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+      
+      res.json({
+        success: true,
+        remaining_count: newCount,
+        cleared: false,
+        message: `练习成功！还剩 ${newCount} 次错误待攻克`,
+      });
+    }
+  } catch (error) {
+    console.error('减少错题次数失败:', error);
+    res.status(500).json({ error: '减少错题次数失败' });
+  }
+});
+
 export default router;

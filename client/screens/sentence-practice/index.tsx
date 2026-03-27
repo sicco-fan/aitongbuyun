@@ -711,6 +711,66 @@ export default function SentencePracticeScreen() {
     targetWordIndexRef.current = value; // 立即同步 ref
   }, []);
 
+  // 减少错题次数（错题练习模式下调用）
+  const reduceErrorCount = useCallback(async (word: string) => {
+    if (!isAuthenticated || !user?.id || !fileId || !errorPriority) return;
+    
+    try {
+      /**
+       * 服务端文件：server/src/routes/error-words.ts
+       * 接口：POST /api/v1/error-words/reduce
+       * Body 参数：user_id: string, sentence_file_id: number, sentence_index: number, word: string
+       */
+      await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/error-words/reduce`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          sentence_file_id: fileId,
+          sentence_index: currentIndex,
+          word: word.toLowerCase(),
+        }),
+      });
+      console.log(`[错题练习] 已减少 "${word}" 的错误次数`);
+    } catch (error) {
+      console.error('[错题练习] 减少错误次数失败:', error);
+    }
+  }, [isAuthenticated, user?.id, fileId, errorPriority, currentIndex]);
+
+  // 记录积分
+  const recordScore = useCallback(async (score: number) => {
+    if (!isAuthenticated || !user?.id || !fileId) return;
+    
+    try {
+      /**
+       * 服务端文件：server/src/routes/learning.ts
+       * 接口：POST /api/v1/learning-records/progress/:fileId
+       * Body 参数：user_id: string, sentence_index: number, score: number
+       */
+      await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${fileId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          sentence_index: currentIndex,
+          score: score,
+        }),
+      });
+    } catch (error) {
+      console.error('[积分] 记录积分失败:', error);
+    }
+  }, [isAuthenticated, user?.id, fileId, currentIndex]);
+
+  // 处理单词正确输入（统一处理减少错题次数和记录积分）
+  const handleWordCorrect = useCallback((word: string) => {
+    // 错题练习模式：减少错题次数 + 记录1.5积分
+    // 普通模式：记录1积分
+    const score = errorPriority ? 1.5 : 1;
+    
+    reduceErrorCount(word);
+    recordScore(score);
+  }, [errorPriority, reduceErrorCount, recordScore]);
+
   // ==================== 自建键盘相关 ====================
   
   // 字符到按键的映射
@@ -850,9 +910,17 @@ export default function SentencePracticeScreen() {
         return ws;
       }));
       
+      // 对每个匹配成功的单词调用 handleWordCorrect
+      matchedIndices.forEach(idx => {
+        const ws = incompleteWords.find(w => w.index === idx);
+        if (ws) {
+          handleWordCorrect(ws.word);
+        }
+      });
+      
       console.log(`[语音匹配] 成功匹配 ${matchedIndices.length} 个单词`);
     }
-  }, [updateWordStatusesWithRef]);
+  }, [updateWordStatusesWithRef, handleWordCorrect]);
 
   // 处理手机键盘/电脑键盘输入
   const handleInputChange = useCallback((text: string) => {
@@ -913,6 +981,8 @@ export default function SentencePracticeScreen() {
           }
           return ws;
         }));
+        // 处理单词正确（减少错题次数 + 记录积分）
+        handleWordCorrect(matchedWord.word);
       }
       // 无论匹配成功与否，都清空输入框和按键序列
       setCurrentInput('');
@@ -960,6 +1030,8 @@ export default function SentencePracticeScreen() {
           }
           return ws;
         }));
+        // 处理单词正确（减少错题次数 + 记录积分）
+        handleWordCorrect(matchedWord.word);
         setCurrentInput('');
         setCurrentKeySequence([]);
         setTargetWordIndexWithRef(null);
@@ -970,7 +1042,7 @@ export default function SentencePracticeScreen() {
     // 输入过程中只保留用户输入
     setCurrentInput(text);
     setTargetWordIndexWithRef(null);
-  }, [updateWordStatusesWithRef, setTargetWordIndexWithRef, hasAmbiguousPrefixes, hasLongerPotentialMatch, handleLongTextInput]);
+  }, [updateWordStatusesWithRef, setTargetWordIndexWithRef, hasAmbiguousPrefixes, hasLongerPotentialMatch, handleLongTextInput, handleWordCorrect]);
 
   // 当前按键序列
   const [currentKeySequence, setCurrentKeySequence] = useState<string[]>([]);
