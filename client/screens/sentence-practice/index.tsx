@@ -204,6 +204,7 @@ export default function SentencePracticeScreen() {
 
   // 单词提示和翻译
   const [hintWordIndex, setHintWordIndex] = useState<number | null>(null); // 显示提示的单词
+  const inputRef = useRef<TextInput>(null); // 输入框引用，用于点击提示后恢复焦点
   const [translationWordIndex, setTranslationWordIndex] = useState<number | null>(null); // 显示翻译的单词
   const [wordTranslations, setWordTranslations] = useState<Record<string, string>>({}); // 单词翻译缓存
 
@@ -1301,6 +1302,11 @@ export default function SentencePracticeScreen() {
         setHintWordIndex(null);
       }, 1000);
       
+      // 恢复输入框焦点，方便用户继续输入
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+      
       // 记录错题：用户查看提示说明不知道这个单词
       if (isAuthenticated && user?.id && fileId && currentSentence) {
         fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/error-words`, {
@@ -1665,6 +1671,7 @@ export default function SentencePracticeScreen() {
           {keyboardType === 'system' && (
             <View style={styles.inputWrapper}>
               <TextInput
+                ref={inputRef}
                 style={styles.input}
                 value={currentInput}
                 onChangeText={handleInputChange}
