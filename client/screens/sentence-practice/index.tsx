@@ -2004,14 +2004,6 @@ export default function SentencePracticeScreen() {
         </View>
         {/* 右侧小控制按钮 */}
         <View style={styles.headerControls}>
-          {/* 语音输入按钮 */}
-          <TouchableOpacity
-            style={[styles.smallControlBtn, isRecording && styles.voiceBtnActive]}
-            onPressIn={startRecording}
-            onPressOut={stopRecordingAndRecognize}
-          >
-            <FontAwesome6 name={isRecording ? "stop" : "microphone"} size={14} color={isRecording ? theme.buttonPrimaryText : theme.textMuted} />
-          </TouchableOpacity>
           {/* 编辑此句按钮 */}
           <TouchableOpacity
             style={styles.smallControlBtn}
@@ -2316,6 +2308,27 @@ export default function SentencePracticeScreen() {
               <FontAwesome6 name="chevron-right" size={20} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
             </TouchableOpacity>
           </View>
+
+          {/* Voice Input Trigger Bar - 长按录音 */}
+          <TouchableOpacity
+            style={[styles.voiceTriggerBar, isRecording && styles.voiceTriggerBarActive]}
+            onPressIn={startRecording}
+            onPressOut={stopRecordingAndRecognize}
+            activeOpacity={0.9}
+          >
+            <FontAwesome6 
+              name={isRecording ? "stop" : "microphone"} 
+              size={16} 
+              color={isRecording ? theme.buttonPrimaryText : theme.textMuted} 
+            />
+            <ThemedText 
+              variant="smallMedium" 
+              color={isRecording ? theme.buttonPrimaryText : theme.textMuted}
+              style={{ marginLeft: Spacing.sm }}
+            >
+              {isRecording ? '松手结束' : '按住说话'}
+            </ThemedText>
+          </TouchableOpacity>
         </ScrollView>
 
         {/* Input Section */}

@@ -278,6 +278,24 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
     },
     
+    // Voice Input Trigger Bar - 长按录音触发条
+    voiceTriggerBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      paddingVertical: Spacing.md,
+      paddingHorizontal: Spacing.xl,
+      marginTop: Spacing.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    voiceTriggerBarActive: {
+      backgroundColor: theme.error,
+      borderColor: theme.error,
+    },
+    
     // Custom Keyboard
     customKeyboardContainer: {
       width: '100%',
