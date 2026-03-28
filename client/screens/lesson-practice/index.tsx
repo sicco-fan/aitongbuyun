@@ -528,6 +528,60 @@ export default function LessonPracticeScreen() {
     }
   };
 
+  // 删除句子
+  const handleDeleteSentence = useCallback((sentence: Sentence) => {
+    Alert.alert(
+      '确认删除',
+      `确定要删除第 ${sentence.sentence_index} 句吗？\n\n"${sentence.english_text.substring(0, 30)}${sentence.english_text.length > 30 ? '...' : ''}"\n\n此操作不可撤销。`,
+      [
+        { text: '取消', style: 'cancel' },
+        { 
+          text: '删除', 
+          style: 'destructive',
+          onPress: () => doDeleteSentence(sentence)
+        }
+      ]
+    );
+  }, []);
+
+  // 执行删除
+  const doDeleteSentence = async (sentence: Sentence) => {
+    try {
+      const response = await fetch(
+        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/lessons/sentences/${sentence.id}`,
+        {
+          method: 'DELETE',
+        }
+      );
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // 从本地列表中移除
+        setSentences(prev => {
+          const filtered = prev.filter(s => s.id !== sentence.id);
+          // 更新序号
+          return filtered.map(s => 
+            s.sentence_index > sentence.sentence_index 
+              ? { ...s, sentence_index: s.sentence_index - 1 }
+              : s
+          );
+        });
+        
+        // 更新课时的句子计数
+        if (lesson) {
+          setLesson({ ...lesson, sentences_count: data.remaining_count });
+        }
+        
+        Alert.alert('✓ 删除成功', `句子已删除，当前剩余 ${data.remaining_count} 个句子`);
+      } else {
+        throw new Error(data.error || '删除失败');
+      }
+    } catch (error: any) {
+      Alert.alert('删除失败', error.message || '请稍后重试');
+    }
+  };
+
   const hasAudio = sentences.some(s => s.audio_url);
   const selectedVoiceStatus = voiceCacheStatuses.find(s => s.voiceId === selectedVoice);
   const allDownloaded = voiceCacheStatuses.length > 0 && 
@@ -745,12 +799,20 @@ export default function LessonPracticeScreen() {
               <ThemedText variant="caption" color={theme.textMuted} style={styles.sentenceIndex}>
                 句子 {sentence.sentence_index}
               </ThemedText>
-              <TouchableOpacity 
-                style={styles.editButton}
-                onPress={() => handleEditSentence(sentence)}
-              >
-                <FontAwesome6 name="pen" size={12} color={theme.primary} />
-              </TouchableOpacity>
+              <View style={styles.sentenceActions}>
+                <TouchableOpacity 
+                  style={styles.editButton}
+                  onPress={() => handleEditSentence(sentence)}
+                >
+                  <FontAwesome6 name="pen" size={12} color={theme.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.deleteButton}
+                  onPress={() => handleDeleteSentence(sentence)}
+                >
+                  <FontAwesome6 name="trash" size={12} color={theme.error} />
+                </TouchableOpacity>
+              </View>
             </View>
             <ThemedText variant="body" color={theme.textPrimary} style={styles.englishText}>
               {sentence.english_text}

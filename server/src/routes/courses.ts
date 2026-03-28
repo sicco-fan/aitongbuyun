@@ -632,6 +632,99 @@ router.put('/lessons/sentences/:sentenceId', async (req: Request, res: Response)
 });
 
 /**
+ * DELETE /api/v1/courses/lessons/sentences/:sentenceId
+ * 删除句子（同时删除关联的音频记录）
+ */
+router.delete('/lessons/sentences/:sentenceId', async (req: Request, res: Response) => {
+  try {
+    const { sentenceId } = req.params;
+    const supabase = getSupabaseClient();
+    
+    // 先获取句子信息
+    const { data: sentence, error: fetchError } = await supabase
+      .from('lesson_sentences')
+      .select('*')
+      .eq('id', sentenceId)
+      .single();
+    
+    if (fetchError || !sentence) {
+      return res.status(404).json({ error: '句子不存在' });
+    }
+    
+    const lessonId = sentence.lesson_id;
+    const deletedIndex = sentence.sentence_index;
+    
+    // 删除关联的音频记录
+    const { error: audioDeleteError } = await supabase
+      .from('lesson_sentence_audio')
+      .delete()
+      .eq('sentence_id', sentenceId);
+    
+    if (audioDeleteError) {
+      console.error('删除音频记录失败:', audioDeleteError);
+    }
+    
+    // 删除句子
+    const { error: deleteError } = await supabase
+      .from('lesson_sentences')
+      .delete()
+      .eq('id', sentenceId);
+    
+    if (deleteError) {
+      throw new Error(deleteError.message);
+    }
+    
+    // 更新后续句子的序号（将所有大于删除序号的句子序号减1）
+    const { error: updateError } = await supabase
+      .rpc('decrement_sentence_index', {
+        p_lesson_id: lessonId,
+        p_deleted_index: deletedIndex
+      });
+    
+    // 如果RPC不存在，使用直接更新
+    if (updateError) {
+      console.log('RPC不存在，使用直接更新方式');
+      // 获取所有需要更新的句子
+      const { data: sentencesToUpdate } = await supabase
+        .from('lesson_sentences')
+        .select('id, sentence_index')
+        .eq('lesson_id', lessonId)
+        .gt('sentence_index', deletedIndex);
+      
+      if (sentencesToUpdate && sentencesToUpdate.length > 0) {
+        // 逐个更新序号
+        for (const s of sentencesToUpdate) {
+          await supabase
+            .from('lesson_sentences')
+            .update({ sentence_index: s.sentence_index - 1 })
+            .eq('id', s.id);
+        }
+      }
+    }
+    
+    // 更新课时的句子计数
+    const { data: remainingSentences } = await supabase
+      .from('lesson_sentences')
+      .select('id')
+      .eq('lesson_id', lessonId);
+    
+    await supabase
+      .from('lessons')
+      .update({ sentences_count: remainingSentences?.length || 0 })
+      .eq('id', lessonId);
+    
+    res.json({ 
+      success: true, 
+      deleted_sentence_id: sentenceId,
+      remaining_count: remainingSentences?.length || 0
+    });
+  } catch (error: any) {
+    console.error('删除句子失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * GET /api/v1/courses/voices
  * 获取可用的音色列表
  */

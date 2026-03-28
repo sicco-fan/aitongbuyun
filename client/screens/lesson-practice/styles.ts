@@ -179,11 +179,23 @@ export const createStyles = (theme: Theme) => {
     sentenceIndex: {
       marginBottom: 0,
     },
+    sentenceActions: {
+      flexDirection: 'row',
+      gap: 8,
+    },
     editButton: {
       width: 28,
       height: 28,
       borderRadius: 14,
       backgroundColor: `${theme.primary}15`,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    deleteButton: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: `${theme.error}15`,
       justifyContent: 'center',
       alignItems: 'center',
     },
