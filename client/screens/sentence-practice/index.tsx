@@ -489,7 +489,7 @@ export default function SentencePracticeScreen() {
     
     // 先将文本中的各种引号和破折号统一为标准格式
     // 使用更宽松的匹配：任何看起来像引号的字符都替换
-    const normalizedText = text
+    let normalizedText = text
       .replace(/[^\w\s.,!?;:(){}\-]/g, (char) => {
         // 如果是字母、数字、空格、标点，保留
         // 如果是引号类字符（各种单引号、双引号变体），替换
@@ -499,17 +499,100 @@ export default function SentencePracticeScreen() {
         return char;
       });
     
-    // 使用正则分割：保留单词（包括内部的 - ' &）和纯标点符号
-    const tokens = normalizedText.match(/[a-z0-9'\-&]+|[,.!?;:()"]/gi) || [];
+    // 处理成对引号：识别独立的引号（成对出现的引号），将它们标记为直接显示
+    // 使用特殊占位符标记独立引号，避免被当作单词的一部分
+    // 左单引号占位符：\u2774（❴），右单引号占位符：\u2775（❵）
+    // 左双引号占位符：\u2772（❲），右双引号占位符：\u2773（❳）
+    
+    // 处理单引号对
+    let inSingleQuote = false;
+    let processedText = '';
+    for (let i = 0; i < normalizedText.length; i++) {
+      const char = normalizedText[i];
+      const prevChar = i > 0 ? normalizedText[i - 1] : ' ';
+      const nextChar = i < normalizedText.length - 1 ? normalizedText[i + 1] : ' ';
+      
+      if (char === "'") {
+        // 判断是否为独立引号：
+        // 左引号：后面是字母或空格，前面是空格或标点
+        // 右引号：前面是字母或空格，后面是空格或标点
+        const isLeftQuote = /[a-zA-Z\s]/.test(nextChar) && /[\s.,!?;:()\]]/.test(prevChar);
+        const isRightQuote = /[a-zA-Z\s]/.test(prevChar) && /[\s.,!?;:()\[]/.test(nextChar);
+        
+        if (isLeftQuote && !inSingleQuote) {
+          // 开始一个单引号对，标记为独立引号
+          processedText += '\u2774'; // ❴ 左单引号占位符
+          inSingleQuote = true;
+        } else if (isRightQuote && inSingleQuote) {
+          // 结束一个单引号对
+          processedText += '\u2775'; // ❵ 右单引号占位符
+          inSingleQuote = false;
+        } else {
+          // 不是独立引号，保留原字符（单词内部的引号）
+          processedText += char;
+        }
+      } else {
+        processedText += char;
+      }
+    }
+    
+    // 处理双引号对（类似逻辑）
+    let inDoubleQuote = false;
+    normalizedText = processedText;
+    processedText = '';
+    for (let i = 0; i < normalizedText.length; i++) {
+      const char = normalizedText[i];
+      const prevChar = i > 0 ? normalizedText[i - 1] : ' ';
+      const nextChar = i < normalizedText.length - 1 ? normalizedText[i + 1] : ' ';
+      
+      if (char === '"') {
+        const isLeftQuote = /[a-zA-Z\s]/.test(nextChar) && /[\s.,!?;:()\]]/.test(prevChar);
+        const isRightQuote = /[a-zA-Z\s]/.test(prevChar) && /[\s.,!?;:()\[]/.test(nextChar);
+        
+        if (isLeftQuote && !inDoubleQuote) {
+          processedText += '\u2772'; // ❲ 左双引号占位符
+          inDoubleQuote = true;
+        } else if (isRightQuote && inDoubleQuote) {
+          processedText += '\u2773'; // ❳ 右双引号占位符
+          inDoubleQuote = false;
+        } else {
+          processedText += char;
+        }
+      } else {
+        processedText += char;
+      }
+    }
+    
+    // 使用正则分割：保留单词（包括内部的 - ' &）、纯标点符号、以及独立引号占位符
+    // 注意：\u2772-\u2775 需要单独列出，因为正则范围可能无法正确匹配 Unicode
+    const tokens = processedText.match(/[a-z0-9'\-&]+|[,.!?;:()"❲❳❴❵]/gi) || [];
 
     tokens.forEach((token) => {
-      // 判断是否为纯标点符号（不包含字母数字、-'&）
-      const isPurePunctuation = !/[a-z0-9]/i.test(token);
+      // 还原独立引号占位符为显示文本
+      let displayText = token;
+      let isPunctuation = false;
+      
+      if (token === '\u2774') {
+        displayText = "'"; // 左单引号
+        isPunctuation = true;
+      } else if (token === '\u2775') {
+        displayText = "'"; // 右单引号
+        isPunctuation = true;
+      } else if (token === '\u2772') {
+        displayText = '"'; // 左双引号
+        isPunctuation = true;
+      } else if (token === '\u2773') {
+        displayText = '"'; // 右双引号
+        isPunctuation = true;
+      } else {
+        // 判断是否为纯标点符号（不包含字母数字、-'&）
+        isPunctuation = !/[a-z0-9]/i.test(token);
+      }
       
       result.push({
-        word: isPurePunctuation ? '' : token.toLowerCase(),
-        displayText: token,
-        isPunctuation: isPurePunctuation,
+        word: isPunctuation ? '' : token.toLowerCase(),
+        displayText: displayText,
+        isPunctuation: isPunctuation,
       });
     });
 
