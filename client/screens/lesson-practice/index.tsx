@@ -475,15 +475,24 @@ export default function LessonPracticeScreen() {
     setSaving(true);
     
     try {
+      // 构建请求体
+      // 如果英文改变了，不传chinese_text让后端自动翻译
+      const requestBody: { english_text: string; chinese_text?: string } = {
+        english_text: editEnglishText,
+      };
+      
+      // 只有中文也被修改了才传递，否则让后端自动翻译
+      const chineseChanged = editChineseText !== editingSentence.chinese_text;
+      if (chineseChanged || !englishChanged) {
+        requestBody.chinese_text = editChineseText;
+      }
+      
       const response = await fetch(
         `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/lessons/sentences/${editingSentence.id}`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            english_text: editEnglishText,
-            chinese_text: editChineseText,
-          }),
+          body: JSON.stringify(requestBody),
         }
       );
       
