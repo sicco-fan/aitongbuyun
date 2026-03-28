@@ -1,108 +1,15 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Dimensions } from 'react-native';
 import { Spacing, BorderRadius, Theme } from '@/constants/theme';
+
+const { width } = Dimensions.get('window');
 
 export const createStyles = (theme: Theme) => {
   return StyleSheet.create({
     scrollContent: {
       flexGrow: 1,
       paddingHorizontal: Spacing.lg,
-      paddingTop: Spacing['2xl'],
+      paddingTop: Spacing.xl,
       paddingBottom: Spacing['5xl'],
-    },
-    header: {
-      marginBottom: Spacing.xl,
-    },
-    title: {
-      fontSize: 24,
-      fontWeight: '700',
-      color: theme.textPrimary,
-      marginBottom: Spacing.sm,
-    },
-    subtitle: {
-      fontSize: 14,
-      color: theme.textSecondary,
-    },
-    backButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: Spacing.lg,
-    },
-    backButtonText: {
-      fontSize: 15,
-      color: theme.primary,
-      marginLeft: Spacing.sm,
-    },
-    voiceSection: {
-      marginBottom: Spacing.lg,
-    },
-    sectionTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: theme.textPrimary,
-      marginBottom: Spacing.md,
-    },
-    voiceSelector: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: Spacing.sm,
-    },
-    voiceChip: {
-      paddingHorizontal: Spacing.md,
-      paddingVertical: Spacing.sm,
-      borderRadius: BorderRadius.full,
-      backgroundColor: theme.backgroundTertiary,
-      borderWidth: 1,
-      borderColor: theme.borderLight,
-    },
-    voiceChipSelected: {
-      backgroundColor: `${theme.primary}15`,
-      borderColor: theme.primary,
-    },
-    voiceChipText: {
-      fontSize: 13,
-      fontWeight: '500',
-      color: theme.textSecondary,
-    },
-    voiceChipTextSelected: {
-      color: theme.primary,
-    },
-    sentenceCard: {
-      backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.lg,
-      padding: Spacing.lg,
-      marginBottom: Spacing.md,
-    },
-    sentenceIndex: {
-      fontSize: 12,
-      color: theme.textMuted,
-      marginBottom: Spacing.sm,
-    },
-    englishText: {
-      fontSize: 16,
-      fontWeight: '500',
-      color: theme.textPrimary,
-      lineHeight: 24,
-      marginBottom: Spacing.sm,
-    },
-    chineseText: {
-      fontSize: 14,
-      color: theme.textSecondary,
-      lineHeight: 20,
-    },
-    audioButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: `${theme.primary}15`,
-      borderRadius: BorderRadius.lg,
-      paddingVertical: Spacing.md,
-      marginTop: Spacing.md,
-    },
-    audioButtonText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: theme.primary,
-      marginLeft: Spacing.sm,
     },
     loadingContainer: {
       flex: 1,
@@ -110,61 +17,198 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
       paddingTop: Spacing['4xl'],
     },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingTop: Spacing['4xl'],
-    },
-    emptyText: {
-      fontSize: 16,
-      color: theme.textMuted,
-      marginTop: Spacing.md,
-    },
-    startButton: {
-      backgroundColor: theme.primary,
-      borderRadius: BorderRadius.lg,
-      paddingVertical: Spacing.lg,
-      paddingHorizontal: Spacing['2xl'],
-      alignItems: 'center',
-      marginTop: Spacing.lg,
-      marginBottom: Spacing['2xl'],
-    },
-    startButtonText: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: theme.buttonPrimaryText,
-    },
-    progressInfo: {
+    backButton: {
       flexDirection: 'row',
       alignItems: 'center',
+      marginBottom: Spacing.lg,
+    },
+    backButtonText: {
+      marginLeft: 8,
+    },
+    header: {
+      alignItems: 'center',
+      marginBottom: Spacing.xl,
+    },
+    title: {
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+    subtitle: {
+      textAlign: 'center',
+    },
+    
+    // 音色选择区域
+    voiceSection: {
+      marginBottom: Spacing.xl,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
       justifyContent: 'space-between',
+      alignItems: 'center',
       marginBottom: Spacing.md,
     },
-    progressText: {
-      fontSize: 14,
-      color: theme.textSecondary,
+    sectionTitle: {
+      marginBottom: 0,
     },
+    downloadAllButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      borderRadius: BorderRadius.md,
+      backgroundColor: `${theme.primary}15`,
+    },
+    voiceList: {
+      gap: Spacing.sm,
+    },
+    voiceCard: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    voiceCardSelected: {
+      borderColor: theme.primary,
+      borderWidth: 2,
+    },
+    voiceCardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    voiceInfo: {
+      flex: 1,
+    },
+    voiceName: {
+      fontWeight: '600',
+      marginBottom: 4,
+    },
+    voiceStatusRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    cachedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    downloadingIndicator: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    downloadButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: `${theme.primary}15`,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    cacheProgressBar: {
+      height: 3,
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: 1.5,
+      marginTop: Spacing.sm,
+      overflow: 'hidden',
+    },
+    cacheProgressFill: {
+      height: '100%',
+      borderRadius: 1.5,
+    },
+    
+    // 统计信息
     statsRow: {
       flexDirection: 'row',
       justifyContent: 'space-around',
-      backgroundColor: theme.backgroundTertiary,
+      backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
-      paddingVertical: Spacing.md,
-      marginBottom: Spacing.lg,
+      padding: Spacing.lg,
+      marginBottom: Spacing.xl,
     },
     statItem: {
       alignItems: 'center',
     },
     statValue: {
-      fontSize: 20,
-      fontWeight: '700',
-      color: theme.primary,
+      marginBottom: 4,
     },
     statLabel: {
-      fontSize: 12,
-      color: theme.textMuted,
-      marginTop: 2,
+      textAlign: 'center',
+    },
+    
+    // 句子卡片
+    sentenceCard: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.lg,
+      marginBottom: Spacing.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    sentenceIndex: {
+      marginBottom: 8,
+    },
+    englishText: {
+      lineHeight: 24,
+      marginBottom: 8,
+    },
+    chineseText: {
+      lineHeight: 20,
+    },
+    
+    // 开始按钮
+    startButton: {
+      flexDirection: 'row',
+      backgroundColor: theme.primary,
+      paddingVertical: Spacing.lg,
+      paddingHorizontal: Spacing['2xl'],
+      borderRadius: BorderRadius.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: Spacing.md,
+    },
+    startButtonText: {
+      fontWeight: '600',
+    },
+    
+    // 下载进度弹窗
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalContent: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.xl,
+      width: width - 64,
+      alignItems: 'center',
+    },
+    modalTitle: {
+      marginBottom: Spacing.md,
+    },
+    modalSubtitle: {
+      marginBottom: Spacing.lg,
+    },
+    progressBar: {
+      width: '100%',
+      height: 8,
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: 4,
+      overflow: 'hidden',
+      marginBottom: Spacing.md,
+    },
+    progressFill: {
+      height: '100%',
+      backgroundColor: theme.primary,
+      borderRadius: 4,
+    },
+    progressText: {
+      marginBottom: Spacing.sm,
+    },
+    progressPercent: {
+      fontWeight: '600',
     },
   });
 };
