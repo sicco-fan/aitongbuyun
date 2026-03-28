@@ -12,6 +12,7 @@ import statsRouter from "./routes/stats";
 import shareRouter from "./routes/share";
 import myFilesRouter from "./routes/my-files";
 import errorWordsRouter from "./routes/error-words";
+import pdfParseRouter from "./routes/pdf-parse";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -56,6 +57,9 @@ app.use('/api/v1/my-files', myFilesRouter);
 
 // 错题本路由
 app.use('/api/v1/error-words', errorWordsRouter);
+
+// PDF 解析路由
+app.use('/api/v1/pdf-parse', pdfParseRouter);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
