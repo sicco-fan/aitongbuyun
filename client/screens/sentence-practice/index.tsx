@@ -1940,11 +1940,32 @@ export default function SentencePracticeScreen() {
               </ThemedText>
             </View>
           )}
+
+          {/* Navigation Buttons - 移到文本下方 */}
+          <View style={styles.textNavButtons}>
+            <TouchableOpacity
+              style={[styles.textNavBtn, currentIndex === 0 && styles.navBtnDisabled]}
+              onPress={goToPrevSentence}
+              disabled={currentIndex === 0}
+            >
+              <FontAwesome6 name="chevron-left" size={18} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
+              <ThemedText variant="small" color={currentIndex === 0 ? theme.textMuted : theme.primary} style={{ marginLeft: 4 }}>上一句</ThemedText>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.textNavBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
+              onPress={goToNextSentence}
+              disabled={currentIndex === sentences.length - 1}
+            >
+              <ThemedText variant="small" color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} style={{ marginRight: 4 }}>下一句</ThemedText>
+              <FontAwesome6 name="chevron-right" size={18} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
+            </TouchableOpacity>
+          </View>
         </ScrollView>
 
         {/* Input Section - 紧跟句子区域 */}
         <View style={styles.inputSection}>
-          {/* 手机键盘模式 */}
+          {/* 手机键盘模式 - 仅输入框 */}
           {keyboardType === 'system' && (
             <View style={styles.inputWrapper}>
               <TextInput
@@ -1976,16 +1997,8 @@ export default function SentencePracticeScreen() {
           {/* 自建键盘模式 */}
           {keyboardType === 'custom' && (
             <View style={styles.customKeyboardContainer}>
-              {/* 当前输入显示 + 导航按钮 */}
+              {/* 当前输入显示 */}
               <View style={styles.customInputRow}>
-                <TouchableOpacity
-                  style={[styles.navBtnSmall, currentIndex === 0 && styles.navBtnDisabled]}
-                  onPress={goToPrevSentence}
-                  disabled={currentIndex === 0}
-                >
-                  <FontAwesome6 name="chevron-left" size={16} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
-                </TouchableOpacity>
-                
                 <View style={styles.customInputDisplay}>
                   {currentInput ? (
                     <ThemedText variant="h4" color={theme.success}>
@@ -1993,17 +2006,8 @@ export default function SentencePracticeScreen() {
                     </ThemedText>
                   ) : null}
                 </View>
-                
-                <TouchableOpacity
-                  style={[styles.navBtnSmall, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
-                  onPress={goToNextSentence}
-                  disabled={currentIndex === sentences.length - 1}
-                >
-                  <FontAwesome6 name="chevron-right" size={16} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
-                </TouchableOpacity>
               </View>
               
-              {/* 候选词列表 */}
               {/* 自建键盘 */}
               <View style={styles.customKeyboard}>
                 {/* 第一列：特殊符号 - 3行均匀分布 */}
@@ -2204,27 +2208,6 @@ export default function SentencePracticeScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
-            </View>
-          )}
-
-          {/* 手机键盘模式的导航按钮 */}
-          {keyboardType === 'system' && (
-            <View style={styles.navButtons}>
-              <TouchableOpacity
-                style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
-                onPress={goToPrevSentence}
-                disabled={currentIndex === 0}
-              >
-                <FontAwesome6 name="chevron-left" size={18} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.navBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
-                onPress={goToNextSentence}
-                disabled={currentIndex === sentences.length - 1}
-              >
-                <FontAwesome6 name="chevron-right" size={18} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
-              </TouchableOpacity>
             </View>
           )}
         </View>

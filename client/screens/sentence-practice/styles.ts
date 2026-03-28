@@ -267,6 +267,23 @@ export const createStyles = (theme: Theme) => {
       borderColor: theme.primary + '30',
     },
     
+    // Navigation Buttons below text
+    textNavButtons: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: Spacing.lg,
+      paddingHorizontal: Spacing.sm,
+    },
+    textNavBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.lg,
+      borderRadius: BorderRadius.lg,
+      backgroundColor: theme.primary + '10',
+    },
+    
     // Custom Keyboard
     customKeyboardContainer: {
       width: '100%',
