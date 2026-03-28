@@ -50,13 +50,13 @@ export const createStyles = (theme: Theme) => {
     sectionTitle: {
       marginBottom: 0,
     },
-    downloadAllButton: {
+    generateAllButton: {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: Spacing.md,
       paddingVertical: Spacing.sm,
       borderRadius: BorderRadius.md,
-      backgroundColor: `${theme.primary}15`,
+      backgroundColor: theme.primary,
     },
     voiceList: {
       gap: Spacing.sm,
@@ -83,6 +83,13 @@ export const createStyles = (theme: Theme) => {
     voiceName: {
       fontWeight: '600',
       marginBottom: 4,
+    },
+    notGeneratedBadge: {
+      marginLeft: 8,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      backgroundColor: theme.backgroundTertiary,
     },
     voiceStatusRow: {
       flexDirection: 'row',
@@ -171,7 +178,7 @@ export const createStyles = (theme: Theme) => {
       fontWeight: '600',
     },
     
-    // 下载进度弹窗
+    // 弹窗通用
     modalOverlay: {
       flex: 1,
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -183,14 +190,18 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.xl,
       padding: Spacing.xl,
       width: width - 64,
-      alignItems: 'center',
+      maxWidth: 400,
     },
     modalTitle: {
-      marginBottom: Spacing.md,
+      marginBottom: Spacing.lg,
+      textAlign: 'center',
     },
     modalSubtitle: {
       marginBottom: Spacing.lg,
+      textAlign: 'center',
     },
+    
+    // 下载进度
     progressBar: {
       width: '100%',
       height: 8,
@@ -206,9 +217,70 @@ export const createStyles = (theme: Theme) => {
     },
     progressText: {
       marginBottom: Spacing.sm,
+      textAlign: 'center',
     },
     progressPercent: {
       fontWeight: '600',
+      textAlign: 'center',
+    },
+    
+    // 生成音频弹窗
+    voiceSelectList: {
+      marginBottom: Spacing.md,
+    },
+    voiceSelectItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: Spacing.md,
+      borderRadius: BorderRadius.md,
+      marginBottom: Spacing.sm,
+      backgroundColor: theme.backgroundTertiary,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    voiceSelectItemSelected: {
+      borderColor: theme.primary,
+      backgroundColor: `${theme.primary}10`,
+    },
+    voiceSelectCheckbox: {
+      width: 20,
+      height: 20,
+      borderRadius: 4,
+      borderWidth: 2,
+      borderColor: theme.border,
+      marginRight: Spacing.md,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: theme.backgroundDefault,
+    },
+    selectAllButton: {
+      alignSelf: 'center',
+      paddingVertical: Spacing.sm,
+      marginBottom: Spacing.md,
+    },
+    generateProgress: {
+      paddingVertical: Spacing.lg,
+      alignItems: 'center',
+    },
+    modalActions: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: Spacing.md,
+      marginTop: Spacing.md,
+    },
+    cancelButton: {
+      flex: 1,
+      paddingVertical: Spacing.md,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.backgroundTertiary,
+      alignItems: 'center',
+    },
+    confirmButton: {
+      flex: 1,
+      paddingVertical: Spacing.md,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.primary,
+      alignItems: 'center',
     },
   });
 };

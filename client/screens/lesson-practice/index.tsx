@@ -31,6 +31,7 @@ interface Sentence {
   chinese_text: string;
   audio_url?: string;
   audio_duration?: number;
+  available_voices?: string[];
 }
 
 interface Lesson {
@@ -53,6 +54,7 @@ interface VoiceCacheStatus {
   voiceName: string;
   cached: number;
   total: number;
+  hasAudio: boolean; // 该音色是否已生成音频
   isDownloading: boolean;
 }
 
@@ -79,6 +81,12 @@ export default function LessonPracticeScreen() {
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [downloadingVoiceId, setDownloadingVoiceId] = useState<string | null>(null);
   const downloadingRef = useRef(false);
+  
+  // 生成音频状态
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [selectedVoicesToGenerate, setSelectedVoicesToGenerate] = useState<string[]>([]);
+  const [generating, setGenerating] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState<string>('');
 
   const fetchData = useCallback(async () => {
     if (!lessonId) return;
@@ -98,19 +106,28 @@ export default function LessonPracticeScreen() {
       if (data.available_voices) {
         setVoices(data.available_voices);
         
-        // 检查所有音色的缓存状态
+        // 检查所有音色的状态
         const statuses: VoiceCacheStatus[] = [];
         for (const voice of data.available_voices) {
+          // 检查该音色是否有音频（从第一个句子判断）
+          const sentencesWithVoice = data.sentences.filter(
+            (s: Sentence) => s.available_voices && s.available_voices.includes(voice.id)
+          );
+          const hasAudio = sentencesWithVoice.length > 0;
+          
+          // 检查缓存状态
           const status = await checkVoiceCacheStatus(
             lessonId, 
             voice.id, 
-            data.sentences.filter((s: Sentence) => s.audio_url).length
+            sentencesWithVoice.length
           );
+          
           statuses.push({
             voiceId: voice.id,
             voiceName: voice.name,
             cached: status.cached,
             total: status.total,
+            hasAudio,
             isDownloading: false,
           });
         }
@@ -149,48 +166,62 @@ export default function LessonPracticeScreen() {
   }, [router, lessonId, selectedVoice, title]);
 
   // 下载单个音色
-  const handleDownloadVoice = useCallback(async (voiceId: string) => {
+  const handleDownloadVoice = useCallback(async (voiceStatus: VoiceCacheStatus) => {
+    // 如果音频未生成，先提示生成
+    if (!voiceStatus.hasAudio) {
+      Alert.alert(
+        '音频未生成',
+        '该音色的音频尚未生成，是否立即生成？',
+        [
+          { text: '取消', style: 'cancel' },
+          { 
+            text: '生成音频', 
+            onPress: () => {
+              setSelectedVoicesToGenerate([voiceStatus.voiceId]);
+              setShowGenerateModal(true);
+            }
+          }
+        ]
+      );
+      return;
+    }
+    
     if (downloadingRef.current) return;
     
-    const sentencesWithAudio = sentences.filter(s => s.audio_url);
-    if (sentencesWithAudio.length === 0) return;
-    
-    // 获取该音色的音频URL（需要先请求后端获取）
     try {
       const response = await fetch(
-        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/lessons/${lessonId}?voiceId=${voiceId}`
+        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/lessons/${lessonId}?voiceId=${voiceStatus.voiceId}`
       );
       const data = await response.json();
       
-      if (!data.sentences || data.sentences.length === 0) {
-        Alert.alert('提示', '该音色暂无音频，请先生成');
+      if (!data.sentences || data.sentences.filter((s: Sentence) => s.audio_url).length === 0) {
+        Alert.alert('提示', '该音色暂无音频');
         return;
       }
       
       downloadingRef.current = true;
-      setDownloadingVoiceId(voiceId);
+      setDownloadingVoiceId(voiceStatus.voiceId);
       
-      // 更新状态为下载中
       setVoiceCacheStatuses(prev => 
         prev.map(s => 
-          s.voiceId === voiceId ? { ...s, isDownloading: true } : s
+          s.voiceId === voiceStatus.voiceId ? { ...s, isDownloading: true } : s
         )
       );
       
       await precacheVoiceAudios(
         lessonId,
-        voiceId,
+        voiceStatus.voiceId,
         data.sentences,
         (progress) => {
           setDownloadProgress(progress);
         }
       );
       
-      // 更新缓存状态
-      const status = await checkVoiceCacheStatus(lessonId, voiceId, sentencesWithAudio.length);
+      const sentencesWithAudio = data.sentences.filter((s: Sentence) => s.audio_url);
+      const status = await checkVoiceCacheStatus(lessonId, voiceStatus.voiceId, sentencesWithAudio.length);
       setVoiceCacheStatuses(prev => 
         prev.map(s => 
-          s.voiceId === voiceId ? { 
+          s.voiceId === voiceStatus.voiceId ? { 
             ...s, 
             cached: status.cached, 
             total: status.total,
@@ -202,12 +233,16 @@ export default function LessonPracticeScreen() {
     } catch (error) {
       console.error('下载音色失败:', error);
       
-      // 检查实际缓存状态
       try {
-        const status = await checkVoiceCacheStatus(lessonId, voiceId, sentencesWithAudio.length);
+        const response = await fetch(
+          `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/lessons/${lessonId}?voiceId=${voiceStatus.voiceId}`
+        );
+        const data = await response.json();
+        const sentencesWithAudio = data.sentences.filter((s: Sentence) => s.audio_url);
+        const status = await checkVoiceCacheStatus(lessonId, voiceStatus.voiceId, sentencesWithAudio.length);
         setVoiceCacheStatuses(prev => 
           prev.map(s => 
-            s.voiceId === voiceId ? { 
+            s.voiceId === voiceStatus.voiceId ? { 
               ...s, 
               cached: status.cached, 
               total: status.total,
@@ -225,7 +260,7 @@ export default function LessonPracticeScreen() {
         Alert.alert('下载失败', '请检查网络连接后重试');
         setVoiceCacheStatuses(prev => 
           prev.map(s => 
-            s.voiceId === voiceId ? { ...s, isDownloading: false } : s
+            s.voiceId === voiceStatus.voiceId ? { ...s, isDownloading: false } : s
           )
         );
       }
@@ -234,76 +269,75 @@ export default function LessonPracticeScreen() {
       setDownloadingVoiceId(null);
       setDownloadProgress(null);
     }
-  }, [lessonId, sentences]);
+  }, [lessonId]);
 
-  // 下载全部音色
-  const handleDownloadAllVoices = useCallback(async () => {
-    if (downloadingRef.current || voices.length === 0) return;
+  // 生成音频
+  const handleGenerateAudio = useCallback(async () => {
+    if (generating || selectedVoicesToGenerate.length === 0) return;
     
-    downloadingRef.current = true;
-    setShowDownloadModal(true);
+    setGenerating(true);
+    setGenerateProgress('正在生成音频...');
     
-    const sentencesWithAudio = sentences.filter(s => s.audio_url);
-    
-    for (const voice of voices) {
-      try {
-        // 获取该音色的音频URL
-        const response = await fetch(
-          `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/lessons/${lessonId}?voiceId=${voice.id}`
-        );
-        const data = await response.json();
-        
-        if (!data.sentences || data.sentences.length === 0) {
-          continue;
+    try {
+      const response = await fetch(
+        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/lessons/${lessonId}/generate-audio`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ voiceIds: selectedVoicesToGenerate }),
         }
-        
-        setDownloadingVoiceId(voice.id);
-        setVoiceCacheStatuses(prev => 
-          prev.map(s => 
-            s.voiceId === voice.id ? { ...s, isDownloading: true } : s
-          )
+      );
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setGenerateProgress(
+          `生成完成！\n` +
+          `新生成: ${data.generated} 个\n` +
+          `已存在: ${data.already_exists} 个\n` +
+          `失败: ${data.failed} 个`
         );
         
-        await precacheVoiceAudios(
-          lessonId,
-          voice.id,
-          data.sentences,
-          (progress) => {
-            setDownloadProgress({
-              ...progress,
-              currentVoice: voice.name,
-            });
-          }
-        );
-        
-        // 更新缓存状态
-        const status = await checkVoiceCacheStatus(lessonId, voice.id, sentencesWithAudio.length);
-        setVoiceCacheStatuses(prev => 
-          prev.map(s => 
-            s.voiceId === voice.id ? { 
-              ...s, 
-              cached: status.cached, 
-              total: status.total,
-              isDownloading: false 
-            } : s
-          )
-        );
-        
-      } catch (error) {
-        console.error(`下载音色 ${voice.name} 失败:`, error);
+        // 刷新数据
+        setTimeout(() => {
+          setShowGenerateModal(false);
+          setGenerating(false);
+          setGenerateProgress('');
+          setSelectedVoicesToGenerate([]);
+          fetchData();
+        }, 2000);
+      } else {
+        throw new Error(data.error || '生成失败');
       }
+    } catch (error: any) {
+      Alert.alert('生成失败', error.message || '请稍后重试');
+      setGenerating(false);
+      setGenerateProgress('');
     }
-    
-    downloadingRef.current = false;
-    setDownloadingVoiceId(null);
-    setDownloadProgress(null);
-    setShowDownloadModal(false);
-  }, [lessonId, voices, sentences]);
+  }, [generating, selectedVoicesToGenerate, lessonId, fetchData]);
+
+  // 切换音色选择
+  const toggleVoiceSelection = useCallback((voiceId: string) => {
+    setSelectedVoicesToGenerate(prev => 
+      prev.includes(voiceId) 
+        ? prev.filter(id => id !== voiceId)
+        : [...prev, voiceId]
+    );
+  }, []);
+
+  // 全选/取消全选
+  const toggleSelectAll = useCallback(() => {
+    if (selectedVoicesToGenerate.length === voices.length) {
+      setSelectedVoicesToGenerate([]);
+    } else {
+      setSelectedVoicesToGenerate(voices.map(v => v.id));
+    }
+  }, [selectedVoicesToGenerate, voices]);
 
   const hasAudio = sentences.some(s => s.audio_url);
+  const selectedVoiceStatus = voiceCacheStatuses.find(s => s.voiceId === selectedVoice);
   const allDownloaded = voiceCacheStatuses.length > 0 && 
-    voiceCacheStatuses.every(s => s.cached === s.total && s.total > 0);
-  const someDownloaded = voiceCacheStatuses.some(s => s.cached > 0);
+    voiceCacheStatuses.filter(s => s.hasAudio).every(s => s.cached === s.total && s.total > 0);
 
   if (loading) {
     return (
@@ -352,23 +386,24 @@ export default function LessonPracticeScreen() {
             <ThemedText variant="h4" color={theme.textPrimary} style={styles.sectionTitle}>
               选择音色
             </ThemedText>
-            {hasAudio && !allDownloaded && (
-              <TouchableOpacity 
-                style={styles.downloadAllButton}
-                onPress={handleDownloadAllVoices}
-              >
-                <FontAwesome6 name="download" size={14} color={theme.primary} />
-                <ThemedText variant="small" color={theme.primary} style={{ marginLeft: 4 }}>
-                  预下载全部
-                </ThemedText>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity 
+              style={styles.generateAllButton}
+              onPress={() => {
+                setSelectedVoicesToGenerate(voices.map(v => v.id));
+                setShowGenerateModal(true);
+              }}
+            >
+              <FontAwesome6 name="wand-magic-sparkles" size={14} color={theme.buttonPrimaryText} />
+              <ThemedText variant="small" color={theme.buttonPrimaryText} style={{ marginLeft: 4 }}>
+                生成音频
+              </ThemedText>
+            </TouchableOpacity>
           </View>
           
           <View style={styles.voiceList}>
             {voiceCacheStatuses.map((voiceStatus) => {
               const isSelected = selectedVoice === voiceStatus.voiceId;
-              const isFullyCached = voiceStatus.cached === voiceStatus.total && voiceStatus.total > 0;
+              const isFullyCached = voiceStatus.hasAudio && voiceStatus.cached === voiceStatus.total && voiceStatus.total > 0;
               const isPartiallyCached = voiceStatus.cached > 0 && voiceStatus.cached < voiceStatus.total;
               const isDownloading = voiceStatus.isDownloading;
               
@@ -384,15 +419,28 @@ export default function LessonPracticeScreen() {
                 >
                   <View style={styles.voiceCardHeader}>
                     <View style={styles.voiceInfo}>
-                      <ThemedText
-                        variant="body"
-                        color={isSelected ? theme.primary : theme.textPrimary}
-                        style={styles.voiceName}
-                      >
-                        {voiceStatus.voiceName}
-                      </ThemedText>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <ThemedText
+                          variant="body"
+                          color={isSelected ? theme.primary : theme.textPrimary}
+                          style={styles.voiceName}
+                        >
+                          {voiceStatus.voiceName}
+                        </ThemedText>
+                        {!voiceStatus.hasAudio && (
+                          <View style={styles.notGeneratedBadge}>
+                            <ThemedText variant="caption" color={theme.textMuted}>
+                              未生成
+                            </ThemedText>
+                          </View>
+                        )}
+                      </View>
                       <View style={styles.voiceStatusRow}>
-                        {isFullyCached ? (
+                        {!voiceStatus.hasAudio ? (
+                          <ThemedText variant="caption" color={theme.textMuted}>
+                            点击右侧生成
+                          </ThemedText>
+                        ) : isFullyCached ? (
                           <View style={styles.cachedBadge}>
                             <FontAwesome6 name="check-circle" size={12} color={theme.success} />
                             <ThemedText variant="caption" color={theme.success} style={{ marginLeft: 4 }}>
@@ -403,9 +451,9 @@ export default function LessonPracticeScreen() {
                           <ThemedText variant="caption" color={theme.textMuted}>
                             {voiceStatus.cached}/{voiceStatus.total}
                           </ThemedText>
-                        ) : voiceStatus.total === 0 ? (
+                        ) : voiceStatus.total > 0 ? (
                           <ThemedText variant="caption" color={theme.textMuted}>
-                            未生成
+                            未缓存
                           </ThemedText>
                         ) : null}
                         
@@ -420,18 +468,20 @@ export default function LessonPracticeScreen() {
                       </View>
                     </View>
                     
-                    {!isFullyCached && voiceStatus.total > 0 && !isDownloading && (
-                      <TouchableOpacity
-                        style={styles.downloadButton}
-                        onPress={() => handleDownloadVoice(voiceStatus.voiceId)}
-                      >
-                        <FontAwesome6 name="cloud-download" size={16} color={theme.primary} />
-                      </TouchableOpacity>
-                    )}
+                    <TouchableOpacity
+                      style={styles.downloadButton}
+                      onPress={() => handleDownloadVoice(voiceStatus)}
+                    >
+                      <FontAwesome6 
+                        name={voiceStatus.hasAudio ? "cloud-download" : "wand-magic-sparkles"} 
+                        size={16} 
+                        color={theme.primary} 
+                      />
+                    </TouchableOpacity>
                   </View>
                   
                   {/* 缓存进度条 */}
-                  {voiceStatus.total > 0 && (
+                  {voiceStatus.hasAudio && voiceStatus.total > 0 && (
                     <View style={styles.cacheProgressBar}>
                       <View 
                         style={[
@@ -465,7 +515,7 @@ export default function LessonPracticeScreen() {
               {sentences.filter(s => s.audio_url).length}
             </ThemedText>
             <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
-              已生成音频
+              当前音色音频
             </ThemedText>
           </View>
           <View style={styles.statItem}>
@@ -556,6 +606,94 @@ export default function LessonPracticeScreen() {
               <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 12, textAlign: 'center' }}>
                 音频将缓存到浏览器，下次播放更快
               </ThemedText>
+            )}
+          </View>
+        </View>
+      </Modal>
+      
+      {/* 生成音频弹窗 */}
+      <Modal
+        visible={showGenerateModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !generating && setShowGenerateModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+            <ThemedText variant="h4" color={theme.textPrimary} style={styles.modalTitle}>
+              选择要生成的音色
+            </ThemedText>
+            
+            <View style={styles.voiceSelectList}>
+              {voices.map((voice) => {
+                const isSelected = selectedVoicesToGenerate.includes(voice.id);
+                return (
+                  <TouchableOpacity
+                    key={voice.id}
+                    style={[
+                      styles.voiceSelectItem,
+                      isSelected && styles.voiceSelectItemSelected,
+                    ]}
+                    onPress={() => toggleVoiceSelection(voice.id)}
+                    disabled={generating}
+                  >
+                    <View style={styles.voiceSelectCheckbox}>
+                      {isSelected && (
+                        <FontAwesome6 name="check" size={12} color={theme.buttonPrimaryText} />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <ThemedText variant="body" color={isSelected ? theme.primary : theme.textPrimary}>
+                        {voice.name}
+                      </ThemedText>
+                      <ThemedText variant="caption" color={theme.textMuted}>
+                        {voice.gender === 'female' ? '女声' : '男声'} · {voice.style}
+                      </ThemedText>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            
+            <TouchableOpacity 
+              style={styles.selectAllButton}
+              onPress={toggleSelectAll}
+              disabled={generating}
+            >
+              <ThemedText variant="small" color={theme.primary}>
+                {selectedVoicesToGenerate.length === voices.length ? '取消全选' : '全选'}
+              </ThemedText>
+            </TouchableOpacity>
+            
+            {generateProgress ? (
+              <View style={styles.generateProgress}>
+                <ActivityIndicator size="large" color={theme.primary} />
+                <ThemedText variant="body" color={theme.textPrimary} style={{ marginTop: 12, textAlign: 'center' }}>
+                  {generateProgress}
+                </ThemedText>
+              </View>
+            ) : (
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => {
+                    setShowGenerateModal(false);
+                    setSelectedVoicesToGenerate([]);
+                  }}
+                  disabled={generating}
+                >
+                  <ThemedText variant="body" color={theme.textSecondary}>取消</ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.confirmButton, selectedVoicesToGenerate.length === 0 && { opacity: 0.5 }]}
+                  onPress={handleGenerateAudio}
+                  disabled={generating || selectedVoicesToGenerate.length === 0}
+                >
+                  <ThemedText variant="body" color={theme.buttonPrimaryText}>
+                    生成 ({selectedVoicesToGenerate.length})
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         </View>
