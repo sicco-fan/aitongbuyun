@@ -37,6 +37,23 @@ interface SentenceFile {
   sentences_count?: number;
 }
 
+interface Course {
+  id: number;
+  title: string;
+  book_number: number;
+  description?: string;
+  total_lessons: number;
+}
+
+interface Lesson {
+  id: number;
+  course_id: number;
+  lesson_number: number;
+  title: string;
+  description?: string;
+  sentences_count: number;
+}
+
 export default function EditTextContentScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -51,6 +68,11 @@ export default function EditTextContentScreen() {
   const [inputFiles, setInputFiles] = useState<SentenceFile[]>([]); // 待处理
   const [outputFiles, setOutputFiles] = useState<SentenceFile[]>([]); // 已归档
   const [currentFile, setCurrentFile] = useState<SentenceFile | null>(null); // 当前编辑
+  
+  // 课程数据
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [expandedCourses, setExpandedCourses] = useState<number[]>([]);
+  const [lessonsByCourse, setLessonsByCourse] = useState<Record<number, Lesson[]>>({});
   
   const [textContent, setTextContent] = useState('');
   
@@ -97,9 +119,68 @@ export default function EditTextContentScreen() {
         loadFile(params.fileId);
       } else {
         loadAllFiles();
+        loadCourses();
       }
     }, [params.fileId])
   );
+
+  // 加载课程列表
+  const loadCourses = async () => {
+    try {
+      /**
+       * 服务端文件：server/src/routes/courses.ts
+       * 接口：GET /api/v1/courses
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses`);
+      const result = await response.json();
+      if (result.courses) {
+        setCourses(result.courses);
+      }
+    } catch (error) {
+      console.error('加载课程列表失败:', error);
+    }
+  };
+
+  // 加载课时的课时列表
+  const loadLessonsForCourse = async (courseId: number) => {
+    try {
+      /**
+       * 服务端文件：server/src/routes/courses.ts
+       * 接口：GET /api/v1/courses/:courseId/lessons
+       * Path 参数：courseId: number
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/${courseId}/lessons`);
+      const result = await response.json();
+      if (result.lessons) {
+        setLessonsByCourse(prev => ({ ...prev, [courseId]: result.lessons }));
+      }
+    } catch (error) {
+      console.error('加载课时列表失败:', error);
+    }
+  };
+
+  // 展开/折叠课程
+  const toggleCourseExpand = useCallback((courseId: number) => {
+    setExpandedCourses(prev => {
+      if (prev.includes(courseId)) {
+        return prev.filter(id => id !== courseId);
+      } else {
+        // 展开时加载课时
+        if (!lessonsByCourse[courseId]) {
+          loadLessonsForCourse(courseId);
+        }
+        return [...prev, courseId];
+      }
+    });
+  }, [lessonsByCourse]);
+
+  // 跳转到课时详情编辑
+  const handleEditLesson = useCallback((lesson: Lesson, courseTitle: string) => {
+    router.push('/lesson-practice', {
+      lessonId: lesson.id.toString(),
+      title: `${courseTitle} - ${lesson.title}`,
+    });
+  }, [router]);
 
   // 加载所有文件
   const loadAllFiles = async () => {
@@ -722,6 +803,82 @@ export default function EditTextContentScreen() {
           </View>
         ) : (
           <>
+            {/* 课程句库 */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleRow}>
+                  <View style={[styles.sectionIcon, { backgroundColor: `${theme.accent}15` }]}>
+                    <FontAwesome6 name="book" size={14} color={theme.accent} />
+                  </View>
+                  <ThemedText variant="smallMedium" color={theme.textSecondary}>
+                    课程句库
+                  </ThemedText>
+                </View>
+                <View style={styles.sectionBadge}>
+                  <ThemedText variant="tiny" color={theme.accent}>
+                    {courses.length} 门课程
+                  </ThemedText>
+                </View>
+              </View>
+              
+              {courses.length === 0 ? (
+                <View style={styles.emptySection}>
+                  <FontAwesome6 name="book-open" size={24} color={theme.textMuted} />
+                  <ThemedText variant="small" color={theme.textMuted}>
+                    暂无课程
+                  </ThemedText>
+                </View>
+              ) : (
+                courses.map(course => (
+                  <View key={course.id} style={styles.courseCard}>
+                    <TouchableOpacity 
+                      style={styles.courseHeader}
+                      onPress={() => toggleCourseExpand(course.id)}
+                    >
+                      <View style={styles.courseInfo}>
+                        <ThemedText variant="body" color={theme.textPrimary} style={styles.courseTitle}>
+                          {course.title}
+                        </ThemedText>
+                        <ThemedText variant="caption" color={theme.textMuted}>
+                          {course.total_lessons} 课时 · {course.description || ''}
+                        </ThemedText>
+                      </View>
+                      <FontAwesome6 
+                        name={expandedCourses.includes(course.id) ? "chevron-up" : "chevron-down"} 
+                        size={14} 
+                        color={theme.textMuted} 
+                      />
+                    </TouchableOpacity>
+                    
+                    {expandedCourses.includes(course.id) && (
+                      <View style={styles.lessonList}>
+                        {(lessonsByCourse[course.id] || []).map(lesson => (
+                          <TouchableOpacity 
+                            key={lesson.id}
+                            style={styles.lessonItem}
+                            onPress={() => handleEditLesson(lesson, course.title)}
+                          >
+                            <View style={styles.lessonInfo}>
+                              <ThemedText variant="small" color={theme.textPrimary}>
+                                {lesson.lesson_number}. {lesson.title}
+                              </ThemedText>
+                              <ThemedText variant="caption" color={theme.textMuted}>
+                                {lesson.sentences_count} 句
+                              </ThemedText>
+                            </View>
+                            <FontAwesome6 name="chevron-right" size={12} color={theme.textMuted} />
+                          </TouchableOpacity>
+                        ))}
+                        {!lessonsByCourse[course.id] && (
+                          <ActivityIndicator size="small" color={theme.primary} style={{ marginVertical: 16 }} />
+                        )}
+                      </View>
+                    )}
+                  </View>
+                ))
+              )}
+            </View>
+
             {/* 输入端：待处理的原始音频 */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>

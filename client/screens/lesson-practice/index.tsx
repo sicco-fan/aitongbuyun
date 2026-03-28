@@ -465,6 +465,16 @@ export default function LessonPracticeScreen() {
             : s
         ));
         setShowEditModal(false);
+        
+        // 如果有重新生成的音频，提示用户
+        if (data.regenerated_voices && data.regenerated_voices.length > 0) {
+          Alert.alert(
+            '保存成功',
+            `文本已更新，已自动重新生成以下音色的音频：\n${data.regenerated_voices.join('、')}\n\n请重新下载音频缓存。`
+          );
+          // 刷新数据以更新音频状态
+          fetchData();
+        }
       } else {
         throw new Error(data.error || '保存失败');
       }
@@ -473,7 +483,7 @@ export default function LessonPracticeScreen() {
     } finally {
       setSaving(false);
     }
-  }, [editingSentence, editEnglishText, editChineseText]);
+  }, [editingSentence, editEnglishText, editChineseText, fetchData]);
 
   const hasAudio = sentences.some(s => s.audio_url);
   const selectedVoiceStatus = voiceCacheStatuses.find(s => s.voiceId === selectedVoice);
@@ -671,8 +681,8 @@ export default function LessonPracticeScreen() {
           </View>
         </View>
 
-        {/* 句子预览 */}
-        {sentences.slice(0, 5).map((sentence) => (
+        {/* 句子列表 */}
+        {sentences.map((sentence) => (
           <View key={sentence.id} style={styles.sentenceCard}>
             <View style={styles.sentenceCardHeader}>
               <ThemedText variant="caption" color={theme.textMuted} style={styles.sentenceIndex}>
@@ -693,12 +703,6 @@ export default function LessonPracticeScreen() {
             </ThemedText>
           </View>
         ))}
-
-        {sentences.length > 5 && (
-          <ThemedText variant="small" color={theme.textMuted} style={{ textAlign: 'center', marginBottom: 16 }}>
-            还有 {sentences.length - 5} 个句子...
-          </ThemedText>
-        )}
 
         {/* 开始练习按钮 */}
         <TouchableOpacity

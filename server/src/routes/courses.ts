@@ -479,18 +479,34 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
 
 /**
  * PUT /api/v1/courses/lessons/sentences/:sentenceId
- * 更新句子文本
+ * 更新句子文本（如果英文文本改变，自动重新生成音频）
  */
 router.put('/lessons/sentences/:sentenceId', async (req: Request, res: Response) => {
   try {
     const { sentenceId } = req.params;
     const { english_text, chinese_text } = req.body;
+    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
     const supabase = getSupabaseClient();
     
     if (!english_text && !chinese_text) {
       return res.status(400).json({ error: '请提供要更新的内容' });
     }
     
+    // 先获取原句子
+    const { data: oldSentence, error: fetchError } = await supabase
+      .from('lesson_sentences')
+      .select('*')
+      .eq('id', sentenceId)
+      .single();
+    
+    if (fetchError || !oldSentence) {
+      return res.status(404).json({ error: '句子不存在' });
+    }
+    
+    // 检查英文文本是否改变
+    const englishChanged = english_text && english_text !== oldSentence.english_text;
+    
+    // 更新句子
     const updateData: { english_text?: string; chinese_text?: string } = {};
     if (english_text) updateData.english_text = english_text;
     if (chinese_text) updateData.chinese_text = chinese_text;
@@ -503,9 +519,62 @@ router.put('/lessons/sentences/:sentenceId', async (req: Request, res: Response)
       .single();
     
     if (error) throw new Error(error.message);
-    if (!sentence) return res.status(404).json({ error: '句子不存在' });
     
-    res.json({ sentence });
+    // 如果英文文本改变，重新生成所有已存在的音色音频
+    let regeneratedVoices: string[] = [];
+    if (englishChanged) {
+      // 获取该句子已存在的音频记录
+      const { data: existingAudios } = await supabase
+        .from('lesson_sentence_audio')
+        .select('*')
+        .eq('sentence_id', sentenceId);
+      
+      if (existingAudios && existingAudios.length > 0) {
+        const config = new Config();
+        const ttsClient = new TTSClient(config, customHeaders);
+        
+        for (const audio of existingAudios) {
+          try {
+            // 重新生成音频
+            const ttsResponse = await ttsClient.synthesize({
+              uid: `lesson_${sentence.lesson_id}`,
+              text: english_text,
+              speaker: audio.voice_id,
+              audioFormat: 'mp3',
+              sampleRate: 24000,
+            });
+            
+            const audioResponse = await axios.get(ttsResponse.audioUri, { responseType: 'arraybuffer' });
+            const audioBuffer = Buffer.from(audioResponse.data);
+            
+            // 上传新音频
+            const audioKey = await storage.uploadFile({
+              fileContent: audioBuffer,
+              fileName: `lessons/${sentence.lesson_id}/sentence_${sentence.sentence_index}_${audio.voice_id}.mp3`,
+              contentType: 'audio/mpeg',
+            });
+            
+            const duration = Math.round((audioBuffer.length * 8) / (128 * 1000) * 1000);
+            
+            // 更新音频记录
+            await supabase
+              .from('lesson_sentence_audio')
+              .update({
+                audio_url: audioKey,
+                duration: duration,
+              })
+              .eq('id', audio.id);
+            
+            regeneratedVoices.push(audio.voice_name);
+            console.log(`重新生成音频: 句子${sentence.sentence_index}, 音色${audio.voice_name}`);
+          } catch (err: any) {
+            console.error(`重新生成音频失败: 音色${audio.voice_id}`, err);
+          }
+        }
+      }
+    }
+    
+    res.json({ sentence, regenerated_voices: regeneratedVoices });
   } catch (error: any) {
     console.error('更新句子失败:', error);
     res.status(500).json({ error: error.message });

@@ -380,5 +380,41 @@ export const createStyles = (theme: Theme) => {
       gap: Spacing.sm,
       paddingVertical: Spacing.lg,
     },
+    
+    // 课程样式
+    courseCard: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      marginBottom: Spacing.sm,
+      overflow: 'hidden',
+    },
+    courseHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: Spacing.md,
+    },
+    courseInfo: {
+      flex: 1,
+    },
+    courseTitle: {
+      fontWeight: '600',
+      marginBottom: 2,
+    },
+    lessonList: {
+      borderTopWidth: 1,
+      borderTopColor: theme.borderLight,
+    },
+    lessonItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: Spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.borderLight,
+    },
+    lessonInfo: {
+      flex: 1,
+    },
   });
 };
