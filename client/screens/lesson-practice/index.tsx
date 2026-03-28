@@ -130,6 +130,9 @@ export default function LessonPracticeScreen() {
   const [editEnglishText, setEditEnglishText] = useState('');
   const [editChineseText, setEditChineseText] = useState('');
   const [saving, setSaving] = useState(false);
+  
+  // 功能说明弹窗
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!lessonId) return;
@@ -661,9 +664,31 @@ export default function LessonPracticeScreen() {
         </View>
 
         <View style={styles.header}>
-          <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
-            {title}
-          </ThemedText>
+          <View style={styles.headerRow}>
+            <View style={styles.headerTitleArea}>
+              <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
+                {title}
+              </ThemedText>
+              <TouchableOpacity 
+                style={styles.infoButton}
+                onPress={() => setShowInfoModal(true)}
+              >
+                <FontAwesome6 name="circle-info" size={18} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+            {/* 快速学习入口 */}
+            {hasAudio && (
+              <TouchableOpacity
+                style={styles.quickStartButton}
+                onPress={handleStartPractice}
+              >
+                <FontAwesome6 name="headphones" size={14} color={theme.buttonPrimaryText} />
+                <ThemedText variant="smallMedium" color={theme.buttonPrimaryText} style={{ marginLeft: 4 }}>
+                  开始学习
+                </ThemedText>
+              </TouchableOpacity>
+            )}
+          </View>
           <ThemedText variant="small" color={theme.textSecondary} style={styles.subtitle}>
             {lesson?.description || '共 ' + sentences.length + ' 个句子'}
           </ThemedText>
@@ -1130,6 +1155,79 @@ export default function LessonPracticeScreen() {
             </View>
           </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* 功能说明弹窗 */}
+      <Modal
+        visible={showInfoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowInfoModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.infoModalContent}>
+            <View style={styles.infoModalHeader}>
+              <ThemedText variant="h4" color={theme.textPrimary}>
+                关于课时学习
+              </ThemedText>
+              <TouchableOpacity onPress={() => setShowInfoModal(false)}>
+                <FontAwesome6 name="times" size={20} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.infoModalBody}>
+              {/* 如何学习 */}
+              <View style={styles.infoSection}>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
+                  🎧 如何开始学习？
+                </ThemedText>
+                <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
+                  1. 选择一个音色（推荐"薇薇"）{"\n"}
+                  2. 点击"生成音频"按钮生成语音{"\n"}
+                  3. 点击右侧下载图标缓存到本地{"\n"}
+                  4. 点击"开始学习"进入听写练习
+                </ThemedText>
+              </View>
+
+              {/* 关于音色 */}
+              <View style={styles.infoSection}>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
+                  🗣️ 关于音色
+                </ThemedText>
+                <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
+                  不同音色有不同的朗读风格。生成音频后，可以下载到本地，这样学习时不需要网络也能播放。
+                </ThemedText>
+              </View>
+
+              {/* 关于缓存 */}
+              <View style={styles.infoSection}>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
+                  💾 "未缓存"是什么意思？
+                </ThemedText>
+                <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
+                  "未缓存"表示音频已生成但未下载到本地。点击音色右侧的下载按钮即可缓存，离线也能学习。
+                </ThemedText>
+              </View>
+
+              {/* 编辑句子 */}
+              <View style={styles.infoSection}>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
+                  ✏️ 编辑句子
+                </ThemedText>
+                <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
+                  点击句子右侧的编辑图标可以修改英文和中文。修改英文后会自动重新生成音频。
+                </ThemedText>
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity 
+              style={styles.infoModalCloseBtn}
+              onPress={() => setShowInfoModal(false)}
+            >
+              <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>知道了</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
     </Screen>
   );

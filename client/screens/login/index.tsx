@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, TouchableOpacity, TextInput, Text, ActivityIndicator } from 'react-native';
+import { useRouter, useRootNavigationState, useSegments } from 'expo-router';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/contexts/AuthContext';
 import { Screen } from '@/components/Screen';
@@ -7,9 +8,12 @@ import { ThemedText } from '@/components/ThemedText';
 import { createStyles } from './styles';
 
 export default function LoginScreen() {
+  const router = useRouter();
+  const rootState = useRootNavigationState();
+  const segments = useSegments();
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const { sendCode, loginWithCode, guestLogin, isLoading: authLoading } = useAuth();
+  const { sendCode, loginWithCode, guestLogin, isLoading: authLoading, isAuthenticated } = useAuth();
   
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
@@ -72,7 +76,10 @@ export default function LoginScreen() {
     
     const result = await loginWithCode(phone, code);
     
-    if (!result.success) {
+    if (result.success) {
+      // 登录成功，跳转到首页
+      router.replace('/');
+    } else {
       setError(result.error || '登录失败');
     }
     
@@ -86,7 +93,10 @@ export default function LoginScreen() {
     
     const result = await guestLogin();
     
-    if (!result.success) {
+    if (result.success) {
+      // 登录成功，跳转到首页
+      router.replace('/');
+    } else {
       setError(result.error || '游客登录失败');
     }
     

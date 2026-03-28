@@ -283,5 +283,60 @@ export const createStyles = (theme: Theme) => {
       paddingHorizontal: Spacing.md,
       marginTop: Spacing.md,
     },
+    // 信息按钮样式
+    infoButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: theme.backgroundTertiary,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginLeft: Spacing.sm,
+    },
+    headerTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    // 功能说明弹窗样式
+    infoModalContent: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.lg,
+      width: '100%',
+      maxWidth: 400,
+      maxHeight: '80%',
+    },
+    infoModalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.lg,
+    },
+    infoModalBody: {
+      marginBottom: Spacing.lg,
+    },
+    infoSection: {
+      marginBottom: Spacing.lg,
+    },
+    infoSectionTitle: {
+      marginBottom: Spacing.sm,
+    },
+    infoSectionText: {
+      lineHeight: 22,
+    },
+    infoHighlight: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      backgroundColor: theme.accent + '15',
+      borderRadius: BorderRadius.md,
+      padding: Spacing.md,
+      marginTop: Spacing.sm,
+    },
+    infoModalCloseBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: BorderRadius.lg,
+      paddingVertical: Spacing.md,
+      alignItems: 'center',
+    },
   });
 };

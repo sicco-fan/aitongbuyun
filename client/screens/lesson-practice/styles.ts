@@ -368,5 +368,68 @@ export const createStyles = (theme: Theme) => {
       textAlignVertical: 'top',
       minHeight: 60,
     },
+    
+    // Header 样式
+    headerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      width: '100%',
+    },
+    headerTitleArea: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    infoButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: theme.backgroundTertiary,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginLeft: Spacing.sm,
+    },
+    quickStartButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.success,
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.md,
+      borderRadius: BorderRadius.md,
+    },
+    
+    // 功能说明弹窗样式
+    infoModalContent: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.lg,
+      width: width - 48,
+      maxWidth: 400,
+      maxHeight: '80%',
+    },
+    infoModalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.lg,
+    },
+    infoModalBody: {
+      marginBottom: Spacing.lg,
+    },
+    infoSection: {
+      marginBottom: Spacing.lg,
+    },
+    infoSectionTitle: {
+      marginBottom: Spacing.sm,
+    },
+    infoSectionText: {
+      lineHeight: 22,
+    },
+    infoModalCloseBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: BorderRadius.lg,
+      paddingVertical: Spacing.md,
+      alignItems: 'center',
+    },
   });
 };

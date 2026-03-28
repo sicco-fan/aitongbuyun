@@ -46,6 +46,7 @@ export default function CoursesScreen() {
   const [uploadProgress, setUploadProgress] = useState(0); // 0-100
   const [importProgress, setImportProgress] = useState(''); // 导入进度消息
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false); // 显示功能说明弹窗
   const [importBookTitle, setImportBookTitle] = useState('新概念英语第三册');
   const [importBookNumber, setImportBookNumber] = useState('3');
   const xhrRef = useRef<XMLHttpRequest | null>(null); // 用于取消上传
@@ -282,9 +283,17 @@ export default function CoursesScreen() {
       >
         <View style={styles.header}>
           <View style={styles.headerRow}>
-            <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
-              精品课程
-            </ThemedText>
+            <View style={styles.headerTitleRow}>
+              <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
+                精品课程
+              </ThemedText>
+              <TouchableOpacity 
+                style={styles.infoButton}
+                onPress={() => setShowInfoModal(true)}
+              >
+                <FontAwesome6 name="circle-info" size={18} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity 
               style={styles.importButton}
               onPress={() => setShowImportModal(true)}
@@ -437,6 +446,72 @@ export default function CoursesScreen() {
                 <ThemedText variant="body" color={theme.textSecondary}>取消</ThemedText>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 功能说明弹窗 */}
+      <Modal
+        visible={showInfoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowInfoModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.infoModalContent}>
+            <View style={styles.infoModalHeader}>
+              <ThemedText variant="h4" color={theme.textPrimary}>
+                关于精品课程
+              </ThemedText>
+              <TouchableOpacity onPress={() => setShowInfoModal(false)}>
+                <FontAwesome6 name="times" size={20} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.infoModalBody}>
+              {/* 什么是精品课程 */}
+              <View style={styles.infoSection}>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
+                  📚 什么是精品课程？
+                </ThemedText>
+                <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
+                  精品课程是系统化的英语听力学习内容，每个课程包含多个课时，每个课时包含多个句子。适合循序渐进地提升英语听力能力。
+                </ThemedText>
+              </View>
+
+              {/* 导入功能说明 */}
+              <View style={styles.infoSection}>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
+                  📥 关于"导入"功能
+                </ThemedText>
+                <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
+                  点击右上角的「导入」按钮，可以上传 PDF 文件来创建新的课程或更新已有课程。
+                </ThemedText>
+                <View style={styles.infoHighlight}>
+                  <FontAwesome6 name="lightbulb" size={16} color={theme.accent} />
+                  <ThemedText variant="small" color={theme.textPrimary} style={{ marginLeft: 8, flex: 1 }}>
+                    导入时系统会根据 PDF 内容自动识别课程名称（如"新概念英语第二册"或"第三册"），自动创建或更新对应的课程，不会混淆。
+                  </ThemedText>
+                </View>
+              </View>
+
+              {/* 支持的格式 */}
+              <View style={styles.infoSection}>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
+                  📄 支持的 PDF 格式
+                </ThemedText>
+                <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
+                  目前支持新概念英语系列教材的 PDF 格式，系统会自动识别课时和句子内容。
+                </ThemedText>
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity 
+              style={styles.infoModalCloseBtn}
+              onPress={() => setShowInfoModal(false)}
+            >
+              <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>知道了</ThemedText>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
