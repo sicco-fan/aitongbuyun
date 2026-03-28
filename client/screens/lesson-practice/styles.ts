@@ -77,6 +77,10 @@ export const createStyles = (theme: Theme) => {
       borderColor: theme.primary,
       borderWidth: 2,
     },
+    voiceCardRecommended: {
+      borderColor: `${theme.primary}40`,
+      backgroundColor: `${theme.primary}08`,
+    },
     voiceCardHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -88,6 +92,15 @@ export const createStyles = (theme: Theme) => {
     voiceName: {
       fontWeight: '600',
       marginBottom: 4,
+    },
+    recommendedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginLeft: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 10,
+      backgroundColor: theme.primary,
     },
     notGeneratedBadge: {
       marginLeft: 8,

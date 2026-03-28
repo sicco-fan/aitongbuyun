@@ -70,6 +70,8 @@ interface Voice {
   name: string;
   gender: string;
   style: string;
+  description?: string;
+  recommended?: boolean;
 }
 
 interface VoiceCacheStatus {
@@ -79,6 +81,8 @@ interface VoiceCacheStatus {
   total: number;
   hasAudio: boolean; // 该音色是否已生成音频
   isDownloading: boolean;
+  description?: string;
+  recommended?: boolean;
 }
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
@@ -94,7 +98,7 @@ export default function LessonPracticeScreen() {
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [voices, setVoices] = useState<Voice[]>([]);
-  const [selectedVoice, setSelectedVoice] = useState<string>('zh_female_xiaohe_uranus_bigtts');
+  const [selectedVoice, setSelectedVoice] = useState<string>('zh_female_vv_uranus_bigtts');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   
@@ -166,6 +170,8 @@ export default function LessonPracticeScreen() {
             total: status.total,
             hasAudio,
             isDownloading: false,
+            description: voice.description,
+            recommended: voice.recommended,
           });
         }
         setVoiceCacheStatuses(statuses);
@@ -484,23 +490,31 @@ export default function LessonPracticeScreen() {
       const data = await response.json();
       
       if (data.sentence) {
-        // 更新本地数据
+        // 更新本地数据（使用后端返回的数据，可能包含自动翻译的中文）
         setSentences(prev => prev.map(s => 
           s.id === editingSentence.id 
-            ? { ...s, english_text: editEnglishText, chinese_text: editChineseText }
+            ? { ...s, english_text: data.sentence.english_text, chinese_text: data.sentence.chinese_text }
             : s
         ));
         setShowEditModal(false);
         
+        // 构建提示信息
+        let message = '';
+        if (data.auto_translated) {
+          message = `英文已更新，中文已自动翻译：\n\n${data.sentence.chinese_text}\n\n`;
+        }
+        
         // 显示结果提示
         if (data.regenerated_voices && data.regenerated_voices.length > 0) {
+          message += `已自动重新生成以下音色的音频：\n${data.regenerated_voices.join('、')}\n\n请重新下载音频缓存以使用新音频。`;
           Alert.alert(
             '✓ 保存成功',
-            `文本已更新！\n\n已自动重新生成以下音色的音频：\n${data.regenerated_voices.join('、')}\n\n请重新下载音频缓存以使用新音频。`,
+            message,
             [{ text: '知道了', onPress: () => fetchData() }]
           );
         } else if (englishChanged) {
-          Alert.alert('✓ 保存成功', '文本已更新。该句子暂无音频，请先生成音频。');
+          message += '该句子暂无音频，请先生成音频。';
+          Alert.alert('✓ 保存成功', message);
         } else {
           Alert.alert('✓ 保存成功', '中文翻译已更新。');
         }
@@ -595,13 +609,14 @@ export default function LessonPracticeScreen() {
                   style={[
                     styles.voiceCard,
                     isSelected && styles.voiceCardSelected,
+                    voiceStatus.recommended && styles.voiceCardRecommended,
                   ]}
                   onPress={() => setSelectedVoice(voiceStatus.voiceId)}
                   disabled={isDownloading}
                 >
                   <View style={styles.voiceCardHeader}>
                     <View style={styles.voiceInfo}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
                         <ThemedText
                           variant="body"
                           color={isSelected ? theme.primary : theme.textPrimary}
@@ -609,6 +624,14 @@ export default function LessonPracticeScreen() {
                         >
                           {voiceStatus.voiceName}
                         </ThemedText>
+                        {voiceStatus.recommended && (
+                          <View style={styles.recommendedBadge}>
+                            <FontAwesome6 name="star" size={10} color={theme.buttonPrimaryText} />
+                            <ThemedText variant="caption" color={theme.buttonPrimaryText} style={{ marginLeft: 2 }}>
+                              推荐
+                            </ThemedText>
+                          </View>
+                        )}
                         {!voiceStatus.hasAudio && (
                           <View style={styles.notGeneratedBadge}>
                             <ThemedText variant="caption" color={theme.textMuted}>
@@ -617,6 +640,11 @@ export default function LessonPracticeScreen() {
                           </View>
                         )}
                       </View>
+                      {voiceStatus.description && (
+                        <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 2 }}>
+                          {voiceStatus.description}
+                        </ThemedText>
+                      )}
                       <View style={styles.voiceStatusRow}>
                         {!voiceStatus.hasAudio ? (
                           <ThemedText variant="caption" color={theme.textMuted}>

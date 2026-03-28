@@ -1,7 +1,7 @@
 import express, { Router } from 'express';
 import type { Request, Response } from 'express';
 import { getSupabaseClient } from '../storage/database/supabase-client';
-import { TTSClient, Config, HeaderUtils, S3Storage } from 'coze-coding-dev-sdk';
+import { TTSClient, Config, HeaderUtils, S3Storage, LLMClient } from 'coze-coding-dev-sdk';
 import axios from 'axios';
 
 const router = Router();
@@ -16,13 +16,25 @@ const storage = new S3Storage({
 });
 
 // 定义可用的音色
+// 注意：当前TTS服务仅支持中文音色，但部分音色支持双语（中英）
+// 对于英语学习，推荐使用双语音色
 const AVAILABLE_VOICES = [
-  { id: 'zh_female_xiaohe_uranus_bigtts', name: '晓荷', gender: 'female', style: 'general' },
-  { id: 'zh_female_vv_uranus_bigtts', name: '薇薇', gender: 'female', style: 'bilingual' },
-  { id: 'zh_male_m191_uranus_bigtts', name: '云舟', gender: 'male', style: 'general' },
-  { id: 'zh_male_taocheng_uranus_bigtts', name: '晓天', gender: 'male', style: 'general' },
-  { id: 'zh_female_xueayi_saturn_bigtts', name: '雪阿姨', gender: 'female', style: 'audiobook' },
-  { id: 'zh_male_dayi_saturn_bigtts', name: '大义', gender: 'male', style: 'video' },
+  // 英语学习推荐音色（双语）
+  { 
+    id: 'zh_female_vv_uranus_bigtts', 
+    name: '薇薇（双语女声）', 
+    gender: 'female', 
+    style: 'bilingual',
+    description: '中英双语音色，适合英语学习',
+    recommended: true 
+  },
+  
+  // 中文通用音色（也可朗读英语，但口音较重）
+  { id: 'zh_female_xiaohe_uranus_bigtts', name: '晓荷', gender: 'female', style: 'general', description: '中文通用女声' },
+  { id: 'zh_male_m191_uranus_bigtts', name: '云舟', gender: 'male', style: 'general', description: '中文通用男声' },
+  { id: 'zh_male_taocheng_uranus_bigtts', name: '晓天', gender: 'male', style: 'general', description: '中文通用男声' },
+  { id: 'zh_female_xueayi_saturn_bigtts', name: '雪阿姨', gender: 'female', style: 'audiobook', description: '儿童有声书' },
+  { id: 'zh_male_dayi_saturn_bigtts', name: '大义', gender: 'male', style: 'video', description: '视频配音' },
 ];
 
 /**
@@ -479,12 +491,12 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
 
 /**
  * PUT /api/v1/courses/lessons/sentences/:sentenceId
- * 更新句子文本（如果英文文本改变，自动重新生成音频）
+ * 更新句子文本（如果英文文本改变，自动翻译中文并重新生成音频）
  */
 router.put('/lessons/sentences/:sentenceId', async (req: Request, res: Response) => {
   try {
     const { sentenceId } = req.params;
-    const { english_text, chinese_text } = req.body;
+    const { english_text, chinese_text, auto_translate = true } = req.body;
     const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
     const supabase = getSupabaseClient();
     
@@ -509,7 +521,40 @@ router.put('/lessons/sentences/:sentenceId', async (req: Request, res: Response)
     // 更新句子
     const updateData: { english_text?: string; chinese_text?: string } = {};
     if (english_text) updateData.english_text = english_text;
-    if (chinese_text) updateData.chinese_text = chinese_text;
+    
+    // 如果英文改变了，且用户没有提供新的中文翻译，则自动翻译
+    let translatedChinese = chinese_text;
+    let autoTranslated = false;
+    
+    if (englishChanged && !chinese_text && auto_translate) {
+      // 使用LLM自动翻译
+      const config = new Config();
+      const llmClient = new LLMClient(config, customHeaders);
+      
+      const messages = [
+        { 
+          role: 'system' as const, 
+          content: `你是一个英语翻译助手。用户会给你一个英语句子，你需要翻译成中文。
+要求：
+1. 只返回中文翻译，不要其他解释
+2. 翻译要准确、自然、流畅
+3. 保持翻译简洁，适合英语学习者理解` 
+        },
+        { role: 'user' as const, content: english_text }
+      ];
+
+      const response = await llmClient.invoke(messages, { 
+        temperature: 0.3,
+        model: 'doubao-seed-1-6-lite-251015'
+      });
+      
+      translatedChinese = response.content.trim();
+      autoTranslated = true;
+      updateData.chinese_text = translatedChinese;
+      console.log(`自动翻译: "${english_text}" -> "${translatedChinese}"`);
+    } else if (chinese_text) {
+      updateData.chinese_text = chinese_text;
+    }
     
     const { data: sentence, error } = await supabase
       .from('lesson_sentences')
@@ -574,7 +619,12 @@ router.put('/lessons/sentences/:sentenceId', async (req: Request, res: Response)
       }
     }
     
-    res.json({ sentence, regenerated_voices: regeneratedVoices });
+    res.json({ 
+      sentence, 
+      regenerated_voices: regeneratedVoices,
+      auto_translated: autoTranslated,
+      chinese_text: translatedChinese
+    });
   } catch (error: any) {
     console.error('更新句子失败:', error);
     res.status(500).json({ error: error.message });
