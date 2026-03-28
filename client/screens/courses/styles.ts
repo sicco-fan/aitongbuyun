@@ -255,5 +255,33 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.md,
       backgroundColor: theme.backgroundTertiary,
     },
+    // 上传进度样式
+    progressContainer: {
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.lg,
+      marginBottom: Spacing.md,
+    },
+    progressHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: Spacing.sm,
+    },
+    progressBarContainer: {
+      height: 8,
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.full,
+      overflow: 'hidden',
+    },
+    progressBar: {
+      height: '100%',
+      borderRadius: BorderRadius.full,
+    },
+    cancelUploadButton: {
+      alignSelf: 'center',
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.md,
+      marginTop: Spacing.md,
+    },
   });
 };

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   ScrollView,
   TouchableOpacity,
@@ -38,9 +38,12 @@ export default function CoursesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importPhase, setImportPhase] = useState<'idle' | 'uploading' | 'importing'>('idle');
+  const [uploadProgress, setUploadProgress] = useState(0); // 0-100
   const [showImportModal, setShowImportModal] = useState(false);
   const [importBookTitle, setImportBookTitle] = useState('新概念英语第三册');
   const [importBookNumber, setImportBookNumber] = useState('3');
+  const xhrRef = useRef<XMLHttpRequest | null>(null); // 用于取消上传
 
   const fetchCourses = useCallback(async () => {
     try {
@@ -86,18 +89,54 @@ export default function CoursesScreen() {
 
       // 上传文件到对象存储
       setImporting(true);
-      
+      setImportPhase('uploading');
+      setUploadProgress(0);
+
       const formData = new FormData();
       const fileData = await createFormDataFile(file.uri, file.name, 'application/pdf');
       formData.append('file', fileData as any);
 
-      const uploadResponse = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/upload`, {
-        method: 'POST',
-        body: formData,
+      // 使用 XMLHttpRequest 跟踪上传进度
+      const uploadUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/upload`;
+      const uploadData = await new Promise<{ url?: string; error?: string }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhrRef.current = xhr;
+        
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable) {
+            const progress = Math.round((event.loaded / event.total) * 100);
+            setUploadProgress(progress);
+            console.log(`[导入课程] 上传进度: ${progress}%`);
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          xhrRef.current = null;
+          if (xhr.status === 200) {
+            try {
+              resolve(JSON.parse(xhr.responseText));
+            } catch (e) {
+              reject(new Error('解析响应失败'));
+            }
+          } else {
+            reject(new Error(`上传失败: ${xhr.status}`));
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          xhrRef.current = null;
+          reject(new Error('网络错误'));
+        });
+
+        xhr.addEventListener('abort', () => {
+          xhrRef.current = null;
+          reject(new Error('已取消'));
+        });
+
+        xhr.open('POST', uploadUrl);
+        xhr.send(formData);
       });
 
-      const uploadData = await uploadResponse.json();
-      
       if (!uploadData.url) {
         throw new Error(uploadData.error || '文件上传失败');
       }
@@ -105,6 +144,9 @@ export default function CoursesScreen() {
       console.log('[导入课程] 文件上传成功:', uploadData.url);
 
       // 调用导入 API
+      setImportPhase('importing');
+      setUploadProgress(0); // 重置进度，用于显示"正在导入..."
+
       const importResponse = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/import-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -130,11 +172,23 @@ export default function CoursesScreen() {
 
     } catch (error: any) {
       console.error('[导入课程] 失败:', error);
-      Alert.alert('导入失败', error.message || '请稍后重试');
+      if (error.message !== '已取消') {
+        Alert.alert('导入失败', error.message || '请稍后重试');
+      }
     } finally {
       setImporting(false);
+      setImportPhase('idle');
+      setUploadProgress(0);
+      xhrRef.current = null;
     }
   }, [importBookTitle, importBookNumber, fetchCourses]);
+
+  // 取消上传
+  const handleCancelUpload = useCallback(() => {
+    if (xhrRef.current) {
+      xhrRef.current.abort();
+    }
+  }, []);
 
   const handleCoursePress = useCallback((courseId: number) => {
     router.push('/course-lessons', { courseId: courseId.toString() });
@@ -270,24 +324,53 @@ export default function CoursesScreen() {
               上传 PDF 文件导入课程内容。如果课程已存在，将覆盖原有数据。
             </ThemedText>
 
-            <TouchableOpacity 
-              style={styles.importOption}
-              onPress={handlePickPdf}
-              disabled={importing}
-            >
-              <View style={styles.importOptionIcon}>
-                <FontAwesome6 name="file-pdf" size={24} color={theme.error} />
+            {/* 上传进度显示 */}
+            {importing ? (
+              <View style={styles.progressContainer}>
+                <View style={styles.progressHeader}>
+                  <ActivityIndicator size="small" color={theme.primary} />
+                  <ThemedText variant="body" color={theme.textPrimary} style={{ marginLeft: 8 }}>
+                    {importPhase === 'uploading' ? `上传中 ${uploadProgress}%` : '正在解析导入...'}
+                  </ThemedText>
+                </View>
+                
+                {importPhase === 'uploading' && (
+                  <View style={styles.progressBarContainer}>
+                    <View style={[styles.progressBar, { width: `${uploadProgress}%`, backgroundColor: theme.primary }]} />
+                  </View>
+                )}
+                
+                {importPhase === 'importing' && (
+                  <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: 8 }}>
+                    正在解析 PDF 并导入课程数据，请稍候...
+                  </ThemedText>
+                )}
+
+                <TouchableOpacity 
+                  style={styles.cancelUploadButton}
+                  onPress={handleCancelUpload}
+                >
+                  <ThemedText variant="small" color={theme.error}>取消上传</ThemedText>
+                </TouchableOpacity>
               </View>
-              <View style={styles.importOptionContent}>
-                <ThemedText variant="body" color={theme.textPrimary}>
-                  选择 PDF 文件
-                </ThemedText>
-                <ThemedText variant="small" color={theme.textMuted}>
-                  支持新概念英语格式
-                </ThemedText>
-              </View>
-              {importing && <ActivityIndicator size="small" color={theme.primary} />}
-            </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                style={styles.importOption}
+                onPress={handlePickPdf}
+              >
+                <View style={styles.importOptionIcon}>
+                  <FontAwesome6 name="file-pdf" size={24} color={theme.error} />
+                </View>
+                <View style={styles.importOptionContent}>
+                  <ThemedText variant="body" color={theme.textPrimary}>
+                    选择 PDF 文件
+                  </ThemedText>
+                  <ThemedText variant="small" color={theme.textMuted}>
+                    支持新概念英语格式
+                  </ThemedText>
+                </View>
+              </TouchableOpacity>
+            )}
 
             <View style={styles.modalActions}>
               <TouchableOpacity
