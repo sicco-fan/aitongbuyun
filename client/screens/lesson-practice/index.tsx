@@ -440,6 +440,32 @@ export default function LessonPracticeScreen() {
       return;
     }
     
+    // 检查英文是否改变（需要重新生成音频）
+    const englishChanged = editEnglishText !== editingSentence.english_text;
+    const hasAudio = editingSentence.available_voices && editingSentence.available_voices.length > 0;
+    
+    // 如果英文改变且有音频，提示用户需要等待
+    if (englishChanged && hasAudio) {
+      Alert.alert(
+        '保存提示',
+        '修改英文文本后需要重新生成音频，这可能需要几秒钟。是否继续？',
+        [
+          { text: '取消', style: 'cancel' },
+          { 
+            text: '继续保存', 
+            onPress: () => doSave(englishChanged) 
+          }
+        ]
+      );
+    } else {
+      doSave(englishChanged);
+    }
+  }, [editingSentence, editEnglishText, editChineseText, fetchData]);
+  
+  // 执行保存
+  const doSave = async (englishChanged: boolean) => {
+    if (!editingSentence) return;
+    
     setSaving(true);
     
     try {
@@ -466,14 +492,17 @@ export default function LessonPracticeScreen() {
         ));
         setShowEditModal(false);
         
-        // 如果有重新生成的音频，提示用户
+        // 显示结果提示
         if (data.regenerated_voices && data.regenerated_voices.length > 0) {
           Alert.alert(
-            '保存成功',
-            `文本已更新，已自动重新生成以下音色的音频：\n${data.regenerated_voices.join('、')}\n\n请重新下载音频缓存。`
+            '✓ 保存成功',
+            `文本已更新！\n\n已自动重新生成以下音色的音频：\n${data.regenerated_voices.join('、')}\n\n请重新下载音频缓存以使用新音频。`,
+            [{ text: '知道了', onPress: () => fetchData() }]
           );
-          // 刷新数据以更新音频状态
-          fetchData();
+        } else if (englishChanged) {
+          Alert.alert('✓ 保存成功', '文本已更新。该句子暂无音频，请先生成音频。');
+        } else {
+          Alert.alert('✓ 保存成功', '中文翻译已更新。');
         }
       } else {
         throw new Error(data.error || '保存失败');
@@ -483,7 +512,7 @@ export default function LessonPracticeScreen() {
     } finally {
       setSaving(false);
     }
-  }, [editingSentence, editEnglishText, editChineseText, fetchData]);
+  };
 
   const hasAudio = sentences.some(s => s.audio_url);
   const selectedVoiceStatus = voiceCacheStatuses.find(s => s.voiceId === selectedVoice);
