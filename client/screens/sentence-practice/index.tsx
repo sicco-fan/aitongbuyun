@@ -6,13 +6,14 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Animated,
+  Animated as RNAnimated,
   KeyboardAvoidingView,
   Platform,
   BackHandler,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from 'expo-router';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/contexts/AuthContext';
@@ -148,6 +149,85 @@ const wordsStartWith = (prefix: string, word: string): boolean => {
   return true;
 };
 
+/**
+ * 计算语音识别结果和目标句子的匹配度
+ * 返回：匹配度百分比(0-100) 和 每个词的匹配状态
+ */
+const calculateMatchScore = (
+  recognizedText: string, 
+  targetText: string
+): { score: number; wordMatches: Array<{ word: string; isMatch: boolean }> } => {
+  // 预处理：转小写，移除多余空格和标点
+  const cleanText = (text: string) => 
+    text.toLowerCase()
+      .replace(/[^\w\s'-]/g, '') // 保留字母、数字、空格、连字符、单引号
+      .replace(/\s+/g, ' ')
+      .trim();
+  
+  const recognized = cleanText(recognizedText);
+  const target = cleanText(targetText);
+  
+  const targetWords = target.split(' ').filter(w => w.length > 0);
+  const recognizedWords = recognized.split(' ').filter(w => w.length > 0);
+  
+  if (targetWords.length === 0) {
+    return { score: 0, wordMatches: [] };
+  }
+  
+  // 为每个目标词找匹配
+  const wordMatches: Array<{ word: string; isMatch: boolean }> = [];
+  let matchedCount = 0;
+  const usedIndices = new Set<number>();
+  
+  for (const targetWord of targetWords) {
+    let found = false;
+    
+    for (let i = 0; i < recognizedWords.length; i++) {
+      if (usedIndices.has(i)) continue;
+      
+      if (wordsMatch(targetWord, recognizedWords[i])) {
+        found = true;
+        usedIndices.add(i);
+        break;
+      }
+    }
+    
+    wordMatches.push({ word: targetWord, isMatch: found });
+    if (found) matchedCount++;
+  }
+  
+  const score = Math.round((matchedCount / targetWords.length) * 100);
+  
+  return { score, wordMatches };
+};
+
+/**
+ * 根据匹配度给出分段建议（长句子用）
+ * 如果匹配度低于80%，建议用户分段练习
+ */
+const getSentenceSegmentSuggestion = (
+  targetText: string,
+  score: number
+): string => {
+  const words = targetText.split(' ').filter(w => w.length > 0);
+  
+  if (score >= 80) {
+    return ''; // 匹配度高，不需要建议
+  }
+  
+  if (words.length <= 6) {
+    return '💡 短句子建议：慢慢朗读，注意每个词的发音';
+  }
+  
+  if (words.length <= 10) {
+    return `💡 建议分段：先练前半句（${Math.ceil(words.length / 2)}个词），再练后半句`;
+  }
+  
+  // 长句子
+  const segmentSize = Math.ceil(words.length / 3);
+  return `💡 建议分三段练习：每段约${segmentSize}个词，逐段攻克`;
+};
+
 interface Sentence {
   id: number;
   text: string;
@@ -266,12 +346,19 @@ export default function SentencePracticeScreen() {
   const [showNumberPanel, setShowNumberPanel] = useState(false); // 显示数字面板
 
   // 错误闪烁动画
-  const errorAnimRef = useRef<Animated.Value>(new Animated.Value(0));
+  const errorAnimRef = useRef<RNAnimated.Value>(new RNAnimated.Value(0));
 
   // 语音输入
   const [isRecording, setIsRecording] = useState(false);
   const [hasRecordingPermission, setHasRecordingPermission] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
+  
+  // 语音识别结果
+  const [showVoiceResult, setShowVoiceResult] = useState(false);
+  const [voiceResultText, setVoiceResultText] = useState('');
+  const [voiceMatchScore, setVoiceMatchScore] = useState(0);
+  const [voiceWordMatches, setVoiceWordMatches] = useState<Array<{ word: string; isMatch: boolean }>>([]);
+  const [voiceSentenceSuggestion, setVoiceSentenceSuggestion] = useState(''); // 长句子分段建议
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -919,13 +1006,13 @@ export default function SentencePracticeScreen() {
 
   // 显示错误闪烁效果
   const showErrorFlash = useCallback(() => {
-    Animated.sequence([
-      Animated.timing(errorAnimRef.current, {
+    RNAnimated.sequence([
+      RNAnimated.timing(errorAnimRef.current, {
         toValue: 1,
         duration: 50,
         useNativeDriver: true,
       }),
-      Animated.timing(errorAnimRef.current, {
+      RNAnimated.timing(errorAnimRef.current, {
         toValue: 0,
         duration: 100,
         useNativeDriver: true,
@@ -1747,7 +1834,7 @@ export default function SentencePracticeScreen() {
       const uri = recordingRef.current.getURI();
       recordingRef.current = null;
 
-      if (uri) {
+      if (uri && currentSentence) {
         const fileData = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
         const formData = new FormData();
         formData.append('audio', fileData as any);
@@ -1760,15 +1847,26 @@ export default function SentencePracticeScreen() {
         const data = await response.json();
 
         if (data.text) {
-          // 追加识别结果
-          const newText = currentInput ? `${currentInput} ${data.text.toLowerCase()}` : data.text.toLowerCase();
-          handleInputChange(newText);
+          const recognizedText = data.text.toLowerCase();
+          
+          // 计算匹配度
+          const { score, wordMatches } = calculateMatchScore(recognizedText, currentSentence.text);
+          
+          // 获取分段建议
+          const suggestion = getSentenceSegmentSuggestion(currentSentence.text, score);
+          
+          // 设置结果状态
+          setVoiceResultText(recognizedText);
+          setVoiceMatchScore(score);
+          setVoiceWordMatches(wordMatches);
+          setVoiceSentenceSuggestion(suggestion);
+          setShowVoiceResult(true);
         }
       }
     } catch (error) {
       console.error('语音识别失败:', error);
     }
-  }, [currentInput, handleInputChange]);
+  }, [currentSentence]);
 
   // 清理
   useEffect(() => {
@@ -1959,7 +2057,7 @@ export default function SentencePracticeScreen() {
           onTouchStart={() => showAudioSettings && setShowAudioSettings(false)}
         >
           {/* Sentence Display */}
-          <Animated.View style={[styles.sentenceCard, { opacity: Animated.subtract(1, errorAnimRef.current) }]}>
+          <RNAnimated.View style={[styles.sentenceCard, { opacity: RNAnimated.subtract(1, errorAnimRef.current) }]}>
             <View style={styles.wordContainer}>
               {wordStatuses.map((ws, idx) => (
                 <TouchableOpacity 
@@ -2024,7 +2122,7 @@ export default function SentencePracticeScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-          </Animated.View>
+          </RNAnimated.View>
 
           {/* Translation Display - 放在句子区域内 */}
           {showTranslation && currentTranslation && (
@@ -2084,6 +2182,117 @@ export default function SentencePracticeScreen() {
                 />
               </TouchableOpacity>
             </View>
+          )}
+
+          {/* 语音识别结果卡片 */}
+          {showVoiceResult && (
+            <Animated.View 
+              entering={FadeInDown.duration(300)}
+              style={styles.voiceResultCard}
+            >
+              <View style={styles.voiceResultHeader}>
+                <ThemedText variant="h4" color={theme.textPrimary}>语音识别结果</ThemedText>
+                <TouchableOpacity onPress={() => setShowVoiceResult(false)}>
+                  <FontAwesome6 name="times" size={16} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.voiceResultContent}>
+                <ThemedText variant="body" color={theme.textSecondary}>
+                  识别文本：
+                </ThemedText>
+                <ThemedText variant="h4" color={theme.textPrimary}>
+                  {voiceResultText}
+                </ThemedText>
+              </View>
+
+              <View style={styles.voiceMatchScoreContainer}>
+                <ThemedText variant="body" color={theme.textSecondary}>
+                  匹配度：
+                </ThemedText>
+                <View style={[
+                  styles.matchScoreBadge,
+                  { backgroundColor: voiceMatchScore >= 80 ? theme.success + '20' : 
+                                   voiceMatchScore >= 60 ? theme.accent + '20' : 
+                                   theme.error + '20' }
+                ]}>
+                  <ThemedText 
+                    variant="h3" 
+                    color={voiceMatchScore >= 80 ? theme.success : 
+                           voiceMatchScore >= 60 ? theme.accent : 
+                           theme.error}
+                  >
+                    {voiceMatchScore}%
+                  </ThemedText>
+                </View>
+              </View>
+
+              {/* 词匹配详情 */}
+              {voiceWordMatches.length > 0 && (
+                <View style={styles.wordMatchContainer}>
+                  <ThemedText variant="small" color={theme.textMuted}>
+                    词匹配详情（绿色=正确，红色=错误/遗漏）：
+                  </ThemedText>
+                  <View style={styles.wordMatchWords}>
+                    {voiceWordMatches.map((match, idx) => (
+                      <View 
+                        key={idx} 
+                        style={[
+                          styles.wordMatchBadge,
+                          { backgroundColor: match.isMatch ? theme.success + '20' : theme.error + '20' }
+                        ]}
+                      >
+                        <ThemedText 
+                          variant="smallMedium"
+                          color={match.isMatch ? theme.success : theme.error}
+                        >
+                          {match.word}
+                        </ThemedText>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* 长句子分段建议 */}
+              {voiceSentenceSuggestion && (
+                <View style={styles.segmentSuggestionContainer}>
+                  <FontAwesome6 name="lightbulb" size={16} color={theme.accent} />
+                  <ThemedText variant="small" color={theme.textSecondary} style={{ flex: 1, marginLeft: 8 }}>
+                    {voiceSentenceSuggestion}
+                  </ThemedText>
+                </View>
+              )}
+
+              {/* 操作按钮 */}
+              <View style={styles.voiceResultActions}>
+                <TouchableOpacity 
+                  style={[styles.voiceResultBtn, { backgroundColor: theme.backgroundTertiary }]}
+                  onPress={() => {
+                    // 采纳识别结果到输入框
+                    handleInputChange(voiceResultText);
+                    setShowVoiceResult(false);
+                  }}
+                >
+                  <ThemedText variant="smallMedium" color={theme.textPrimary}>
+                    采纳到输入框
+                  </ThemedText>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.voiceResultBtn, { backgroundColor: theme.primary }]}
+                  onPress={() => {
+                    // 直接处理识别结果并验证
+                    handleLongTextInput(voiceResultText);
+                    setShowVoiceResult(false);
+                  }}
+                >
+                  <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
+                    直接验证
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
           )}
 
           {/* 自建键盘模式 */}

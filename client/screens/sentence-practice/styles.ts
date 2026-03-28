@@ -372,5 +372,69 @@ export const createStyles = (theme: Theme) => {
       flexWrap: 'wrap',
       gap: 6,
     },
+    // 语音识别结果卡片
+    voiceResultCard: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.lg,
+      marginTop: Spacing.md,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    voiceResultHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.md,
+    },
+    voiceResultContent: {
+      marginBottom: Spacing.md,
+    },
+    voiceMatchScoreContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: Spacing.md,
+    },
+    matchScoreBadge: {
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.xs,
+      borderRadius: BorderRadius.full,
+      marginLeft: Spacing.sm,
+    },
+    wordMatchContainer: {
+      marginTop: Spacing.sm,
+      marginBottom: Spacing.md,
+    },
+    wordMatchWords: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: Spacing.xs,
+      marginTop: Spacing.xs,
+    },
+    wordMatchBadge: {
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: 4,
+      borderRadius: BorderRadius.sm,
+    },
+    segmentSuggestionContainer: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      backgroundColor: theme.accent + '15',
+      borderRadius: BorderRadius.md,
+      padding: Spacing.md,
+      marginBottom: Spacing.md,
+    },
+    voiceResultActions: {
+      flexDirection: 'row',
+      gap: Spacing.md,
+      marginTop: Spacing.sm,
+    },
+    voiceResultBtn: {
+      flex: 1,
+      paddingVertical: Spacing.md,
+      borderRadius: BorderRadius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
   });
 };
