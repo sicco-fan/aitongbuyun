@@ -1,10 +1,18 @@
 import express, { Router } from 'express';
 import type { Request, Response } from 'express';
+import multer from 'multer';
+import pdfParse from 'pdf-parse';
 import { getSupabaseClient } from '../storage/database/supabase-client';
 import { TTSClient, Config, HeaderUtils, S3Storage, LLMClient, FetchClient } from 'coze-coding-dev-sdk';
 import axios from 'axios';
 
 const router = Router();
+
+// 配置 multer 用于处理 PDF 上传
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB
+});
 
 // 初始化对象存储
 const storage = new S3Storage({
@@ -833,7 +841,7 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
  */
 router.post('/import-pdf', async (req: Request, res: Response) => {
   try {
-    const { pdf_url, book_title, book_number } = req.body;
+    const { pdf_url, book_title, book_number, debug = false } = req.body;
     const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
     
     if (!pdf_url) {
@@ -842,23 +850,30 @@ router.post('/import-pdf', async (req: Request, res: Response) => {
     
     console.log(`[导入课程] 开始解析 PDF: ${pdf_url}`);
     
-    // 使用 FetchClient 解析 PDF
-    const config = new Config();
-    const fetchClient = new FetchClient(config, customHeaders);
+    // 先下载 PDF 文件，然后用 pdf-parse 解析
+    const pdfResponse = await axios.get(pdf_url, { 
+      responseType: 'arraybuffer',
+      headers: customHeaders
+    });
     
-    const response = await fetchClient.fetch(pdf_url);
+    const pdfBuffer = Buffer.from(pdfResponse.data);
+    console.log(`[导入课程] PDF 文件大小: ${pdfBuffer.length} bytes`);
     
-    if (response.status_code !== 0) {
-      return res.status(400).json({ error: response.status_message || 'PDF 解析失败' });
-    }
-    
-    // 提取文本内容
-    const textContent = response.content
-      .filter(item => item.type === 'text')
-      .map(item => item.text)
-      .join('\n');
+    // 使用 pdf-parse 解析
+    const pdfData = await pdfParse(pdfBuffer);
+    const textContent = pdfData.text;
     
     console.log(`[导入课程] PDF 文本长度: ${textContent.length}`);
+    console.log(`[导入课程] PDF 页数: ${pdfData.numpages}`);
+    
+    // 调试模式：返回原始文本
+    if (debug) {
+      return res.json({
+        text_length: textContent.length,
+        pages: pdfData.numpages,
+        text_preview: textContent.substring(0, 5000),
+      });
+    }
     
     // 解析课程结构
     const lessons = parseNCEText(textContent);
@@ -1020,11 +1035,17 @@ function parseNCEText(text: string): Array<{
     sentences: Array<{ english: string; chinese?: string }>;
   }> = [];
   
-  // 匹配 Lesson 标题的正则
-  const lessonRegex = /Lesson\s+(\d+)[:：]\s*(.+?)(?:\n|$)/gi;
+  // 打印文本预览，帮助调试
+  console.log(`[解析] 文本预览 (前500字符):\n${text.substring(0, 500)}`);
+  console.log(`[解析] 文本预览 (500-1000字符):\n${text.substring(500, 1000)}`);
+  
+  // 匹配 Lesson 标题的正则 - 支持多种格式
+  // 格式1: Lesson 1: A puma at large
+  // 格式2: Lesson 1 A puma at large
+  // 格式3: Lesson  1: A puma at large (多空格)
+  const lessonRegex = /Lesson\s+(\d+)[:\s]+(.+?)(?:\n|$)/gi;
   
   let match;
-  let lastIndex = 0;
   const matches: Array<{ index: number; lesson_number: number; title: string }> = [];
   
   while ((match = lessonRegex.exec(text)) !== null) {
@@ -1035,12 +1056,15 @@ function parseNCEText(text: string): Array<{
     });
   }
   
+  console.log(`[解析] 正则匹配到 ${matches.length} 个课时标题`);
+  console.log(`[解析] 课时列表: ${matches.map(m => `Lesson ${m.lesson_number}: ${m.title}`).join(', ')}`);
+  
   // 按课时分割文本
   for (let i = 0; i < matches.length; i++) {
     const currentMatch = matches[i];
     const nextMatch = matches[i + 1];
     
-    const startIndex = currentMatch.index + `Lesson ${currentMatch.lesson_number}:`.length + currentMatch.title.length + 1;
+    const startIndex = currentMatch.index + `Lesson ${currentMatch.lesson_number}`.length + currentMatch.title.length + 2;
     const endIndex = nextMatch ? nextMatch.index : text.length;
     
     const lessonContent = text.substring(startIndex, endIndex).trim();
