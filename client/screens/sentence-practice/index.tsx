@@ -154,6 +154,10 @@ interface Sentence {
   sentence_index: number;
   start_time: number; // 秒
   end_time: number;   // 秒
+  // 课程模式字段
+  audio_url?: string; // 课程模式下的独立音频URL
+  chinese_text?: string; // 中文翻译
+  audio_duration?: number; // 音频时长（毫秒）
 }
 
 interface SentenceFile {
@@ -161,6 +165,10 @@ interface SentenceFile {
   title: string;
   original_audio_signed_url: string;
   original_duration: number;
+  // 课程模式字段
+  is_lesson?: boolean; // 是否为课程模式
+  lesson_id?: number; // 课时ID
+  voice_id?: string; // 音色ID
 }
 
 interface WordStatus {
@@ -177,10 +185,24 @@ export default function SentencePracticeScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
-  const params = useSafeSearchParams<{ fileId: number; title: string; sentenceIndex?: number; errorPriority?: boolean; targetWord?: string; targetCorrectCount?: number }>();
+  const params = useSafeSearchParams<{ 
+    fileId?: number; 
+    title: string; 
+    sentenceIndex?: number; 
+    errorPriority?: boolean; 
+    targetWord?: string; 
+    targetCorrectCount?: number;
+    // 课程模式参数
+    sourceType?: 'file' | 'lesson';
+    lessonId?: string;
+    voiceId?: string;
+  }>();
   const { user, isAuthenticated } = useAuth();
 
   const fileId = params.fileId;
+  const sourceType = params.sourceType || 'file';
+  const lessonId = params.lessonId;
+  const voiceId = params.voiceId;
 
   const [file, setFile] = useState<SentenceFile | null>(null);
   const [sentences, setSentences] = useState<Sentence[]>([]);
@@ -269,6 +291,42 @@ export default function SentencePracticeScreen() {
 
   // 加载可学习的句子
   const fetchSentences = useCallback(async () => {
+    // 课程模式：使用课程API
+    if (sourceType === 'lesson' && lessonId) {
+      setLoading(true);
+      try {
+        /**
+         * 服务端文件：server/src/routes/courses.ts
+         * 接口：GET /api/v1/courses/lessons/:lessonId/learnable
+         * Path 参数：lessonId: string
+         * Query 参数：voiceId?: string
+         */
+        const url = new URL(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/lessons/${lessonId}/learnable`);
+        if (voiceId) {
+          url.searchParams.append('voiceId', voiceId);
+        }
+        const response = await fetch(url.toString());
+        const data = await response.json();
+
+        if (data.sentences) {
+          setFile(data.file);
+          setSentences(data.sentences);
+          console.log(`[课程学习] 加载了 ${data.sentences.length} 个句子`);
+          
+          // 如果有传入指定的句子索引，直接跳转
+          if (params.sentenceIndex !== undefined && params.sentenceIndex < data.sentences.length) {
+            setCurrentIndex(params.sentenceIndex);
+          }
+        }
+      } catch (error) {
+        console.error('加载课程句子失败:', error);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+    
+    // 句库模式：使用原有API
     if (!fileId) return;
 
     setLoading(true);
@@ -374,7 +432,7 @@ export default function SentencePracticeScreen() {
     } finally {
       setLoading(false);
     }
-  }, [fileId, isAuthenticated, user?.id, errorPriority, params.sentenceIndex]);
+  }, [fileId, isAuthenticated, user?.id, errorPriority, params.sentenceIndex, sourceType, lessonId, voiceId]);
 
   // 保存学习进度
   const saveProgress = useCallback(async (sentenceIndex: number) => {
@@ -460,6 +518,77 @@ export default function SentencePracticeScreen() {
 
   // 播放音频片段
   const playAudio = useCallback(async () => {
+    // 课程模式：每个句子有独立的音频URL
+    if (file?.is_lesson && currentSentence?.audio_url) {
+      try {
+        if (soundRef.current && isPlaying) {
+          return;
+        }
+
+        if (soundRef.current && !isPlaying) {
+          try {
+            await soundRef.current.playAsync();
+            setIsPlaying(true);
+          } catch (e) {
+            console.log('[playAudio] 恢复播放失败:', e);
+          }
+          return;
+        }
+
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          interruptionModeIOS: 1,
+          shouldDuckAndroid: true,
+          interruptionModeAndroid: 1,
+          playThroughEarpieceAndroid: false,
+        });
+
+        console.log(`[playAudio-课程] 播放独立音频`);
+
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: currentSentence.audio_url },
+          {
+            shouldPlay: true,
+            isLooping: false,
+            volume: volumeRef.current,
+            rate: playbackRateRef.current,
+            shouldCorrectPitch: true,
+          },
+          (status) => {
+            if (status.isLoaded) {
+              if (status.didJustFinish) {
+                setIsPlaying(false);
+                // 循环播放
+                if (isLoopingRef.current && isMountedRef.current) {
+                  setTimeout(async () => {
+                    if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
+                      try {
+                        await soundRef.current.replayAsync();
+                        setIsPlaying(true);
+                      } catch (e) {
+                        console.log('[循环播放] 失败:', e);
+                      }
+                    }
+                  }, 500);
+                }
+              }
+            } else if (status.error) {
+              console.error('[播放错误]', status.error);
+              setIsPlaying(false);
+            }
+          }
+        );
+
+        soundRef.current = sound;
+        setIsPlaying(true);
+      } catch (error) {
+        console.error('[播放] 失败:', error);
+      }
+      return;
+    }
+    
+    // 句库模式：从整体音频中切分播放
     if (!currentSentence || !file?.original_audio_signed_url) {
       console.log('[playAudio] 缺少音频或句子');
       return;

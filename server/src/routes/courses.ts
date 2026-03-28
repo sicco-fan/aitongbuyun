@@ -454,4 +454,103 @@ router.get('/voices', (req: Request, res: Response) => {
   res.json({ voices: AVAILABLE_VOICES });
 });
 
+/**
+ * GET /api/v1/courses/lessons/:lessonId/learnable
+ * 获取可学习的课时数据（格式与sentence_files兼容，供sentence-practice使用）
+ */
+router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) => {
+  try {
+    const { lessonId } = req.params;
+    const { voiceId } = req.query;
+    const supabase = getSupabaseClient();
+    
+    // 获取课时信息
+    const { data: lesson, error: lessonError } = await supabase
+      .from('lessons')
+      .select('*')
+      .eq('id', lessonId)
+      .single();
+    
+    if (lessonError || !lesson) {
+      return res.status(404).json({ error: '课时不存在' });
+    }
+    
+    // 获取句子列表
+    const { data: sentences, error: sentencesError } = await supabase
+      .from('lesson_sentences')
+      .select('*')
+      .eq('lesson_id', lessonId)
+      .order('sentence_index', { ascending: true });
+    
+    if (sentencesError) {
+      throw new Error(sentencesError.message);
+    }
+    
+    // 批量获取所有句子的音频
+    const sentenceIds = (sentences || []).map(s => s.id);
+    const targetVoiceId = voiceId || 'zh_female_xiaohe_uranus_bigtts';
+    
+    const { data: allAudios } = await supabase
+      .from('lesson_sentence_audio')
+      .select('*')
+      .in('sentence_id', sentenceIds)
+      .eq('voice_id', targetVoiceId);
+    
+    // 按句子ID分组
+    const audiosBySentence: Record<number, any> = {};
+    (allAudios || []).forEach(audio => {
+      audiosBySentence[audio.sentence_id] = audio;
+    });
+    
+    // 只返回有音频的句子，并转换为sentence-practice兼容格式
+    const learnableSentences = [];
+    let totalDuration = 0;
+    let lastAudioKey = null;
+    
+    for (const sentence of (sentences || [])) {
+      const audio = audiosBySentence[sentence.id];
+      if (audio) {
+        // 获取签名URL
+        const audioUrl = await storage.generatePresignedUrl({ 
+          key: audio.audio_url, 
+          expireTime: 86400 
+        });
+        
+        totalDuration += audio.duration || 0;
+        lastAudioKey = audio.audio_url;
+        
+        learnableSentences.push({
+          id: sentence.id,
+          text: sentence.english_text,
+          chinese_text: sentence.chinese_text,
+          sentence_index: sentence.sentence_index,
+          // 对于独立音频文件，start_time和end_time用于标识该句子
+          // 这里用整个音频的时长作为时间范围
+          start_time: 0,
+          end_time: (audio.duration || 3000) / 1000, // 转换为秒
+          audio_url: audioUrl,
+          audio_duration: audio.duration,
+        });
+      }
+    }
+    
+    // 返回与sentence_files兼容的数据格式
+    res.json({
+      file: {
+        id: parseInt(lessonId) * 10000, // 使用一个大数字避免与普通句库ID冲突
+        title: `${lesson.title} - ${lesson.description}`,
+        original_audio_signed_url: null, // 课程模式不使用整体音频
+        original_duration: totalDuration,
+        is_lesson: true, // 标记为课程模式
+        lesson_id: parseInt(lessonId),
+        voice_id: targetVoiceId,
+      },
+      sentences: learnableSentences,
+    });
+  } catch (error: any) {
+    console.error('获取可学习课时数据失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
