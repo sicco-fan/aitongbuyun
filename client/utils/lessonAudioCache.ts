@@ -2,15 +2,16 @@
  * 课程音频缓存服务
  * 将音频文件缓存到本地，避免重复下载
  * 
- * 注意：Web 端不支持 expo-file-system，使用浏览器 Cache API 替代
+ * - Web 端：使用浏览器 Cache API
+ * - 原生端：使用 expo-file-system 的 cacheDirectory
  */
 
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Paths, Directory } from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// 缓存目录（仅原生端使用）
-const CACHE_DIR = '/tmp/lesson_audio_cache/';
+// 缓存索引存储键
 const CACHE_INDEX_KEY = 'lesson_audio_cache_index';
 
 // Web 端使用的 Cache API 名称
@@ -34,6 +35,18 @@ export interface DownloadProgress {
 // 检测是否为 Web 端
 const isWeb = Platform.OS === 'web';
 
+// 获取缓存目录（原生端使用应用的缓存目录）
+function getCacheDir(): string {
+  if (isWeb) return '';
+  // 使用 Expo 的缓存目录 (SDK 54 新 API)
+  try {
+    const cacheDir = Paths.cache;
+    return cacheDir ? cacheDir.uri : '';
+  } catch {
+    return '';
+  }
+}
+
 // Web 端：使用浏览器 Cache API
 async function getWebCache(): Promise<Cache | null> {
   if (!isWeb) return null;
@@ -48,16 +61,27 @@ async function getWebCache(): Promise<Cache | null> {
 }
 
 // 原生端：确保缓存目录存在
-async function ensureCacheDir(): Promise<void> {
-  if (isWeb) return;
+async function ensureCacheDir(): Promise<string> {
+  if (isWeb) return '';
   
   try {
-    const dirInfo = await FileSystem.getInfoAsync(CACHE_DIR);
-    if (!(dirInfo as any).exists) {
-      await FileSystem.makeDirectoryAsync(CACHE_DIR, { intermediates: true });
+    // 使用 Expo SDK 54 新的 Paths API
+    const audioCacheDir = new Directory(Paths.cache, 'lesson_audio_cache');
+    
+    // 检查目录是否存在，不存在则创建
+    try {
+      if (!audioCacheDir.exists) {
+        await audioCacheDir.create();
+        console.log('[音频缓存] 创建缓存目录:', audioCacheDir.uri);
+      }
+    } catch (e) {
+      // 目录可能已存在，忽略错误
     }
+    
+    return audioCacheDir.uri;
   } catch (error) {
-    // 目录可能已存在，忽略错误
+    console.error('[音频缓存] 获取缓存目录失败:', error);
+    throw new Error('无法获取缓存目录');
   }
 }
 
@@ -98,7 +122,10 @@ export async function getCachedAudio(audioKey: string, remoteUrl: string): Promi
       // 未缓存，预加载到浏览器缓存
       if (cache) {
         console.log(`[Web缓存] 预加载: ${audioKey}`);
-        await cache.add(remoteUrl);
+        const response = await fetch(remoteUrl);
+        if (response.ok) {
+          await cache.put(remoteUrl, response);
+        }
       }
       
       return remoteUrl;
@@ -110,7 +137,7 @@ export async function getCachedAudio(audioKey: string, remoteUrl: string): Promi
   
   // 原生端：使用文件系统缓存
   try {
-    await ensureCacheDir();
+    const cacheDir = await ensureCacheDir();
     const index = await getCacheIndex();
     
     // 检查是否已缓存
@@ -129,7 +156,7 @@ export async function getCachedAudio(audioKey: string, remoteUrl: string): Promi
     
     // 未缓存，下载并缓存
     console.log(`[音频缓存] 下载中: ${audioKey}`);
-    const localUri = `${CACHE_DIR}${audioKey.replace(/\//g, '_')}`;
+    const localUri = `${cacheDir}${audioKey.replace(/\//g, '_')}`;
     
     await FileSystem.downloadAsync(remoteUrl, localUri);
     
@@ -181,59 +208,28 @@ export async function checkVoiceCacheStatus(
   }
   
   // 原生端
-  const index = await getCacheIndex();
-  let cached = 0;
-  
-  for (let i = 1; i <= sentenceCount; i++) {
-    const key = `lesson_${lessonId}_sentence_${i}_${voiceId}`;
-    if (index[key]) {
-      try {
-        const localInfo = await FileSystem.getInfoAsync(index[key].localUri);
-        if ((localInfo as any).exists) {
-          cached++;
-        }
-      } catch {
-        // 文件不存在，不计入
-      }
-    }
-  }
-  
-  return { cached, total: sentenceCount };
-}
-
-/**
- * 检查某个音色在浏览器缓存中的实际状态（仅 Web 端）
- */
-export async function checkWebCacheActualStatus(
-  lessonId: string,
-  voiceId: string,
-  audios: Array<{ sentence_index: number; audio_url?: string }>
-): Promise<{ cached: number; total: number }> {
-  if (!isWeb) {
-    return { cached: 0, total: audios.length };
-  }
-  
   try {
-    const cache = await getWebCache();
-    if (!cache) {
-      return { cached: 0, total: audios.length };
-    }
-    
+    const index = await getCacheIndex();
     let cached = 0;
-    const total = audios.filter(a => a.audio_url).length;
     
-    for (const audio of audios) {
-      if (audio.audio_url) {
-        const cachedResponse = await cache.match(audio.audio_url);
-        if (cachedResponse) {
-          cached++;
+    for (let i = 1; i <= sentenceCount; i++) {
+      const key = `lesson_${lessonId}_sentence_${i}_${voiceId}`;
+      if (index[key]) {
+        try {
+          const localInfo = await FileSystem.getInfoAsync(index[key].localUri);
+          if ((localInfo as any).exists) {
+            cached++;
+          }
+        } catch {
+          // 文件不存在，不计入
         }
       }
     }
     
-    return { cached, total };
-  } catch {
-    return { cached: 0, total: audios.length };
+    return { cached, total: sentenceCount };
+  } catch (error) {
+    console.error('[缓存状态检查失败]', error);
+    return { cached: 0, total: sentenceCount };
   }
 }
 
@@ -319,73 +315,85 @@ export async function precacheAudios(
   }
   
   // 原生端：使用文件系统缓存
-  await ensureCacheDir();
-  const index = await getCacheIndex();
-  
-  const toDownload = audios.filter(audio => {
-    const cached = index[audio.key];
-    if (cached) {
+  try {
+    const cacheDir = await ensureCacheDir();
+    const index = await getCacheIndex();
+    
+    // 找出需要下载的音频
+    const toDownload: Array<{ key: string; url: string }> = [];
+    
+    for (const audio of audios) {
+      const cached = index[audio.key];
+      if (cached) {
+        try {
+          const localInfo = await FileSystem.getInfoAsync(cached.localUri);
+          if ((localInfo as any).exists) {
+            continue; // 已缓存，跳过
+          }
+        } catch {
+          // 文件不存在，需要下载
+        }
+      }
+      toDownload.push(audio);
+    }
+    
+    if (toDownload.length === 0) {
+      console.log('[音频缓存] 全部已缓存');
+      onProgress?.({
+        current: audios.length,
+        total: audios.length,
+        currentVoice: '',
+        voiceProgress: 100,
+      });
+      return;
+    }
+    
+    console.log(`[音频缓存] 预缓存 ${toDownload.length} 个音频`);
+    
+    let downloaded = audios.length - toDownload.length;
+    const total = audios.length;
+    
+    // 串行下载以便报告进度
+    for (const audio of toDownload) {
       try {
-        // 已缓存且文件存在，跳过
-        return false;
-      } catch {
-        return true;
+        const localUri = `${cacheDir}${audio.key.replace(/\//g, '_')}`;
+        console.log(`[音频缓存] 下载: ${audio.key}`);
+        
+        await FileSystem.downloadAsync(audio.url, localUri);
+        
+        const info = await FileSystem.getInfoAsync(localUri);
+        
+        index[audio.key] = {
+          localUri,
+          timestamp: Date.now(),
+          size: (info as any).size || 0,
+        };
+        
+        downloaded++;
+        onProgress?.({
+          current: downloaded,
+          total,
+          currentVoice: audio.key,
+          voiceProgress: Math.round((downloaded / total) * 100),
+        });
+      } catch (error) {
+        console.error(`[音频缓存] 下载失败: ${audio.key}`, error);
+        downloaded++;
+        onProgress?.({
+          current: downloaded,
+          total,
+          currentVoice: audio.key,
+          voiceProgress: Math.round((downloaded / total) * 100),
+        });
       }
     }
-    return true;
-  });
-  
-  if (toDownload.length === 0) {
-    console.log('[音频缓存] 全部已缓存');
-    onProgress?.({
-      current: audios.length,
-      total: audios.length,
-      currentVoice: '',
-      voiceProgress: 100,
-    });
-    return;
+    
+    await saveCacheIndex(index);
+    console.log('[音频缓存] 预缓存完成');
+  } catch (error) {
+    console.error('[音频缓存] 预缓存失败:', error);
+    throw error;
   }
-  
-  console.log(`[音频缓存] 预缓存 ${toDownload.length} 个音频`);
-  
-  let downloaded = audios.length - toDownload.length;
-  const total = audios.length;
-  
-  // 串行下载以便报告进度
-  for (const audio of toDownload) {
-    try {
-      const localUri = `${CACHE_DIR}${audio.key.replace(/\//g, '_')}`;
-      await FileSystem.downloadAsync(audio.url, localUri);
-      
-      const info = await FileSystem.getInfoAsync(localUri);
-      
-      index[audio.key] = {
-        localUri,
-        timestamp: Date.now(),
-        size: (info as any).size || 0,
-      };
-      
-      downloaded++;
-      onProgress?.({
-        current: downloaded,
-        total,
-        currentVoice: audio.key,
-        voiceProgress: Math.round((downloaded / total) * 100),
-      });
-    } catch (error) {
-      console.error(`[音频缓存] 下载失败: ${audio.key}`, error);
-      downloaded++;
-      onProgress?.({
-        current: downloaded,
-        total,
-        currentVoice: audio.key,
-        voiceProgress: Math.round((downloaded / total) * 100),
-      });
-    }
-  }
-  
-  await saveCacheIndex(index);
-  console.log('[音频缓存] 预缓存完成');
 }
 
 /**
@@ -437,23 +445,27 @@ export async function cleanExpiredCache(): Promise<void> {
   }
   
   // 原生端
-  const index = await getCacheIndex();
-  const now = Date.now();
-  const expireMs = 7 * 24 * 60 * 60 * 1000; // 7天
-  
-  for (const [key, cached] of Object.entries(index)) {
-    if (now - cached.timestamp > expireMs) {
-      try {
-        await FileSystem.deleteAsync(cached.localUri);
-        delete index[key];
-        console.log(`[音频缓存] 清理过期: ${key}`);
-      } catch (error) {
-        // 忽略删除失败
+  try {
+    const index = await getCacheIndex();
+    const now = Date.now();
+    const expireMs = 7 * 24 * 60 * 60 * 1000; // 7天
+    
+    for (const [key, cached] of Object.entries(index)) {
+      if (now - cached.timestamp > expireMs) {
+        try {
+          await FileSystem.deleteAsync(cached.localUri);
+          delete index[key];
+          console.log(`[音频缓存] 清理过期: ${key}`);
+        } catch (error) {
+          // 忽略删除失败
+        }
       }
     }
+    
+    await saveCacheIndex(index);
+  } catch (error) {
+    console.error('[音频缓存] 清理失败:', error);
   }
-  
-  await saveCacheIndex(index);
 }
 
 /**

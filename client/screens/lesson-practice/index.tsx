@@ -201,19 +201,34 @@ export default function LessonPracticeScreen() {
       
     } catch (error) {
       console.error('下载音色失败:', error);
-      Alert.alert('下载提示', '音频已预加载到浏览器缓存，可直接使用');
-      // Web 端即使有错误也更新状态（因为浏览器缓存可能已部分成功）
-      const status = await checkVoiceCacheStatus(lessonId, voiceId, sentencesWithAudio.length);
-      setVoiceCacheStatuses(prev => 
-        prev.map(s => 
-          s.voiceId === voiceId ? { 
-            ...s, 
-            cached: status.cached, 
-            total: status.total,
-            isDownloading: false 
-          } : s
-        )
-      );
+      
+      // 检查实际缓存状态
+      try {
+        const status = await checkVoiceCacheStatus(lessonId, voiceId, sentencesWithAudio.length);
+        setVoiceCacheStatuses(prev => 
+          prev.map(s => 
+            s.voiceId === voiceId ? { 
+              ...s, 
+              cached: status.cached, 
+              total: status.total,
+              isDownloading: false 
+            } : s
+          )
+        );
+        
+        if (status.cached > 0) {
+          Alert.alert('下载完成', `已缓存 ${status.cached}/${status.total} 个音频`);
+        } else {
+          Alert.alert('下载失败', '请检查网络连接后重试');
+        }
+      } catch {
+        Alert.alert('下载失败', '请检查网络连接后重试');
+        setVoiceCacheStatuses(prev => 
+          prev.map(s => 
+            s.voiceId === voiceId ? { ...s, isDownloading: false } : s
+          )
+        );
+      }
     } finally {
       downloadingRef.current = false;
       setDownloadingVoiceId(null);
