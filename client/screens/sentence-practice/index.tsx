@@ -1948,8 +1948,7 @@ export default function SentencePracticeScreen() {
               onPress={goToPrevSentence}
               disabled={currentIndex === 0}
             >
-              <FontAwesome6 name="chevron-left" size={18} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
-              <ThemedText variant="small" color={currentIndex === 0 ? theme.textMuted : theme.primary} style={{ marginLeft: 4 }}>上一句</ThemedText>
+              <FontAwesome6 name="chevron-left" size={20} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1957,8 +1956,7 @@ export default function SentencePracticeScreen() {
               onPress={goToNextSentence}
               disabled={currentIndex === sentences.length - 1}
             >
-              <ThemedText variant="small" color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} style={{ marginRight: 4 }}>下一句</ThemedText>
-              <FontAwesome6 name="chevron-right" size={18} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
+              <FontAwesome6 name="chevron-right" size={20} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
             </TouchableOpacity>
           </View>
         </ScrollView>

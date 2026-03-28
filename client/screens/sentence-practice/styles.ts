@@ -197,9 +197,8 @@ export const createStyles = (theme: Theme) => {
     // Input Section - 紧跟句子区域
     inputSection: {
       paddingHorizontal: Spacing.lg,
-      paddingTop: Spacing.sm,
-      paddingBottom: Spacing.sm,
-      marginBottom: Spacing.md, // 让键盘整体上移
+      paddingTop: Spacing.xs,
+      paddingBottom: Spacing.xs,
     },
     inputWrapper: {
       width: '100%',
@@ -216,7 +215,7 @@ export const createStyles = (theme: Theme) => {
       paddingHorizontal: Spacing.xl,
       paddingVertical: Spacing.md,
       fontSize: 22,
-      color: theme.textPrimary,
+      color: '#4CAF50', // 绿色文字
       fontWeight: '600',
       textAlign: 'center',
       paddingRight: 56, // 为语音按钮留空间
@@ -272,16 +271,16 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginTop: Spacing.lg,
-      paddingHorizontal: Spacing.sm,
+      marginTop: Spacing.md,
+      paddingHorizontal: Spacing.lg,
     },
     textNavBtn: {
-      flexDirection: 'row',
+      width: 44,
+      height: 44,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.primary + '15',
+      justifyContent: 'center',
       alignItems: 'center',
-      paddingVertical: Spacing.sm,
-      paddingHorizontal: Spacing.lg,
-      borderRadius: BorderRadius.lg,
-      backgroundColor: theme.primary + '10',
     },
     
     // Custom Keyboard
