@@ -28,6 +28,7 @@ interface Course {
   book_number: number;
   description: string;
   total_lessons: number;
+  total_sentences?: number;  // 实际句子数
   cover_image?: string;
 }
 
@@ -342,10 +343,10 @@ export default function CoursesScreen() {
                 </View>
                 <View style={styles.statItem}>
                   <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
-                    {course.total_lessons * 18}
+                    {course.total_sentences || course.total_lessons * 18}
                   </ThemedText>
                   <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
-                    预计句子数
+                    句子数
                   </ThemedText>
                 </View>
                 <View style={styles.statItem}>

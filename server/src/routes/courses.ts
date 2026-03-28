@@ -47,7 +47,7 @@ const AVAILABLE_VOICES = [
 
 /**
  * GET /api/v1/courses
- * 获取课程列表
+ * 获取课程列表（包含实际句子数）
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -62,7 +62,25 @@ router.get('/', async (req: Request, res: Response) => {
       throw new Error(error.message);
     }
     
-    res.json({ courses });
+    // 获取每个课程的实际句子数
+    const coursesWithSentences = await Promise.all(
+      (courses || []).map(async (course) => {
+        // 获取该课程所有课时的句子数
+        const { data: lessons } = await supabase
+          .from('lessons')
+          .select('sentences_count')
+          .eq('course_id', course.id);
+        
+        const totalSentences = lessons?.reduce((sum, l) => sum + (l.sentences_count || 0), 0) || 0;
+        
+        return {
+          ...course,
+          total_sentences: totalSentences,
+        };
+      })
+    );
+    
+    res.json({ courses: coursesWithSentences });
   } catch (error: any) {
     console.error('获取课程列表失败:', error);
     res.status(500).json({ error: error.message });
