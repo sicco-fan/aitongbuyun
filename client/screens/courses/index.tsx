@@ -5,14 +5,19 @@ import {
   View,
   ActivityIndicator,
   RefreshControl,
+  Modal,
+  Alert,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
+import { createFormDataFile } from '@/utils';
 
 interface Course {
   id: number;
@@ -32,6 +37,10 @@ export default function CoursesScreen() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importBookTitle, setImportBookTitle] = useState('新概念英语第三册');
+  const [importBookNumber, setImportBookNumber] = useState('3');
 
   const fetchCourses = useCallback(async () => {
     try {
@@ -59,6 +68,73 @@ export default function CoursesScreen() {
     setRefreshing(true);
     fetchCourses();
   }, [fetchCourses]);
+
+  // 选择并上传 PDF 文件
+  const handlePickPdf = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const file = result.assets[0];
+      console.log('[导入课程] 选择的文件:', file.name, file.uri);
+
+      // 上传文件到对象存储
+      setImporting(true);
+      
+      const formData = new FormData();
+      const fileData = await createFormDataFile(file.uri, file.name, 'application/pdf');
+      formData.append('file', fileData as any);
+
+      const uploadResponse = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const uploadData = await uploadResponse.json();
+      
+      if (!uploadData.url) {
+        throw new Error(uploadData.error || '文件上传失败');
+      }
+
+      console.log('[导入课程] 文件上传成功:', uploadData.url);
+
+      // 调用导入 API
+      const importResponse = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/import-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pdf_url: uploadData.url,
+          book_title: importBookTitle,
+          book_number: parseInt(importBookNumber, 10),
+        }),
+      });
+
+      const importData = await importResponse.json();
+
+      if (importData.success) {
+        Alert.alert('导入成功', importData.message, [
+          { text: '知道了', onPress: () => {
+            setShowImportModal(false);
+            fetchCourses();
+          }}
+        ]);
+      } else {
+        throw new Error(importData.error || '导入失败');
+      }
+
+    } catch (error: any) {
+      console.error('[导入课程] 失败:', error);
+      Alert.alert('导入失败', error.message || '请稍后重试');
+    } finally {
+      setImporting(false);
+    }
+  }, [importBookTitle, importBookNumber, fetchCourses]);
 
   const handleCoursePress = useCallback((courseId: number) => {
     router.push('/course-lessons', { courseId: courseId.toString() });
@@ -100,9 +176,20 @@ export default function CoursesScreen() {
         }
       >
         <View style={styles.header}>
-          <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
-            精品课程
-          </ThemedText>
+          <View style={styles.headerRow}>
+            <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
+              精品课程
+            </ThemedText>
+            <TouchableOpacity 
+              style={styles.importButton}
+              onPress={() => setShowImportModal(true)}
+            >
+              <FontAwesome6 name="file-import" size={16} color={theme.buttonPrimaryText} />
+              <ThemedText variant="small" color={theme.buttonPrimaryText} style={{ marginLeft: 4 }}>
+                导入
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
           <ThemedText variant="small" color={theme.textSecondary} style={styles.subtitle}>
             系统化学习，循序渐进提升英语听力
           </ThemedText>
@@ -165,6 +252,55 @@ export default function CoursesScreen() {
           ))
         )}
       </ScrollView>
+
+      {/* 导入弹窗 */}
+      <Modal
+        visible={showImportModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !importing && setShowImportModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ThemedText variant="h4" color={theme.textPrimary} style={styles.modalTitle}>
+              导入课程
+            </ThemedText>
+            
+            <ThemedText variant="body" color={theme.textSecondary} style={{ marginBottom: 16 }}>
+              上传 PDF 文件导入课程内容。如果课程已存在，将覆盖原有数据。
+            </ThemedText>
+
+            <TouchableOpacity 
+              style={styles.importOption}
+              onPress={handlePickPdf}
+              disabled={importing}
+            >
+              <View style={styles.importOptionIcon}>
+                <FontAwesome6 name="file-pdf" size={24} color={theme.error} />
+              </View>
+              <View style={styles.importOptionContent}>
+                <ThemedText variant="body" color={theme.textPrimary}>
+                  选择 PDF 文件
+                </ThemedText>
+                <ThemedText variant="small" color={theme.textMuted}>
+                  支持新概念英语格式
+                </ThemedText>
+              </View>
+              {importing && <ActivityIndicator size="small" color={theme.primary} />}
+            </TouchableOpacity>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => !importing && setShowImportModal(false)}
+                disabled={importing}
+              >
+                <ThemedText variant="body" color={theme.textSecondary}>取消</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }

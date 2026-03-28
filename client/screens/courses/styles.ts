@@ -192,5 +192,68 @@ export const createStyles = (theme: Theme) => {
       fontWeight: '600',
       color: theme.success,
     },
+    headerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.sm,
+    },
+    importButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.primary,
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.md,
+      borderRadius: BorderRadius.md,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: Spacing.lg,
+    },
+    modalContent: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.xl,
+      width: '100%',
+      maxWidth: 400,
+    },
+    modalTitle: {
+      marginBottom: Spacing.md,
+      textAlign: 'center',
+    },
+    importOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.lg,
+      marginBottom: Spacing.md,
+    },
+    importOptionIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.backgroundDefault,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: Spacing.md,
+    },
+    importOptionContent: {
+      flex: 1,
+    },
+    modalActions: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      marginTop: Spacing.md,
+    },
+    cancelButton: {
+      paddingVertical: Spacing.md,
+      paddingHorizontal: Spacing.xl,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.backgroundTertiary,
+    },
   });
 };

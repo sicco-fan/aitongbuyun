@@ -1,7 +1,7 @@
 import express, { Router } from 'express';
 import type { Request, Response } from 'express';
 import { getSupabaseClient } from '../storage/database/supabase-client';
-import { TTSClient, Config, HeaderUtils, S3Storage, LLMClient } from 'coze-coding-dev-sdk';
+import { TTSClient, Config, HeaderUtils, S3Storage, LLMClient, FetchClient } from 'coze-coding-dev-sdk';
 import axios from 'axios';
 
 const router = Router();
@@ -819,5 +819,305 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
     res.status(500).json({ error: error.message });
   }
 });
+
+/**
+ * POST /api/v1/courses/import-pdf
+ * 从 PDF 导入课程数据
+ * Body: { pdf_url: string, book_title: string, book_number: number }
+ * 
+ * PDF 内容格式要求：
+ * 新概念英语第三册
+ * Lesson 1: A puma at large
+ * 句子内容...
+ * Lesson 2: ...
+ */
+router.post('/import-pdf', async (req: Request, res: Response) => {
+  try {
+    const { pdf_url, book_title, book_number } = req.body;
+    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+    
+    if (!pdf_url) {
+      return res.status(400).json({ error: 'PDF URL is required' });
+    }
+    
+    console.log(`[导入课程] 开始解析 PDF: ${pdf_url}`);
+    
+    // 使用 FetchClient 解析 PDF
+    const config = new Config();
+    const fetchClient = new FetchClient(config, customHeaders);
+    
+    const response = await fetchClient.fetch(pdf_url);
+    
+    if (response.status_code !== 0) {
+      return res.status(400).json({ error: response.status_message || 'PDF 解析失败' });
+    }
+    
+    // 提取文本内容
+    const textContent = response.content
+      .filter(item => item.type === 'text')
+      .map(item => item.text)
+      .join('\n');
+    
+    console.log(`[导入课程] PDF 文本长度: ${textContent.length}`);
+    
+    // 解析课程结构
+    const lessons = parseNCEText(textContent);
+    console.log(`[导入课程] 解析到 ${lessons.length} 个课时`);
+    
+    const supabase = getSupabaseClient();
+    
+    // 查找或创建课程
+    let { data: existingCourse } = await supabase
+      .from('courses')
+      .select('*')
+      .eq('book_number', book_number)
+      .single();
+    
+    let courseId: number;
+    
+    if (existingCourse) {
+      courseId = existingCourse.id;
+      console.log(`[导入课程] 使用现有课程: ${existingCourse.title} (ID: ${courseId})`);
+      
+      // 删除现有的课时和句子
+      const { data: existingLessons } = await supabase
+        .from('lessons')
+        .select('id')
+        .eq('course_id', courseId);
+      
+      if (existingLessons && existingLessons.length > 0) {
+        const lessonIds = existingLessons.map(l => l.id);
+        
+        // 删除句子音频
+        const { data: existingSentences } = await supabase
+          .from('lesson_sentences')
+          .select('id')
+          .in('lesson_id', lessonIds);
+        
+        if (existingSentences && existingSentences.length > 0) {
+          const sentenceIds = existingSentences.map(s => s.id);
+          await supabase
+            .from('lesson_sentence_audio')
+            .delete()
+            .in('sentence_id', sentenceIds);
+        }
+        
+        // 删除句子
+        await supabase
+          .from('lesson_sentences')
+          .delete()
+          .in('lesson_id', lessonIds);
+        
+        // 删除课时
+        await supabase
+          .from('lessons')
+          .delete()
+          .in('id', lessonIds);
+      }
+    } else {
+      // 创建新课程
+      const { data: newCourse, error: courseError } = await supabase
+        .from('courses')
+        .insert({
+          title: book_title,
+          book_number: book_number,
+          description: `${book_title} - 共 ${lessons.length} 课`,
+          total_lessons: lessons.length,
+        })
+        .select()
+        .single();
+      
+      if (courseError) {
+        throw new Error(courseError.message);
+      }
+      courseId = newCourse.id;
+      console.log(`[导入课程] 创建新课程: ${book_title} (ID: ${courseId})`);
+    }
+    
+    // 导入课时和句子
+    let totalSentences = 0;
+    
+    for (const lesson of lessons) {
+      // 创建课时
+      const { data: newLesson, error: lessonError } = await supabase
+        .from('lessons')
+        .insert({
+          course_id: courseId,
+          lesson_number: lesson.lesson_number,
+          title: lesson.title,
+          description: lesson.description || `Lesson ${lesson.lesson_number}`,
+          sentences_count: lesson.sentences.length,
+        })
+        .select()
+        .single();
+      
+      if (lessonError) {
+        console.error(`[导入课程] 创建课时失败: Lesson ${lesson.lesson_number}`, lessonError);
+        continue;
+      }
+      
+      // 创建句子
+      if (lesson.sentences.length > 0) {
+        const sentenceRecords = lesson.sentences.map((sentence, index) => ({
+          lesson_id: newLesson.id,
+          sentence_index: index + 1,
+          english_text: sentence.english,
+          chinese_text: sentence.chinese || '',
+        }));
+        
+        const { error: sentencesError } = await supabase
+          .from('lesson_sentences')
+          .insert(sentenceRecords);
+        
+        if (sentencesError) {
+          console.error(`[导入课程] 创建句子失败: Lesson ${lesson.lesson_number}`, sentencesError);
+        } else {
+          totalSentences += lesson.sentences.length;
+        }
+      }
+    }
+    
+    // 更新课程的课时数量
+    await supabase
+      .from('courses')
+      .update({ 
+        total_lessons: lessons.length,
+        description: `${book_title} - 共 ${lessons.length} 课`,
+      })
+      .eq('id', courseId);
+    
+    res.json({
+      success: true,
+      message: `导入成功：${book_title}，共 ${lessons.length} 课，${totalSentences} 个句子`,
+      course_id: courseId,
+      lessons_count: lessons.length,
+      sentences_count: totalSentences,
+    });
+    
+  } catch (error: any) {
+    console.error('导入课程失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * 解析新概念英语文本
+ * 格式：
+ * Lesson 1: A puma at large
+ * 句子内容（英文）
+ * ...
+ */
+function parseNCEText(text: string): Array<{
+  lesson_number: number;
+  title: string;
+  description?: string;
+  sentences: Array<{ english: string; chinese?: string }>;
+}> {
+  const lessons: Array<{
+    lesson_number: number;
+    title: string;
+    description?: string;
+    sentences: Array<{ english: string; chinese?: string }>;
+  }> = [];
+  
+  // 匹配 Lesson 标题的正则
+  const lessonRegex = /Lesson\s+(\d+)[:：]\s*(.+?)(?:\n|$)/gi;
+  
+  let match;
+  let lastIndex = 0;
+  const matches: Array<{ index: number; lesson_number: number; title: string }> = [];
+  
+  while ((match = lessonRegex.exec(text)) !== null) {
+    matches.push({
+      index: match.index,
+      lesson_number: parseInt(match[1], 10),
+      title: match[2].trim(),
+    });
+  }
+  
+  // 按课时分割文本
+  for (let i = 0; i < matches.length; i++) {
+    const currentMatch = matches[i];
+    const nextMatch = matches[i + 1];
+    
+    const startIndex = currentMatch.index + `Lesson ${currentMatch.lesson_number}:`.length + currentMatch.title.length + 1;
+    const endIndex = nextMatch ? nextMatch.index : text.length;
+    
+    const lessonContent = text.substring(startIndex, endIndex).trim();
+    
+    // 解析句子
+    const sentences = parseSentences(lessonContent);
+    
+    lessons.push({
+      lesson_number: currentMatch.lesson_number,
+      title: currentMatch.title,
+      description: currentMatch.title,
+      sentences,
+    });
+  }
+  
+  return lessons;
+}
+
+/**
+ * 解析句子内容
+ * 支持多种格式：
+ * 1. 纯英文句子，按句号分割
+ * 2. 英文 + 中文翻译格式
+ */
+function parseSentences(content: string): Array<{ english: string; chinese?: string }> {
+  const sentences: Array<{ english: string; chinese?: string }> = [];
+  
+  // 按段落分割
+  const paragraphs = content.split(/\n\s*\n/).filter(p => p.trim());
+  
+  for (const paragraph of paragraphs) {
+    const lines = paragraph.split('\n').filter(l => l.trim());
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      // 跳过空行和标题行
+      if (!trimmedLine || /^Lesson\s+\d+/i.test(trimmedLine)) {
+        continue;
+      }
+      
+      // 尝试匹配英文+中文格式（中文可能在同一行或下一行）
+      // 格式1: 英文句子 [中文翻译]
+      // 格式2: 英文句子
+      //        中文翻译
+      
+      // 检查是否包含中文字符
+      const chineseMatch = trimmedLine.match(/[\u4e00-\u9fa5]+/);
+      
+      if (chineseMatch) {
+        // 包含中文，尝试分离英文和中文
+        const chineseIndex = trimmedLine.search(/[\u4e00-\u9fa5]/);
+        const englishPart = trimmedLine.substring(0, chineseIndex).trim();
+        const chinesePart = trimmedLine.substring(chineseIndex).trim();
+        
+        if (englishPart) {
+          sentences.push({ english: englishPart, chinese: chinesePart });
+        }
+      } else {
+        // 纯英文句子
+        // 按句号、问号、感叹号分割成独立句子
+        const sentenceMatches = trimmedLine.match(/[^.!?]*[.!?]+/g);
+        if (sentenceMatches) {
+          for (const s of sentenceMatches) {
+            const cleanSentence = s.trim();
+            if (cleanSentence && cleanSentence.length > 3) {
+              sentences.push({ english: cleanSentence });
+            }
+          }
+        } else if (trimmedLine.length > 3) {
+          sentences.push({ english: trimmedLine });
+        }
+      }
+    }
+  }
+  
+  return sentences;
+}
 
 export default router;
