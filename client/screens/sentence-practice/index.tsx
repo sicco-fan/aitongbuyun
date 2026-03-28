@@ -1755,10 +1755,21 @@ export default function SentencePracticeScreen() {
             style={styles.smallControlBtn}
             onPress={() => {
               stopPlayback();
-              router.push('/edit-sentence-audio', { 
-                fileId: fileId, 
-                sentenceIndex: currentIndex 
-              });
+              // 课程模式：跳转到 lesson-practice 页面编辑
+              if (sourceType === 'lesson' && lessonId && currentSentence?.id) {
+                router.push('/lesson-practice', { 
+                  lessonId: lessonId,
+                  title: file.title,
+                  editSentenceId: String(currentSentence.id),
+                  returnTo: 'practice',
+                });
+              } else if (fileId) {
+                // 句库模式：跳转到 edit-sentence-audio 页面
+                router.push('/edit-sentence-audio', { 
+                  fileId: fileId, 
+                  sentenceIndex: currentIndex 
+                });
+              }
             }}
           >
             <FontAwesome6 name="pencil" size={14} color={theme.textMuted} />

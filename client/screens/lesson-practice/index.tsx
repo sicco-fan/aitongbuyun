@@ -91,9 +91,11 @@ export default function LessonPracticeScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
-  const params = useSafeSearchParams<{ lessonId: string; title: string }>();
+  const params = useSafeSearchParams<{ lessonId: string; title: string; editSentenceId?: string; returnTo?: string }>();
   const lessonId = params.lessonId;
   const title = params.title || '课时练习';
+  const editSentenceId = params.editSentenceId;
+  const returnTo = params.returnTo;
   
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [sentences, setSentences] = useState<Sentence[]>([]);
@@ -143,6 +145,22 @@ export default function LessonPracticeScreen() {
       }
       if (data.sentences) {
         setSentences(data.sentences);
+        
+        // 如果有 editSentenceId 参数，自动打开编辑弹窗
+        if (editSentenceId) {
+          const sentenceToEdit = data.sentences.find(
+            (s: Sentence) => s.id === parseInt(editSentenceId, 10)
+          );
+          if (sentenceToEdit) {
+            // 延迟一点打开，确保页面已渲染
+            setTimeout(() => {
+              setEditingSentence(sentenceToEdit);
+              setEditEnglishText(sentenceToEdit.english_text);
+              setEditChineseText(sentenceToEdit.chinese_text);
+              setShowEditModal(true);
+            }, 300);
+          }
+        }
       }
       if (data.available_voices) {
         setVoices(data.available_voices);
@@ -182,7 +200,7 @@ export default function LessonPracticeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [lessonId, selectedVoice]);
+  }, [lessonId, selectedVoice, editSentenceId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -443,6 +461,10 @@ export default function LessonPracticeScreen() {
     // 检查是否有修改
     if (editEnglishText === editingSentence.english_text && editChineseText === editingSentence.chinese_text) {
       setShowEditModal(false);
+      // 如果是从学习页面跳转过来的，没有修改也返回
+      if (returnTo === 'practice') {
+        router.back();
+      }
       return;
     }
     
@@ -466,7 +488,7 @@ export default function LessonPracticeScreen() {
     } else {
       doSave(englishChanged);
     }
-  }, [editingSentence, editEnglishText, editChineseText, fetchData]);
+  }, [editingSentence, editEnglishText, editChineseText, fetchData, returnTo]);
   
   // 执行保存
   const doSave = async (englishChanged: boolean) => {
@@ -506,6 +528,14 @@ export default function LessonPracticeScreen() {
             : s
         ));
         setShowEditModal(false);
+        
+        // 如果是从学习页面跳转过来的，保存后返回
+        if (returnTo === 'practice') {
+          Alert.alert('✓ 保存成功', '句子已更新', [
+            { text: '知道了', onPress: () => router.back() }
+          ]);
+          return;
+        }
         
         // 构建提示信息
         let message = '';
