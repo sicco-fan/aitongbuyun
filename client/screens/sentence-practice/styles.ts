@@ -278,22 +278,21 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
     },
     
-    // Voice Input Trigger Bar - 长按录音触发条
-    voiceTriggerBar: {
-      flexDirection: 'row',
+    // Recording Overlay - 录音时的大麦克风遮罩
+    recordingOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.7)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 100,
+    },
+    recordingMicContainer: {
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.lg,
-      paddingVertical: Spacing.md,
-      paddingHorizontal: Spacing.xl,
-      marginTop: Spacing.md,
-      borderWidth: 1,
-      borderColor: theme.border,
-    },
-    voiceTriggerBarActive: {
-      backgroundColor: theme.error,
-      borderColor: theme.error,
     },
     
     // Custom Keyboard

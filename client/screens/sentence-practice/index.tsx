@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from 'expo-router';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/contexts/AuthContext';
@@ -352,6 +352,8 @@ export default function SentencePracticeScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [hasRecordingPermission, setHasRecordingPermission] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null); // 长按录音延迟计时器
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null); // 触摸起点
   
   // 语音识别结果
   const [showVoiceResult, setShowVoiceResult] = useState(false);
@@ -2121,13 +2123,55 @@ export default function SentencePracticeScreen() {
         behavior="padding"
         keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
       >
-        {/* Sentence Section - 可滚动 */}
+        {/* Sentence Section - 可滚动，支持长按录音 */}
         <ScrollView
           style={styles.sentenceSection}
           contentContainerStyle={styles.sentenceScrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          onTouchStart={() => showAudioSettings && setShowAudioSettings(false)}
+          scrollEnabled={!isRecording}
+          onTouchStart={(e) => {
+            showAudioSettings && setShowAudioSettings(false);
+            // 记录触摸起点，准备长按录音
+            if (!isRecording) {
+              touchStartRef.current = {
+                x: e.nativeEvent.pageX,
+                y: e.nativeEvent.pageY,
+                time: Date.now(),
+              };
+              // 延迟300ms开始录音
+              recordingTimerRef.current = setTimeout(() => {
+                // 确认还在按住状态
+                if (touchStartRef.current) {
+                  startRecording();
+                }
+              }, 300);
+            }
+          }}
+          onTouchMove={(e) => {
+            // 移动超过20px就取消长按录音
+            if (touchStartRef.current && recordingTimerRef.current) {
+              const dx = Math.abs(e.nativeEvent.pageX - touchStartRef.current.x);
+              const dy = Math.abs(e.nativeEvent.pageY - touchStartRef.current.y);
+              if (dx > 20 || dy > 20) {
+                clearTimeout(recordingTimerRef.current);
+                recordingTimerRef.current = null;
+                touchStartRef.current = null;
+              }
+            }
+          }}
+          onTouchEnd={() => {
+            // 清除计时器
+            if (recordingTimerRef.current) {
+              clearTimeout(recordingTimerRef.current);
+              recordingTimerRef.current = null;
+            }
+            touchStartRef.current = null;
+            // 如果正在录音，停止并识别
+            if (isRecording) {
+              stopRecordingAndRecognize();
+            }
+          }}
         >
           {/* Sentence Display */}
           <RNAnimated.View style={[styles.sentenceCard, { opacity: RNAnimated.subtract(1, errorAnimRef.current) }]}>
@@ -2308,28 +2352,24 @@ export default function SentencePracticeScreen() {
               <FontAwesome6 name="chevron-right" size={20} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
             </TouchableOpacity>
           </View>
-
-          {/* Voice Input Trigger Bar - 长按录音 */}
-          <TouchableOpacity
-            style={[styles.voiceTriggerBar, isRecording && styles.voiceTriggerBarActive]}
-            onPressIn={startRecording}
-            onPressOut={stopRecordingAndRecognize}
-            activeOpacity={0.9}
-          >
-            <FontAwesome6 
-              name={isRecording ? "stop" : "microphone"} 
-              size={16} 
-              color={isRecording ? theme.buttonPrimaryText : theme.textMuted} 
-            />
-            <ThemedText 
-              variant="smallMedium" 
-              color={isRecording ? theme.buttonPrimaryText : theme.textMuted}
-              style={{ marginLeft: Spacing.sm }}
-            >
-              {isRecording ? '松手结束' : '按住说话'}
-            </ThemedText>
-          </TouchableOpacity>
         </ScrollView>
+
+        {/* Recording Overlay - 录音时显示大麦克风 */}
+        {isRecording && (
+          <Animated.View 
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(200)}
+            style={styles.recordingOverlay}
+            pointerEvents="none"
+          >
+            <View style={styles.recordingMicContainer}>
+              <FontAwesome6 name="microphone" size={80} color={theme.buttonPrimaryText} />
+              <ThemedText variant="h4" color={theme.buttonPrimaryText} style={{ marginTop: Spacing.lg }}>
+                正在录音...
+              </ThemedText>
+            </View>
+          </Animated.View>
+        )}
 
         {/* Input Section */}
         <View style={styles.inputSection}>
