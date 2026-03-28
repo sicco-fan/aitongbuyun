@@ -831,7 +831,9 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
 /**
  * POST /api/v1/courses/import-pdf
  * 从 PDF 导入课程数据（使用 SSE 返回进度）
- * Body: { pdf_url: string, book_title: string, book_number: number }
+ * Body: { pdf_url?: string, pdf_key?: string, book_title: string, book_number: number }
+ * 
+ * pdf_url 和 pdf_key 二选一，如果提供 pdf_key，会自动刷新签名URL
  * 
  * PDF 内容格式要求：
  * 新概念英语第三册
@@ -840,7 +842,7 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
  * Lesson 2: ...
  */
 router.post('/import-pdf', async (req: Request, res: Response) => {
-  const { pdf_url, book_title, book_number } = req.body;
+  const { pdf_url, pdf_key, book_title, book_number } = req.body;
   const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
   
   // 设置 SSE 响应头
@@ -853,17 +855,36 @@ router.post('/import-pdf', async (req: Request, res: Response) => {
   };
   
   try {
-    if (!pdf_url) {
-      sendProgress({ type: 'error', message: 'PDF URL is required' });
+    let downloadUrl = pdf_url;
+    
+    // 如果提供了 pdf_key，刷新签名URL
+    if (!downloadUrl && pdf_key) {
+      const { S3Storage } = await import('coze-coding-dev-sdk');
+      const storage = new S3Storage({
+        endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
+        accessKey: '',
+        secretKey: '',
+        bucketName: process.env.COZE_BUCKET_NAME,
+        region: 'cn-beijing',
+      });
+      downloadUrl = await storage.generatePresignedUrl({
+        key: pdf_key,
+        expireTime: 86400,
+      });
+      console.log(`[导入课程] 刷新URL成功: ${pdf_key}`);
+    }
+    
+    if (!downloadUrl) {
+      sendProgress({ type: 'error', message: 'PDF URL or key is required' });
       res.write('data: [DONE]\n\n');
       return;
     }
     
-    console.log(`[导入课程] 开始解析 PDF: ${pdf_url}`);
+    console.log(`[导入课程] 开始解析 PDF: ${downloadUrl}`);
     sendProgress({ type: 'progress', phase: 'downloading', message: '正在下载 PDF 文件...', percent: 0 });
     
     // 先下载 PDF 文件，然后用 pdf-parse 解析
-    const pdfResponse = await axios.get(pdf_url, { 
+    const pdfResponse = await axios.get(downloadUrl, { 
       responseType: 'arraybuffer',
       headers: customHeaders
     });
@@ -1066,24 +1087,76 @@ function parseNCEText(text: string): Array<{
   console.log(`[解析] 文本预览 (前500字符):\n${text.substring(0, 500)}`);
   console.log(`[解析] 文本预览 (500-1000字符):\n${text.substring(500, 1000)}`);
   
+  // 特别打印第38-40课附近的内容
+  const lesson38Index = text.search(/Lesson\s+38/i);
+  const lesson40Index = text.search(/Lesson\s+40/i);
+  if (lesson38Index !== -1) {
+    console.log(`[解析] 第38课附近内容:\n${text.substring(lesson38Index, lesson38Index + 500)}`);
+  }
+  if (lesson40Index !== -1) {
+    console.log(`[解析] 第40课附近内容:\n${text.substring(Math.max(0, lesson40Index - 500), lesson40Index + 200)}`);
+  }
+  
+  // 打印所有包含 "39" 的行
+  const lines = text.split('\n');
+  lines.forEach((line, idx) => {
+    if (/39/.test(line)) {
+      // 打印这一行及其前后两行
+      console.log(`[解析] 包含39的行 ${idx}: |${line}|`);
+      if (idx > 0) console.log(`[解析]   前一行 ${idx-1}: |${lines[idx-1]}|`);
+      if (idx < lines.length - 1) console.log(`[解析]   后一行 ${idx+1}: |${lines[idx+1]}|`);
+    }
+  });
+  
+  // 特别检查 Lesson 39 的格式
+  const lesson39Match = text.match(/Lesson\s*39[:\s]*(.*?)(?:\n|$)/i);
+  if (lesson39Match) {
+    console.log(`[解析] Lesson 39 匹配结果: |${lesson39Match[0]}|`);
+  } else {
+    console.log(`[解析] Lesson 39 未匹配到`);
+    // 查找原始文本中 Lesson 39 附近的内容
+    const idx = text.indexOf('Lesson 39');
+    if (idx !== -1) {
+      console.log(`[解析] Lesson 39 原始位置 ${idx}, 内容: |${text.substring(idx, idx + 50)}|`);
+    }
+  }
+  
   // 匹配 Lesson 标题的正则 - 支持多种格式
   // 格式1: Lesson 1: A puma at large
   // 格式2: Lesson 1 A puma at large
   // 格式3: Lesson  1: A puma at large (多空格)
-  const lessonRegex = /Lesson\s+(\d+)[:\s]+(.+?)(?:\n|$)/gi;
+  // 使用 matchAll 代替 exec 循环，更可靠
+  const lessonRegex = /Lesson\s+(\d+)[:\s]+([^\n]+)/gi;
   
-  let match;
-  const matches: Array<{ index: number; lesson_number: number; title: string }> = [];
+  const allMatches = [...text.matchAll(lessonRegex)];
+  const matches: Array<{ index: number; lesson_number: number; title: string }> = allMatches.map(m => ({
+    index: m.index!,
+    lesson_number: parseInt(m[1], 10),
+    title: m[2].trim(),
+  }));
   
-  while ((match = lessonRegex.exec(text)) !== null) {
-    matches.push({
-      index: match.index,
-      lesson_number: parseInt(match[1], 10),
-      title: match[2].trim(),
-    });
+  // 打印匹配结果数量
+  console.log(`[解析] 正则匹配到 ${matches.length} 个课时标题`);
+  
+  // 检查是否有重复的课时号
+  const lessonNumbers = matches.map(m => m.lesson_number);
+  const uniqueLessonNumbers = [...new Set(lessonNumbers)];
+  if (lessonNumbers.length !== uniqueLessonNumbers.length) {
+    console.log(`[解析] 警告：检测到重复的课时号，原始数量: ${lessonNumbers.length}, 唯一数量: ${uniqueLessonNumbers.length}`);
+    // 去重，保留第一个匹配
+    const seen = new Set<number>();
+    const uniqueMatches: typeof matches = [];
+    for (const m of matches) {
+      if (!seen.has(m.lesson_number)) {
+        seen.add(m.lesson_number);
+        uniqueMatches.push(m);
+      }
+    }
+    matches.length = 0;
+    matches.push(...uniqueMatches);
+    console.log(`[解析] 去重后课时数量: ${matches.length}`);
   }
   
-  console.log(`[解析] 正则匹配到 ${matches.length} 个课时标题`);
   console.log(`[解析] 课时列表: ${matches.map(m => `Lesson ${m.lesson_number}: ${m.title}`).join(', ')}`);
   
   // 按课时分割文本
@@ -1112,61 +1185,132 @@ function parseNCEText(text: string): Array<{
 
 /**
  * 解析句子内容
- * 支持多种格式：
- * 1. 纯英文句子，按句号分割
- * 2. 英文 + 中文翻译格式
+ * 支持格式：一行英文 + 一行中文翻译
+ * 
+ * 解析逻辑：
+ * 1. 按行分割内容
+ * 2. 识别每一行是英文还是中文（根据是否包含中文字符）
+ * 3. 将英文行和紧随的中文行配对成一个句子
+ * 4. 处理跨行的情况（英文或中文可能跨越多行）
  */
 function parseSentences(content: string): Array<{ english: string; chinese?: string }> {
   const sentences: Array<{ english: string; chinese?: string }> = [];
   
-  // 按段落分割
-  const paragraphs = content.split(/\n\s*\n/).filter(p => p.trim());
+  // 按行分割，保留所有非空行
+  const allLines = content.split('\n').map(l => l.trim()).filter(l => l);
   
-  for (const paragraph of paragraphs) {
-    const lines = paragraph.split('\n').filter(l => l.trim());
+  console.log(`[解析句子] 共 ${allLines.length} 行`);
+  
+  // 分析每一行的类型
+  interface LineInfo {
+    text: string;
+    type: 'english' | 'chinese' | 'mixed' | 'unknown';
+    isComplete: boolean; // 是否是完整句子（以标点结尾）
+  }
+  
+  const lineInfos: LineInfo[] = allLines.map(line => {
+    // 统计中文字符比例
+    const chineseChars = (line.match(/[\u4e00-\u9fa5]/g) || []).length;
+    const englishChars = (line.match(/[a-zA-Z]/g) || []).length;
+    const totalChars = chineseChars + englishChars;
     
-    for (const line of lines) {
-      const trimmedLine = line.trim();
+    let type: 'english' | 'chinese' | 'mixed' | 'unknown';
+    if (totalChars === 0) {
+      type = 'unknown';
+    } else if (chineseChars > englishChars * 2) {
+      type = 'chinese';
+    } else if (englishChars > chineseChars * 2) {
+      type = 'english';
+    } else if (chineseChars > 0 && englishChars > 0) {
+      type = 'mixed';
+    } else if (chineseChars > 0) {
+      type = 'chinese';
+    } else if (englishChars > 0) {
+      type = 'english';
+    } else {
+      type = 'unknown';
+    }
+    
+    // 检查是否是完整句子
+    const isComplete = /[.!?。！？]$/.test(line);
+    
+    return { text: line, type, isComplete };
+  });
+  
+  // 打印前20行的分析结果
+  console.log(`[解析句子] 行分析结果（前20行）:`);
+  lineInfos.slice(0, 20).forEach((info, idx) => {
+    console.log(`  ${idx + 1}: [${info.type}] ${info.isComplete ? '✓' : '...'} ${info.text.substring(0, 50)}...`);
+  });
+  
+  // 配对句子：一行英文 + 一行中文
+  let i = 0;
+  while (i < lineInfos.length) {
+    const currentLine = lineInfos[i];
+    
+    // 跳过中文行（应该作为上一句的翻译）
+    if (currentLine.type === 'chinese') {
+      i++;
+      continue;
+    }
+    
+    // 如果是英文行或混合行，收集英文内容
+    let englishText = '';
+    let chineseText = '';
+    
+    // 收集连续的英文行（直到遇到中文行或完整句子）
+    while (i < lineInfos.length) {
+      const line = lineInfos[i];
       
-      // 跳过空行和标题行
-      if (!trimmedLine || /^Lesson\s+\d+/i.test(trimmedLine)) {
-        continue;
+      if (line.type === 'chinese') {
+        // 遇到中文行，开始收集中文翻译
+        break;
       }
       
-      // 尝试匹配英文+中文格式（中文可能在同一行或下一行）
-      // 格式1: 英文句子 [中文翻译]
-      // 格式2: 英文句子
-      //        中文翻译
-      
-      // 检查是否包含中文字符
-      const chineseMatch = trimmedLine.match(/[\u4e00-\u9fa5]+/);
-      
-      if (chineseMatch) {
-        // 包含中文，尝试分离英文和中文
-        const chineseIndex = trimmedLine.search(/[\u4e00-\u9fa5]/);
-        const englishPart = trimmedLine.substring(0, chineseIndex).trim();
-        const chinesePart = trimmedLine.substring(chineseIndex).trim();
-        
-        if (englishPart) {
-          sentences.push({ english: englishPart, chinese: chinesePart });
-        }
+      if (englishText) {
+        englishText += ' ' + line.text;
       } else {
-        // 纯英文句子
-        // 按句号、问号、感叹号分割成独立句子
-        const sentenceMatches = trimmedLine.match(/[^.!?]*[.!?]+/g);
-        if (sentenceMatches) {
-          for (const s of sentenceMatches) {
-            const cleanSentence = s.trim();
-            if (cleanSentence && cleanSentence.length > 3) {
-              sentences.push({ english: cleanSentence });
-            }
-          }
-        } else if (trimmedLine.length > 3) {
-          sentences.push({ english: trimmedLine });
-        }
+        englishText = line.text;
+      }
+      
+      i++;
+      
+      // 如果当前行以英文标点结尾，可能是完整句子
+      if (line.isComplete && line.type === 'english') {
+        break;
       }
     }
+    
+    // 收集连续的中文行
+    while (i < lineInfos.length && lineInfos[i].type === 'chinese') {
+      const line = lineInfos[i];
+      if (chineseText) {
+        chineseText += line.text;
+      } else {
+        chineseText = line.text;
+      }
+      i++;
+    }
+    
+    // 清理文本并添加句子
+    englishText = englishText.trim();
+    chineseText = chineseText.trim();
+    
+    // 跳过空句子或太短的句子
+    if (englishText && englishText.length > 3) {
+      sentences.push({ 
+        english: englishText, 
+        chinese: chineseText || undefined 
+      });
+    }
   }
+  
+  console.log(`[解析句子] 解析出 ${sentences.length} 个句子`);
+  
+  // 打印前5个句子
+  sentences.slice(0, 5).forEach((s, idx) => {
+    console.log(`  句子${idx + 1}: ${s.english.substring(0, 40)}... -> ${s.chinese?.substring(0, 20) || '无翻译'}...`);
+  });
   
   return sentences;
 }

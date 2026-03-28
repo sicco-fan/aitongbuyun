@@ -64,4 +64,33 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/v1/upload/refresh-url
+ * 重新生成签名URL
+ * Body: { key: 对象存储key }
+ * 返回: { url: 新的签名URL }
+ */
+router.post('/refresh-url', async (req: Request, res: Response) => {
+  try {
+    const { key } = req.body;
+    
+    if (!key) {
+      return res.status(400).json({ error: '请提供文件key' });
+    }
+
+    // 生成新的签名 URL（24小时有效）
+    const url = await storage.generatePresignedUrl({
+      key: key,
+      expireTime: 86400,
+    });
+
+    console.log(`[刷新URL] 成功: ${key}`);
+
+    res.json({ url: url });
+  } catch (error: any) {
+    console.error('[刷新URL] 失败:', error);
+    res.status(500).json({ error: error.message || '刷新URL失败' });
+  }
+});
+
 export default router;
