@@ -138,6 +138,11 @@ export const createStyles = (theme: Theme) => {
       flex: 1,
     },
     
+    // Main Content - 包含句子和输入框
+    mainContent: {
+      flex: 1,
+    },
+    
     // Sentence Section - 可滚动
     sentenceSection: {
       flex: 1,
