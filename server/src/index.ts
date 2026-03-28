@@ -13,6 +13,7 @@ import shareRouter from "./routes/share";
 import myFilesRouter from "./routes/my-files";
 import errorWordsRouter from "./routes/error-words";
 import pdfParseRouter from "./routes/pdf-parse";
+import coursesRouter from "./routes/courses";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -60,6 +61,9 @@ app.use('/api/v1/error-words', errorWordsRouter);
 
 // PDF 解析路由
 app.use('/api/v1/pdf-parse', pdfParseRouter);
+
+// 课程路由
+app.use('/api/v1/courses', coursesRouter);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

@@ -152,6 +152,26 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
+        {/* 精品课程入口 */}
+        <TouchableOpacity
+          style={[styles.courseCard, { backgroundColor: theme.primary + '08', borderColor: theme.primary + '20' }]}
+          onPress={() => router.push('/courses')}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.courseIconContainer, { backgroundColor: theme.primary + '15' }]}>
+            <FontAwesome6 name="graduation-cap" size={24} color={theme.primary} />
+          </View>
+          <View style={styles.courseInfo}>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+              精品课程
+            </ThemedText>
+            <ThemedText variant="small" color={theme.textSecondary}>
+              新概念英语第三册 · 10课
+            </ThemedText>
+          </View>
+          <FontAwesome6 name="chevron-right" size={16} color={theme.primary} />
+        </TouchableOpacity>
+
         {/* 句库学习 Section */}
         {sentenceFiles.length > 0 && (
           <>

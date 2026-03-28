@@ -141,5 +141,24 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: theme.backgroundTertiary,
       marginRight: Spacing.sm,
     },
+    courseCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.lg,
+      marginBottom: Spacing.xl,
+      borderWidth: 1,
+    },
+    courseIconContainer: {
+      width: 52,
+      height: 52,
+      borderRadius: BorderRadius.lg,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    courseInfo: {
+      flex: 1,
+      marginLeft: Spacing.md,
+    },
   });
 };
