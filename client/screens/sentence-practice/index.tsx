@@ -359,6 +359,7 @@ export default function SentencePracticeScreen() {
   const [voiceMatchScore, setVoiceMatchScore] = useState(0);
   const [voiceWordMatches, setVoiceWordMatches] = useState<Array<{ word: string; isMatch: boolean }>>([]);
   const [voiceSentenceSuggestion, setVoiceSentenceSuggestion] = useState(''); // 长句子分段建议
+  const [voiceTargetWord, setVoiceTargetWord] = useState<string | null>(null); // 当前要重读的单词
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -1859,24 +1860,86 @@ export default function SentencePracticeScreen() {
         if (data.text) {
           const recognizedText = data.text.toLowerCase();
           
-          // 计算匹配度
-          const { score, wordMatches } = calculateMatchScore(recognizedText, currentSentence.text);
-          
-          // 获取分段建议
-          const suggestion = getSentenceSegmentSuggestion(currentSentence.text, score);
-          
-          // 设置结果状态
-          setVoiceResultText(recognizedText);
-          setVoiceMatchScore(score);
-          setVoiceWordMatches(wordMatches);
-          setVoiceSentenceSuggestion(suggestion);
-          setShowVoiceResult(true);
+          // 如果是单词重读模式
+          if (voiceTargetWord) {
+            // 检查识别结果是否匹配目标单词
+            const recognizedWords = recognizedText.split(/\s+/).filter((w: string) => w.length > 0);
+            const targetWordLower = voiceTargetWord.toLowerCase();
+            
+            // 检查是否匹配（完全匹配或包含）
+            const isMatch = recognizedWords.some((w: string) => 
+              w === targetWordLower || 
+              targetWordLower.includes(w) || 
+              w.includes(targetWordLower) ||
+              // 模糊匹配（允许1个字母差异）
+              (w.length === targetWordLower.length && 
+                [...w].filter((c: string, i: number) => c !== targetWordLower[i]).length <= 1)
+            );
+            
+            if (isMatch) {
+              // 匹配成功，直接填入该单词
+              handleInputChange(targetWordLower);
+              setVoiceTargetWord(null);
+              // 显示成功提示
+              setShowVoiceResult(false);
+            } else {
+              // 匹配失败，显示识别结果和目标单词
+              setVoiceResultText(`识别: ${recognizedText}`);
+              setVoiceMatchScore(0);
+              setVoiceWordMatches([{ word: voiceTargetWord, isMatch: false }]);
+              setVoiceSentenceSuggestion(`请重新朗读 "${voiceTargetWord}"`);
+              setShowVoiceResult(true);
+            }
+          } else {
+            // 普通模式：计算匹配度
+            const { score, wordMatches } = calculateMatchScore(recognizedText, currentSentence.text);
+            
+            // 获取分段建议
+            const suggestion = getSentenceSegmentSuggestion(currentSentence.text, score);
+            
+            // 提取匹配成功的单词（绿色）
+            const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
+            
+            // 如果有匹配成功的单词，直接填入输入框得分
+            if (matchedWords.length > 0) {
+              handleLongTextInput(matchedWords.join(' '));
+            }
+            
+            // 设置结果状态（用于显示红色单词和分段建议）
+            const unmatchedWords = wordMatches.filter(w => !w.isMatch);
+            if (unmatchedWords.length > 0 || suggestion) {
+              setVoiceResultText(recognizedText);
+              setVoiceMatchScore(score);
+              setVoiceWordMatches(unmatchedWords); // 只显示未匹配的单词
+              setVoiceSentenceSuggestion(suggestion);
+              setShowVoiceResult(true);
+            }
+          }
+        }
+        
+        // 恢复音频播放模式（从听筒切回扬声器）
+        try {
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: false,
+            playsInSilentModeIOS: true,
+          });
+        } catch (e) {
+          // 忽略恢复错误
         }
       }
     } catch (error) {
       console.error('语音识别失败:', error);
+      // 恢复音频播放模式
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+        });
+      } catch (e) {
+        // 忽略恢复错误
+      }
     }
-  }, [currentSentence]);
+  }, [currentSentence, handleLongTextInput, voiceTargetWord, handleInputChange]);
 
   // 清理
   useEffect(() => {
@@ -2181,128 +2244,104 @@ export default function SentencePracticeScreen() {
                 autoComplete="off"
               />
               <TouchableOpacity
-                style={styles.inputVoiceBtn}
+                style={[styles.inputVoiceBtn, isRecording && styles.inputVoiceBtnActive]}
                 onPressIn={startRecording}
                 onPressOut={stopRecordingAndRecognize}
               >
                 <FontAwesome6
                   name={isRecording ? "stop" : "microphone"}
-                  size={18}
-                  color={isRecording ? theme.error : theme.primary}
+                  size={22}
+                  color={isRecording ? theme.buttonPrimaryText : theme.primary}
                 />
+                <ThemedText variant="tiny" color={isRecording ? theme.buttonPrimaryText : theme.textMuted} style={{ marginTop: 2 }}>
+                  {isRecording ? '松开' : '按住说话'}
+                </ThemedText>
               </TouchableOpacity>
             </View>
           )}
 
-          {/* 语音识别结果卡片 */}
-          {showVoiceResult && (
+          {/* 语音识别结果卡片 - 只显示未匹配的单词 */}
+          {showVoiceResult && voiceWordMatches.length > 0 && (
             <Animated.View 
               entering={FadeInDown.duration(300)}
               style={styles.voiceResultCard}
             >
               <View style={styles.voiceResultHeader}>
-                <ThemedText variant="h4" color={theme.textPrimary}>语音识别结果</ThemedText>
+                <ThemedText variant="small" color={theme.textSecondary}>
+                  以下单词需要练习，点击可重读识别：
+                </ThemedText>
                 <TouchableOpacity onPress={() => setShowVoiceResult(false)}>
-                  <FontAwesome6 name="times" size={16} color={theme.textMuted} />
+                  <FontAwesome6 name="times" size={14} color={theme.textMuted} />
                 </TouchableOpacity>
               </View>
-              
-              <View style={styles.voiceResultContent}>
-                <ThemedText variant="body" color={theme.textSecondary}>
-                  识别文本：
-                </ThemedText>
-                <ThemedText variant="h4" color={theme.textPrimary}>
-                  {voiceResultText}
-                </ThemedText>
-              </View>
 
-              <View style={styles.voiceMatchScoreContainer}>
-                <ThemedText variant="body" color={theme.textSecondary}>
-                  匹配度：
-                </ThemedText>
-                <View style={[
-                  styles.matchScoreBadge,
-                  { backgroundColor: voiceMatchScore >= 80 ? theme.success + '20' : 
-                                   voiceMatchScore >= 60 ? theme.accent + '20' : 
-                                   theme.error + '20' }
-                ]}>
-                  <ThemedText 
-                    variant="h3" 
-                    color={voiceMatchScore >= 80 ? theme.success : 
-                           voiceMatchScore >= 60 ? theme.accent : 
-                           theme.error}
-                  >
-                    {voiceMatchScore}%
-                  </ThemedText>
-                </View>
-              </View>
-
-              {/* 词匹配详情 */}
-              {voiceWordMatches.length > 0 && (
-                <View style={styles.wordMatchContainer}>
-                  <ThemedText variant="small" color={theme.textMuted}>
-                    词匹配详情（绿色=正确，红色=错误/遗漏）：
-                  </ThemedText>
-                  <View style={styles.wordMatchWords}>
-                    {voiceWordMatches.map((match, idx) => (
-                      <View 
-                        key={idx} 
-                        style={[
-                          styles.wordMatchBadge,
-                          { backgroundColor: match.isMatch ? theme.success + '20' : theme.error + '20' }
-                        ]}
-                      >
+              {/* 未匹配的单词（红色，可点击重读） */}
+              <View style={styles.wordMatchContainer}>
+                <View style={styles.wordMatchWords}>
+                  {voiceWordMatches.map((match, idx) => (
+                    <TouchableOpacity 
+                      key={idx} 
+                      style={styles.unmatchedWordBadge}
+                      onPress={() => {
+                        // 设置目标单词，准备重读
+                        setVoiceTargetWord(match.word);
+                        setShowVoiceResult(false);
+                        // 自动开始录音
+                        setTimeout(() => {
+                          startRecording();
+                        }, 100);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.unmatchedWordText}>
                         <ThemedText 
-                          variant="smallMedium"
-                          color={match.isMatch ? theme.success : theme.error}
+                          variant="bodyMedium"
+                          color={theme.error}
                         >
                           {match.word}
                         </ThemedText>
                       </View>
-                    ))}
-                  </View>
+                      <FontAwesome6 name="microphone" size={10} color={theme.error} style={{ marginLeft: 4 }} />
+                    </TouchableOpacity>
+                  ))}
                 </View>
-              )}
+              </View>
 
               {/* 长句子分段建议 */}
               {voiceSentenceSuggestion && (
                 <View style={styles.segmentSuggestionContainer}>
-                  <FontAwesome6 name="lightbulb" size={16} color={theme.accent} />
-                  <ThemedText variant="small" color={theme.textSecondary} style={{ flex: 1, marginLeft: 8 }}>
+                  <FontAwesome6 name="lightbulb" size={14} color={theme.accent} />
+                  <ThemedText variant="small" color={theme.textSecondary} style={{ flex: 1, marginLeft: 6 }}>
                     {voiceSentenceSuggestion}
                   </ThemedText>
                 </View>
               )}
 
-              {/* 操作按钮 */}
-              <View style={styles.voiceResultActions}>
-                <TouchableOpacity 
-                  style={[styles.voiceResultBtn, { backgroundColor: theme.backgroundTertiary }]}
-                  onPress={() => {
-                    // 采纳识别结果到输入框
-                    handleInputChange(voiceResultText);
-                    setShowVoiceResult(false);
-                  }}
-                >
-                  <ThemedText variant="smallMedium" color={theme.textPrimary}>
-                    采纳到输入框
-                  </ThemedText>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.voiceResultBtn, { backgroundColor: theme.primary }]}
-                  onPress={() => {
-                    // 直接处理识别结果并验证
-                    handleLongTextInput(voiceResultText);
-                    setShowVoiceResult(false);
-                  }}
-                >
-                  <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
-                    直接验证
-                  </ThemedText>
-                </TouchableOpacity>
-              </View>
+              {/* 手动输入按钮 */}
+              <TouchableOpacity 
+                style={[styles.voiceResultBtn, { backgroundColor: theme.backgroundTertiary, marginTop: Spacing.sm }]}
+                onPress={() => setShowVoiceResult(false)}
+              >
+                <ThemedText variant="smallMedium" color={theme.textMuted}>
+                  手动输入
+                </ThemedText>
+              </TouchableOpacity>
             </Animated.View>
+          )}
+
+          {/* 单词重读录音提示 */}
+          {voiceTargetWord && (
+            <View style={styles.voiceTargetHint}>
+              <ThemedText variant="small" color={theme.textSecondary}>
+                请朗读：
+              </ThemedText>
+              <ThemedText variant="h4" color={theme.primary}>
+                {voiceTargetWord}
+              </ThemedText>
+              <TouchableOpacity onPress={() => setVoiceTargetWord(null)}>
+                <FontAwesome6 name="times" size={14} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
           )}
 
           {/* 自建键盘模式 */}

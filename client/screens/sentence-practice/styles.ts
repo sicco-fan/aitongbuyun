@@ -223,21 +223,27 @@ export const createStyles = (theme: Theme) => {
       color: '#4CAF50', // 绿色文字
       fontWeight: '600',
       textAlign: 'center',
-      paddingRight: 56, // 为语音按钮留空间
+      paddingRight: 70, // 为语音按钮留空间
       includeFontPadding: false, // Android
       textAlignVertical: 'center', // Android
     },
     inputVoiceBtn: {
       position: 'absolute',
-      right: 8,
+      right: 6,
       top: '50%',
-      marginTop: -20,
-      width: 40,
-      height: 40,
+      marginTop: -28,
+      width: 56,
+      height: 56,
       borderRadius: BorderRadius.full,
       backgroundColor: theme.primary + '15',
       justifyContent: 'center',
       alignItems: 'center',
+      borderWidth: 2,
+      borderColor: theme.primary + '30',
+    },
+    inputVoiceBtnActive: {
+      backgroundColor: theme.error,
+      borderColor: theme.error,
     },
     
     // Navigation Buttons - 紧跟输入框
@@ -376,65 +382,66 @@ export const createStyles = (theme: Theme) => {
     voiceResultCard: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
-      padding: Spacing.lg,
-      marginTop: Spacing.md,
+      padding: Spacing.md,
+      marginTop: Spacing.sm,
       borderWidth: 1,
-      borderColor: theme.border,
+      borderColor: theme.error + '30',
     },
     voiceResultHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: Spacing.md,
-    },
-    voiceResultContent: {
-      marginBottom: Spacing.md,
-    },
-    voiceMatchScoreContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: Spacing.md,
-    },
-    matchScoreBadge: {
-      paddingHorizontal: Spacing.md,
-      paddingVertical: Spacing.xs,
-      borderRadius: BorderRadius.full,
-      marginLeft: Spacing.sm,
+      marginBottom: Spacing.sm,
     },
     wordMatchContainer: {
-      marginTop: Spacing.sm,
-      marginBottom: Spacing.md,
+      marginTop: Spacing.xs,
     },
     wordMatchWords: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: Spacing.xs,
+      gap: Spacing.sm,
       marginTop: Spacing.xs,
     },
-    wordMatchBadge: {
-      paddingHorizontal: Spacing.sm,
-      paddingVertical: 4,
-      borderRadius: BorderRadius.sm,
+    unmatchedWordBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.error + '15',
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      borderRadius: BorderRadius.lg,
+      borderWidth: 1,
+      borderColor: theme.error + '40',
+    },
+    unmatchedWordText: {
+      backgroundColor: theme.error + '20',
+      paddingHorizontal: Spacing.xs,
+      paddingVertical: 2,
+      borderRadius: BorderRadius.xs,
     },
     segmentSuggestionContainer: {
       flexDirection: 'row',
-      alignItems: 'flex-start',
-      backgroundColor: theme.accent + '15',
+      alignItems: 'center',
+      backgroundColor: theme.accent + '10',
       borderRadius: BorderRadius.md,
-      padding: Spacing.md,
-      marginBottom: Spacing.md,
-    },
-    voiceResultActions: {
-      flexDirection: 'row',
-      gap: Spacing.md,
+      padding: Spacing.sm,
       marginTop: Spacing.sm,
     },
     voiceResultBtn: {
-      flex: 1,
-      paddingVertical: Spacing.md,
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.lg,
       borderRadius: BorderRadius.md,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    // 单词重读提示
+    voiceTargetHint: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.primary + '10',
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.md,
+      marginTop: Spacing.sm,
+      gap: Spacing.sm,
     },
   });
 };
