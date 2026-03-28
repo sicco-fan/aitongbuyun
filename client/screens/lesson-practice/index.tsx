@@ -9,6 +9,10 @@ import {
   Dimensions,
   Alert,
   Platform,
+  TextInput,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
@@ -113,6 +117,13 @@ export default function LessonPracticeScreen() {
   const [generateCurrentTask, setGenerateCurrentTask] = useState('');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sseRef = useRef<any>(null);
+  
+  // 编辑句子状态
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingSentence, setEditingSentence] = useState<Sentence | null>(null);
+  const [editEnglishText, setEditEnglishText] = useState('');
+  const [editChineseText, setEditChineseText] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!lessonId) return;
@@ -411,6 +422,59 @@ export default function LessonPracticeScreen() {
     }
   }, [selectedVoicesToGenerate, voices]);
 
+  // 打开编辑弹窗
+  const handleEditSentence = useCallback((sentence: Sentence) => {
+    setEditingSentence(sentence);
+    setEditEnglishText(sentence.english_text);
+    setEditChineseText(sentence.chinese_text);
+    setShowEditModal(true);
+  }, []);
+
+  // 保存编辑
+  const handleSaveEdit = useCallback(async () => {
+    if (!editingSentence) return;
+    
+    // 检查是否有修改
+    if (editEnglishText === editingSentence.english_text && editChineseText === editingSentence.chinese_text) {
+      setShowEditModal(false);
+      return;
+    }
+    
+    setSaving(true);
+    
+    try {
+      const response = await fetch(
+        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/lessons/sentences/${editingSentence.id}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            english_text: editEnglishText,
+            chinese_text: editChineseText,
+          }),
+        }
+      );
+      
+      const data = await response.json();
+      
+      if (data.sentence) {
+        // 更新本地数据
+        setSentences(prev => prev.map(s => 
+          s.id === editingSentence.id 
+            ? { ...s, english_text: editEnglishText, chinese_text: editChineseText }
+            : s
+        ));
+        setShowEditModal(false);
+      } else {
+        throw new Error(data.error || '保存失败');
+      }
+    } catch (error: any) {
+      Alert.alert('保存失败', error.message || '请稍后重试');
+    } finally {
+      setSaving(false);
+    }
+  }, [editingSentence, editEnglishText, editChineseText]);
+
   const hasAudio = sentences.some(s => s.audio_url);
   const selectedVoiceStatus = voiceCacheStatuses.find(s => s.voiceId === selectedVoice);
   const allDownloaded = voiceCacheStatuses.length > 0 && 
@@ -441,12 +505,14 @@ export default function LessonPracticeScreen() {
           />
         }
       >
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <FontAwesome6 name="chevron-left" size={16} color={theme.primary} />
-          <ThemedText variant="body" color={theme.primary} style={styles.backButtonText}>
-            返回课时列表
-          </ThemedText>
-        </TouchableOpacity>
+        <View style={styles.topBar}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <FontAwesome6 name="chevron-left" size={16} color={theme.primary} />
+            <ThemedText variant="body" color={theme.primary} style={styles.backButtonText}>
+              返回课时列表
+            </ThemedText>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.header}>
           <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
@@ -608,9 +674,17 @@ export default function LessonPracticeScreen() {
         {/* 句子预览 */}
         {sentences.slice(0, 5).map((sentence) => (
           <View key={sentence.id} style={styles.sentenceCard}>
-            <ThemedText variant="caption" color={theme.textMuted} style={styles.sentenceIndex}>
-              句子 {sentence.sentence_index}
-            </ThemedText>
+            <View style={styles.sentenceCardHeader}>
+              <ThemedText variant="caption" color={theme.textMuted} style={styles.sentenceIndex}>
+                句子 {sentence.sentence_index}
+              </ThemedText>
+              <TouchableOpacity 
+                style={styles.editButton}
+                onPress={() => handleEditSentence(sentence)}
+              >
+                <FontAwesome6 name="pen" size={12} color={theme.primary} />
+              </TouchableOpacity>
+            </View>
             <ThemedText variant="body" color={theme.textPrimary} style={styles.englishText}>
               {sentence.english_text}
             </ThemedText>
@@ -802,6 +876,98 @@ export default function LessonPracticeScreen() {
             )}
           </View>
         </View>
+      </Modal>
+      
+      {/* 编辑句子弹窗 */}
+      <Modal
+        visible={showEditModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !saving && setShowEditModal(false)}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} disabled={Platform.OS === 'web'}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+                <View style={styles.modalHeader}>
+                  <ThemedText variant="h4" color={theme.textPrimary}>
+                    编辑句子 {editingSentence?.sentence_index}
+                  </ThemedText>
+                  <TouchableOpacity 
+                    onPress={() => setShowEditModal(false)}
+                    disabled={saving}
+                  >
+                    <FontAwesome6 name="times" size={20} color={theme.textMuted} />
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={styles.editField}>
+                  <ThemedText variant="small" color={theme.textSecondary} style={styles.editLabel}>
+                    英文
+                  </ThemedText>
+                  <TextInput
+                    style={[styles.editInput, { 
+                      backgroundColor: theme.backgroundTertiary,
+                      color: theme.textPrimary,
+                      borderColor: theme.border,
+                    }]}
+                    value={editEnglishText}
+                    onChangeText={setEditEnglishText}
+                    multiline
+                    numberOfLines={3}
+                    placeholder="输入英文句子"
+                    placeholderTextColor={theme.textMuted}
+                    editable={!saving}
+                  />
+                </View>
+                
+                <View style={styles.editField}>
+                  <ThemedText variant="small" color={theme.textSecondary} style={styles.editLabel}>
+                    中文
+                  </ThemedText>
+                  <TextInput
+                    style={[styles.editInput, { 
+                      backgroundColor: theme.backgroundTertiary,
+                      color: theme.textPrimary,
+                      borderColor: theme.border,
+                    }]}
+                    value={editChineseText}
+                    onChangeText={setEditChineseText}
+                    multiline
+                    numberOfLines={2}
+                    placeholder="输入中文翻译"
+                    placeholderTextColor={theme.textMuted}
+                    editable={!saving}
+                  />
+                </View>
+                
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={() => setShowEditModal(false)}
+                    disabled={saving}
+                  >
+                    <ThemedText variant="body" color={theme.textSecondary}>取消</ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.confirmButton, saving && { opacity: 0.5 }]}
+                    onPress={handleSaveEdit}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
+                    ) : (
+                      <ThemedText variant="body" color={theme.buttonPrimaryText}>保存</ThemedText>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
       </Modal>
     </Screen>
   );

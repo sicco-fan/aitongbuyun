@@ -478,6 +478,41 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
 });
 
 /**
+ * PUT /api/v1/courses/lessons/sentences/:sentenceId
+ * 更新句子文本
+ */
+router.put('/lessons/sentences/:sentenceId', async (req: Request, res: Response) => {
+  try {
+    const { sentenceId } = req.params;
+    const { english_text, chinese_text } = req.body;
+    const supabase = getSupabaseClient();
+    
+    if (!english_text && !chinese_text) {
+      return res.status(400).json({ error: '请提供要更新的内容' });
+    }
+    
+    const updateData: { english_text?: string; chinese_text?: string } = {};
+    if (english_text) updateData.english_text = english_text;
+    if (chinese_text) updateData.chinese_text = chinese_text;
+    
+    const { data: sentence, error } = await supabase
+      .from('lesson_sentences')
+      .update(updateData)
+      .eq('id', sentenceId)
+      .select()
+      .single();
+    
+    if (error) throw new Error(error.message);
+    if (!sentence) return res.status(404).json({ error: '句子不存在' });
+    
+    res.json({ sentence });
+  } catch (error: any) {
+    console.error('更新句子失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * GET /api/v1/courses/voices
  * 获取可用的音色列表
  */

@@ -17,10 +17,15 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
       paddingTop: Spacing['4xl'],
     },
+    topBar: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.md,
+    },
     backButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: Spacing.lg,
     },
     backButtonText: {
       marginLeft: 8,
@@ -152,8 +157,22 @@ export const createStyles = (theme: Theme) => {
       borderWidth: 1,
       borderColor: theme.border,
     },
-    sentenceIndex: {
+    sentenceCardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
       marginBottom: 8,
+    },
+    sentenceIndex: {
+      marginBottom: 0,
+    },
+    editButton: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: `${theme.primary}15`,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     englishText: {
       lineHeight: 24,
@@ -301,6 +320,28 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.md,
       backgroundColor: theme.primary,
       alignItems: 'center',
+    },
+    
+    // 编辑弹窗
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.lg,
+    },
+    editField: {
+      marginBottom: Spacing.md,
+    },
+    editLabel: {
+      marginBottom: Spacing.sm,
+    },
+    editInput: {
+      borderWidth: 1,
+      borderRadius: BorderRadius.md,
+      padding: Spacing.md,
+      fontSize: 16,
+      textAlignVertical: 'top',
+      minHeight: 60,
     },
   });
 };
