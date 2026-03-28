@@ -17,12 +17,31 @@ import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
+// @ts-ignore - react-native-sse 类型定义不完整
+import RNSSE from 'react-native-sse';
 import { createStyles } from './styles';
 import { 
   precacheVoiceAudios, 
   checkVoiceCacheStatus,
   DownloadProgress 
 } from '@/utils/lessonAudioCache';
+
+interface GenerateProgressData {
+  type: 'start' | 'progress' | 'complete' | 'error';
+  total?: number;
+  sentences?: number;
+  voices?: number;
+  current?: number;
+  percent?: number;
+  sentence_index?: number;
+  voice_name?: string;
+  status?: string;
+  error?: string;
+  generated?: number;
+  already_exists?: number;
+  failed?: number;
+  message?: string;
+}
 
 interface Sentence {
   id: number;
@@ -87,6 +106,13 @@ export default function LessonPracticeScreen() {
   const [selectedVoicesToGenerate, setSelectedVoicesToGenerate] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
   const [generateProgress, setGenerateProgress] = useState<string>('');
+  // 进度条状态
+  const [generatePercent, setGeneratePercent] = useState(0);
+  const [generateCurrent, setGenerateCurrent] = useState(0);
+  const [generateTotal, setGenerateTotal] = useState(0);
+  const [generateCurrentTask, setGenerateCurrentTask] = useState('');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sseRef = useRef<any>(null);
 
   const fetchData = useCallback(async () => {
     if (!lessonId) return;
@@ -271,49 +297,100 @@ export default function LessonPracticeScreen() {
     }
   }, [lessonId]);
 
-  // 生成音频
-  const handleGenerateAudio = useCallback(async () => {
-    if (generating || selectedVoicesToGenerate.length === 0) return;
+  // 生成音频（使用SSE接收进度）
+  const handleGenerateAudio = useCallback(() => {
+    if (!lessonId || generating || selectedVoicesToGenerate.length === 0) return;
     
     setGenerating(true);
-    setGenerateProgress('正在生成音频...');
+    setGeneratePercent(0);
+    setGenerateCurrent(0);
+    setGenerateTotal(0);
+    setGenerateCurrentTask('正在初始化...');
+    setGenerateProgress('');
     
-    try {
-      const response = await fetch(
-        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/lessons/${lessonId}/generate-audio`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ voiceIds: selectedVoicesToGenerate }),
-        }
-      );
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setGenerateProgress(
-          `生成完成！\n` +
-          `新生成: ${data.generated} 个\n` +
-          `已存在: ${data.already_exists} 个\n` +
-          `失败: ${data.failed} 个`
-        );
-        
-        // 刷新数据
-        setTimeout(() => {
-          setShowGenerateModal(false);
-          setGenerating(false);
-          setGenerateProgress('');
-          setSelectedVoicesToGenerate([]);
-          fetchData();
-        }, 2000);
-      } else {
-        throw new Error(data.error || '生成失败');
+    // 构建SSE URL
+    const url = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/lessons/${lessonId}/generate-audio`;
+    
+    // 创建SSE连接
+    const sse = new RNSSE(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+      },
+      body: JSON.stringify({ voiceIds: selectedVoicesToGenerate }),
+    });
+    
+    sseRef.current = sse;
+    
+    sse.addEventListener('message', (event) => {
+      if (!event.data || event.data === '[DONE]') {
+        sse.close();
+        sseRef.current = null;
+        return;
       }
-    } catch (error: any) {
-      Alert.alert('生成失败', error.message || '请稍后重试');
+      
+      try {
+        const data: GenerateProgressData = JSON.parse(event.data);
+        
+        switch (data.type) {
+          case 'start':
+            setGenerateTotal(data.total || 0);
+            setGenerateCurrentTask(`开始生成 ${data.sentences} 个句子 × ${data.voices} 个音色`);
+            break;
+            
+          case 'progress':
+            if (data.current !== undefined && data.total !== undefined) {
+              setGenerateCurrent(data.current);
+              setGenerateTotal(data.total);
+              setGeneratePercent(data.percent || 0);
+            }
+            const statusText = data.status === 'generated' ? '✓ 已生成' : 
+                             data.status === 'already_exists' ? '○ 已存在' : '✗ 失败';
+            setGenerateCurrentTask(`句子 ${data.sentence_index} · ${data.voice_name} - ${statusText}`);
+            break;
+            
+          case 'complete':
+            setGeneratePercent(100);
+            setGenerateProgress(
+              `生成完成！\n` +
+              `新生成: ${data.generated} 个\n` +
+              `已存在: ${data.already_exists} 个\n` +
+              `失败: ${data.failed} 个`
+            );
+            setGenerateCurrentTask('完成！');
+            
+            // 2秒后关闭弹窗并刷新
+            setTimeout(() => {
+              sse.close();
+              sseRef.current = null;
+              setShowGenerateModal(false);
+              setGenerating(false);
+              setGenerateProgress('');
+              setSelectedVoicesToGenerate([]);
+              fetchData();
+            }, 2000);
+            break;
+            
+          case 'error':
+            Alert.alert('生成失败', data.message || '未知错误');
+            sse.close();
+            sseRef.current = null;
+            setGenerating(false);
+            break;
+        }
+      } catch (e) {
+        console.error('解析SSE数据失败:', e);
+      }
+    });
+    
+    sse.addEventListener('error', (event) => {
+      console.error('SSE连接错误:', event);
+      Alert.alert('连接失败', '无法连接到服务器，请稍后重试');
+      sse.close();
+      sseRef.current = null;
       setGenerating(false);
-      setGenerateProgress('');
-    }
+    });
   }, [generating, selectedVoicesToGenerate, lessonId, fetchData]);
 
   // 切换音色选择
@@ -665,12 +742,41 @@ export default function LessonPracticeScreen() {
               </ThemedText>
             </TouchableOpacity>
             
-            {generateProgress ? (
+            {generating ? (
               <View style={styles.generateProgress}>
-                <ActivityIndicator size="large" color={theme.primary} />
-                <ThemedText variant="body" color={theme.textPrimary} style={{ marginTop: 12, textAlign: 'center' }}>
-                  {generateProgress}
+                {/* 进度条 */}
+                <View style={styles.generateProgressBar}>
+                  <View 
+                    style={[
+                      styles.generateProgressFill,
+                      { width: `${generatePercent}%` }
+                    ]} 
+                  />
+                </View>
+                
+                {/* 进度数字 */}
+                <View style={styles.generateProgressInfo}>
+                  <ThemedText variant="h3" color={theme.primary}>
+                    {generatePercent}%
+                  </ThemedText>
+                  <ThemedText variant="body" color={theme.textSecondary}>
+                    {generateCurrent} / {generateTotal}
+                  </ThemedText>
+                </View>
+                
+                {/* 当前任务 */}
+                <ThemedText variant="small" color={theme.textMuted} style={{ textAlign: 'center', marginTop: 8 }}>
+                  {generateCurrentTask}
                 </ThemedText>
+                
+                {/* 完成信息 */}
+                {generateProgress ? (
+                  <ThemedText variant="body" color={theme.success} style={{ marginTop: 16, textAlign: 'center' }}>
+                    {generateProgress}
+                  </ThemedText>
+                ) : (
+                  <ActivityIndicator size="large" color={theme.primary} style={{ marginTop: 16 }} />
+                )}
               </View>
             ) : (
               <View style={styles.modalActions}>
@@ -680,14 +786,13 @@ export default function LessonPracticeScreen() {
                     setShowGenerateModal(false);
                     setSelectedVoicesToGenerate([]);
                   }}
-                  disabled={generating}
                 >
                   <ThemedText variant="body" color={theme.textSecondary}>取消</ThemedText>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.confirmButton, selectedVoicesToGenerate.length === 0 && { opacity: 0.5 }]}
                   onPress={handleGenerateAudio}
-                  disabled={generating || selectedVoicesToGenerate.length === 0}
+                  disabled={selectedVoicesToGenerate.length === 0}
                 >
                   <ThemedText variant="body" color={theme.buttonPrimaryText}>
                     生成 ({selectedVoicesToGenerate.length})

@@ -262,6 +262,26 @@ export const createStyles = (theme: Theme) => {
       paddingVertical: Spacing.lg,
       alignItems: 'center',
     },
+    generateProgressBar: {
+      width: '100%',
+      height: 12,
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: 6,
+      overflow: 'hidden',
+      marginBottom: Spacing.md,
+    },
+    generateProgressFill: {
+      height: '100%',
+      backgroundColor: theme.primary,
+      borderRadius: 6,
+    },
+    generateProgressInfo: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      width: '100%',
+      marginBottom: Spacing.sm,
+    },
     modalActions: {
       flexDirection: 'row',
       justifyContent: 'space-between',

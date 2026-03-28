@@ -82,10 +82,9 @@ router.get('/:courseId/lessons', async (req: Request, res: Response) => {
 router.get('/lessons/:lessonId', async (req: Request, res: Response) => {
   try {
     const { lessonId } = req.params;
-    const { voiceId } = req.query; // 可选：指定音色
+    const { voiceId } = req.query;
     const supabase = getSupabaseClient();
     
-    // 获取课时信息
     const { data: lesson, error: lessonError } = await supabase
       .from('lessons')
       .select('*')
@@ -96,7 +95,6 @@ router.get('/lessons/:lessonId', async (req: Request, res: Response) => {
       return res.status(404).json({ error: '课时不存在' });
     }
     
-    // 获取句子列表
     const { data: sentences, error: sentencesError } = await supabase
       .from('lesson_sentences')
       .select('*')
@@ -107,14 +105,12 @@ router.get('/lessons/:lessonId', async (req: Request, res: Response) => {
       throw new Error(sentencesError.message);
     }
     
-    // 批量获取所有句子的音频（一次数据库查询）
     const sentenceIds = (sentences || []).map(s => s.id);
     const { data: allAudios } = await supabase
       .from('lesson_sentence_audio')
       .select('*')
       .in('sentence_id', sentenceIds);
     
-    // 按句子ID分组
     const audiosBySentence: Record<number, any[]> = {};
     (allAudios || []).forEach(audio => {
       if (!audiosBySentence[audio.sentence_id]) {
@@ -123,12 +119,9 @@ router.get('/lessons/:lessonId', async (req: Request, res: Response) => {
       audiosBySentence[audio.sentence_id].push(audio);
     });
     
-    // 批量生成签名URL（并行）
     const sentencesWithAudio = await Promise.all(
       (sentences || []).map(async (sentence) => {
         const audios = audiosBySentence[sentence.id] || [];
-        
-        // 筛选指定音色的音频
         let targetAudio = audios[0];
         if (voiceId) {
           targetAudio = audios.find(a => a.voice_id === voiceId) || null;
@@ -139,7 +132,6 @@ router.get('/lessons/:lessonId', async (req: Request, res: Response) => {
         let availableVoices: string[] = [];
         
         if (targetAudio) {
-          // 获取签名URL
           audioUrl = await storage.generatePresignedUrl({ 
             key: targetAudio.audio_url, 
             expireTime: 86400 
@@ -170,7 +162,6 @@ router.get('/lessons/:lessonId', async (req: Request, res: Response) => {
 
 /**
  * GET /api/v1/courses/lessons/:lessonId/sentences/:sentenceIndex/audio
- * 获取指定句子的音频（支持不同音色）
  */
 router.get('/lessons/:lessonId/sentences/:sentenceIndex/audio', async (req: Request, res: Response) => {
   try {
@@ -178,7 +169,6 @@ router.get('/lessons/:lessonId/sentences/:sentenceIndex/audio', async (req: Requ
     const { voiceId = 'zh_female_xiaohe_uranus_bigtts' } = req.query;
     const supabase = getSupabaseClient();
     
-    // 获取句子
     const { data: sentence, error: sentenceError } = await supabase
       .from('lesson_sentences')
       .select('*')
@@ -190,7 +180,6 @@ router.get('/lessons/:lessonId/sentences/:sentenceIndex/audio', async (req: Requ
       return res.status(404).json({ error: '句子不存在' });
     }
     
-    // 查询音频
     const { data: audio, error: audioError } = await supabase
       .from('lesson_sentence_audio')
       .select('*')
@@ -202,7 +191,6 @@ router.get('/lessons/:lessonId/sentences/:sentenceIndex/audio', async (req: Requ
       return res.status(404).json({ error: '该音色的音频尚未生成' });
     }
     
-    // 获取签名URL
     const audioUrl = await storage.generatePresignedUrl({ 
       key: audio.audio_url, 
       expireTime: 86400 
@@ -222,7 +210,7 @@ router.get('/lessons/:lessonId/sentences/:sentenceIndex/audio', async (req: Requ
 
 /**
  * POST /api/v1/courses
- * 创建新课程（管理员功能）
+ * 创建新课程
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
@@ -254,7 +242,7 @@ router.post('/', async (req: Request, res: Response) => {
 
 /**
  * POST /api/v1/courses/:courseId/lessons
- * 创建新课时（管理员功能）
+ * 创建新课时
  */
 router.post('/:courseId/lessons', async (req: Request, res: Response) => {
   try {
@@ -262,11 +250,10 @@ router.post('/:courseId/lessons', async (req: Request, res: Response) => {
     const { lesson_number, title, description, sentences } = req.body;
     const supabase = getSupabaseClient();
     
-    // 创建课时
     const { data: lesson, error: lessonError } = await supabase
       .from('lessons')
       .insert({
-        course_id: parseInt(courseId),
+        course_id: parseInt(courseId as string),
         lesson_number,
         title,
         description,
@@ -279,7 +266,6 @@ router.post('/:courseId/lessons', async (req: Request, res: Response) => {
       throw new Error(lessonError.message);
     }
     
-    // 创建句子
     if (sentences && sentences.length > 0) {
       const sentencesData = sentences.map((s: any, index: number) => ({
         lesson_id: lesson.id,
@@ -297,7 +283,6 @@ router.post('/:courseId/lessons', async (req: Request, res: Response) => {
       }
     }
     
-    // 更新课程的课时数
     const { data: lessons } = await supabase
       .from('lessons')
       .select('id')
@@ -317,14 +302,23 @@ router.post('/:courseId/lessons', async (req: Request, res: Response) => {
 
 /**
  * POST /api/v1/courses/lessons/:lessonId/generate-audio
- * 为指定课时的所有句子生成AI语音
+ * 为指定课时的所有句子生成AI语音（使用SSE流式返回进度）
  */
 router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Response) => {
+  const { lessonId } = req.params;
+  const { voiceIds } = req.body;
+  const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+  
+  // 设置SSE响应头
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-store, no-transform, must-revalidate');
+  res.setHeader('Connection', 'keep-alive');
+  
+  const sendProgress = (data: object) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+  
   try {
-    const { lessonId } = req.params;
-    const { voiceIds } = req.body; // 要生成的音色ID列表，默认生成所有
-    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
-    
     const supabase = getSupabaseClient();
     const config = new Config();
     const ttsClient = new TTSClient(config, customHeaders);
@@ -341,7 +335,9 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
     }
     
     if (!sentences || sentences.length === 0) {
-      return res.status(400).json({ error: '课时没有句子' });
+      sendProgress({ type: 'error', message: '课时没有句子' });
+      res.write('data: [DONE]\n\n');
+      return;
     }
     
     // 确定要生成的音色
@@ -350,10 +346,25 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
       : AVAILABLE_VOICES;
     
     if (voicesToGenerate.length === 0) {
-      return res.status(400).json({ error: '没有有效的音色' });
+      sendProgress({ type: 'error', message: '没有有效的音色' });
+      res.write('data: [DONE]\n\n');
+      return;
     }
     
-    const results: any[] = [];
+    // 计算总任务数
+    const totalTasks = sentences.length * voicesToGenerate.length;
+    let completedTasks = 0;
+    let generatedCount = 0;
+    let alreadyExistsCount = 0;
+    let failedCount = 0;
+    
+    // 发送开始事件
+    sendProgress({
+      type: 'start',
+      total: totalTasks,
+      sentences: sentences.length,
+      voices: voicesToGenerate.length,
+    });
     
     // 为每个句子生成每种音色的音频
     for (const sentence of sentences) {
@@ -368,9 +379,15 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
             .single();
           
           if (existing) {
-            results.push({
+            alreadyExistsCount++;
+            completedTasks++;
+            sendProgress({
+              type: 'progress',
+              current: completedTasks,
+              total: totalTasks,
+              percent: Math.round((completedTasks / totalTasks) * 100),
               sentence_index: sentence.sentence_index,
-              voice_id: voice.id,
+              voice_name: voice.name,
               status: 'already_exists',
             });
             continue;
@@ -398,7 +415,7 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
             contentType: 'audio/mpeg',
           });
           
-          // 计算音频时长（估算：mp3比特率约128kbps）
+          // 计算音频时长
           const duration = Math.round((audioBuffer.length * 8) / (128 * 1000) * 1000);
           
           // 保存到数据库
@@ -412,37 +429,51 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
               duration: duration,
             });
           
-          results.push({
+          generatedCount++;
+          completedTasks++;
+          sendProgress({
+            type: 'progress',
+            current: completedTasks,
+            total: totalTasks,
+            percent: Math.round((completedTasks / totalTasks) * 100),
             sentence_index: sentence.sentence_index,
-            voice_id: voice.id,
+            voice_name: voice.name,
             status: 'generated',
-            audio_key: audioKey,
           });
           
           console.log(`生成音频: 课时${lessonId}, 句子${sentence.sentence_index}, 音色${voice.name}`);
           
         } catch (err: any) {
-          console.error(`生成失败: 句子${sentence.sentence_index}, 音色${voice.id}`, err);
-          results.push({
+          failedCount++;
+          completedTasks++;
+          sendProgress({
+            type: 'progress',
+            current: completedTasks,
+            total: totalTasks,
+            percent: Math.round((completedTasks / totalTasks) * 100),
             sentence_index: sentence.sentence_index,
-            voice_id: voice.id,
+            voice_name: voice.name,
             status: 'failed',
             error: err.message,
           });
+          console.error(`生成失败: 句子${sentence.sentence_index}, 音色${voice.id}`, err);
         }
       }
     }
     
-    res.json({ 
-      success: true,
-      generated: results.filter(r => r.status === 'generated').length,
-      already_exists: results.filter(r => r.status === 'already_exists').length,
-      failed: results.filter(r => r.status === 'failed').length,
-      results,
+    // 发送完成事件
+    sendProgress({
+      type: 'complete',
+      generated: generatedCount,
+      already_exists: alreadyExistsCount,
+      failed: failedCount,
     });
+    
+    res.write('data: [DONE]\n\n');
   } catch (error: any) {
     console.error('生成音频失败:', error);
-    res.status(500).json({ error: error.message });
+    sendProgress({ type: 'error', message: error.message });
+    res.write('data: [DONE]\n\n');
   }
 });
 
@@ -456,7 +487,7 @@ router.get('/voices', (req: Request, res: Response) => {
 
 /**
  * GET /api/v1/courses/lessons/:lessonId/learnable
- * 获取可学习的课时数据（格式与sentence_files兼容，供sentence-practice使用）
+ * 获取可学习的课时数据
  */
 router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) => {
   try {
@@ -464,7 +495,6 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
     const { voiceId } = req.query;
     const supabase = getSupabaseClient();
     
-    // 获取课时信息
     const { data: lesson, error: lessonError } = await supabase
       .from('lessons')
       .select('*')
@@ -475,7 +505,6 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
       return res.status(404).json({ error: '课时不存在' });
     }
     
-    // 获取句子列表
     const { data: sentences, error: sentencesError } = await supabase
       .from('lesson_sentences')
       .select('*')
@@ -486,7 +515,6 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
       throw new Error(sentencesError.message);
     }
     
-    // 批量获取所有句子的音频
     const sentenceIds = (sentences || []).map(s => s.id);
     const targetVoiceId = voiceId || 'zh_female_xiaohe_uranus_bigtts';
     
@@ -496,53 +524,45 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
       .in('sentence_id', sentenceIds)
       .eq('voice_id', targetVoiceId);
     
-    // 按句子ID分组
     const audiosBySentence: Record<number, any> = {};
     (allAudios || []).forEach(audio => {
       audiosBySentence[audio.sentence_id] = audio;
     });
     
-    // 只返回有音频的句子，并转换为sentence-practice兼容格式
     const learnableSentences = [];
     let totalDuration = 0;
-    let lastAudioKey = null;
     
     for (const sentence of (sentences || [])) {
       const audio = audiosBySentence[sentence.id];
       if (audio) {
-        // 获取签名URL
         const audioUrl = await storage.generatePresignedUrl({ 
           key: audio.audio_url, 
           expireTime: 86400 
         });
         
         totalDuration += audio.duration || 0;
-        lastAudioKey = audio.audio_url;
         
         learnableSentences.push({
           id: sentence.id,
           text: sentence.english_text,
           chinese_text: sentence.chinese_text,
           sentence_index: sentence.sentence_index,
-          // 对于独立音频文件，start_time和end_time用于标识该句子
-          // 这里用整个音频的时长作为时间范围
           start_time: 0,
-          end_time: (audio.duration || 3000) / 1000, // 转换为秒
+          end_time: (audio.duration || 3000) / 1000,
           audio_url: audioUrl,
           audio_duration: audio.duration,
         });
       }
     }
     
-    // 返回与sentence_files兼容的数据格式
     res.json({
       file: {
-        id: parseInt(lessonId) * 10000, // 使用一个大数字避免与普通句库ID冲突
+        id: parseInt(lessonId as string) * 10000,
         title: `${lesson.title} - ${lesson.description}`,
-        original_audio_signed_url: null, // 课程模式不使用整体音频
+        original_audio_signed_url: null,
         original_duration: totalDuration,
-        is_lesson: true, // 标记为课程模式
-        lesson_id: parseInt(lessonId),
+        is_lesson: true,
+        lesson_id: parseInt(lessonId as string),
         voice_id: targetVoiceId,
       },
       sentences: learnableSentences,
