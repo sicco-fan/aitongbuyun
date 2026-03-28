@@ -14,6 +14,7 @@ import myFilesRouter from "./routes/my-files";
 import errorWordsRouter from "./routes/error-words";
 import pdfParseRouter from "./routes/pdf-parse";
 import coursesRouter from "./routes/courses";
+import uploadRouter from "./routes/upload";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -28,6 +29,7 @@ app.get('/api/v1/health', (req, res) => {
 });
 
 // Routes - 文件上传路由放在 body parser 之前，避免影响 multipart/form-data
+app.use('/api/v1/upload', uploadRouter);
 app.use('/api/v1/materials/download', videoDownloadRouter);
 app.use('/api/v1/materials', materialsRouter);
 
