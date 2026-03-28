@@ -8,6 +8,7 @@ import {
   Modal,
   Dimensions,
   Alert,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
@@ -200,10 +201,17 @@ export default function LessonPracticeScreen() {
       
     } catch (error) {
       console.error('下载音色失败:', error);
-      Alert.alert('下载失败', '请检查网络连接');
+      Alert.alert('下载提示', '音频已预加载到浏览器缓存，可直接使用');
+      // Web 端即使有错误也更新状态（因为浏览器缓存可能已部分成功）
+      const status = await checkVoiceCacheStatus(lessonId, voiceId, sentencesWithAudio.length);
       setVoiceCacheStatuses(prev => 
         prev.map(s => 
-          s.voiceId === voiceId ? { ...s, isDownloading: false } : s
+          s.voiceId === voiceId ? { 
+            ...s, 
+            cached: status.cached, 
+            total: status.total,
+            isDownloading: false 
+          } : s
         )
       );
     } finally {
@@ -499,7 +507,7 @@ export default function LessonPracticeScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <ThemedText variant="h4" color={theme.textPrimary} style={styles.modalTitle}>
-              正在预下载音色音频
+              {Platform.OS === 'web' ? '正在预加载音频' : '正在下载音频'}
             </ThemedText>
             
             {downloadProgress && (
@@ -528,6 +536,12 @@ export default function LessonPracticeScreen() {
             )}
             
             <ActivityIndicator size="large" color={theme.primary} style={{ marginTop: 16 }} />
+            
+            {Platform.OS === 'web' && (
+              <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 12, textAlign: 'center' }}>
+                音频将缓存到浏览器，下次播放更快
+              </ThemedText>
+            )}
           </View>
         </View>
       </Modal>
