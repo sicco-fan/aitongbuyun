@@ -107,33 +107,44 @@ router.get('/lessons/:lessonId', async (req: Request, res: Response) => {
       throw new Error(sentencesError.message);
     }
     
-    // 获取音频URL
+    // 批量获取所有句子的音频（一次数据库查询）
+    const sentenceIds = (sentences || []).map(s => s.id);
+    const { data: allAudios } = await supabase
+      .from('lesson_sentence_audio')
+      .select('*')
+      .in('sentence_id', sentenceIds);
+    
+    // 按句子ID分组
+    const audiosBySentence: Record<number, any[]> = {};
+    (allAudios || []).forEach(audio => {
+      if (!audiosBySentence[audio.sentence_id]) {
+        audiosBySentence[audio.sentence_id] = [];
+      }
+      audiosBySentence[audio.sentence_id].push(audio);
+    });
+    
+    // 批量生成签名URL（并行）
     const sentencesWithAudio = await Promise.all(
       (sentences || []).map(async (sentence) => {
-        // 查询音频
-        let audioQuery = supabase
-          .from('lesson_sentence_audio')
-          .select('*')
-          .eq('sentence_id', sentence.id);
+        const audios = audiosBySentence[sentence.id] || [];
         
+        // 筛选指定音色的音频
+        let targetAudio = audios[0];
         if (voiceId) {
-          audioQuery = audioQuery.eq('voice_id', voiceId);
+          targetAudio = audios.find(a => a.voice_id === voiceId) || null;
         }
-        
-        const { data: audios, error: audioError } = await audioQuery;
         
         let audioUrl = null;
         let duration = null;
         let availableVoices: string[] = [];
         
-        if (!audioError && audios && audios.length > 0) {
+        if (targetAudio) {
           // 获取签名URL
-          const audio = audios[0];
           audioUrl = await storage.generatePresignedUrl({ 
-            key: audio.audio_url, 
+            key: targetAudio.audio_url, 
             expireTime: 86400 
           });
-          duration = audio.duration;
+          duration = targetAudio.duration;
           availableVoices = audios.map(a => a.voice_id);
         }
         
