@@ -1850,20 +1850,14 @@ export default function SentencePracticeScreen() {
         </View>
       </TouchableOpacity>
 
-      {/* Content with Keyboard Avoiding */}
-      <KeyboardAvoidingView
-        style={styles.contentWrapper}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      {/* Sentence Section - 可滚动 */}
+      <ScrollView
+        style={styles.sentenceSection}
+        contentContainerStyle={styles.sentenceScrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        onTouchStart={() => showAudioSettings && setShowAudioSettings(false)}
       >
-        {/* Sentence Section - 可滚动 */}
-        <ScrollView
-          style={styles.sentenceSection}
-          contentContainerStyle={styles.sentenceScrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          onTouchStart={() => showAudioSettings && setShowAudioSettings(false)}
-        >
           {/* Sentence Display */}
           <Animated.View style={[styles.sentenceCard, { opacity: Animated.subtract(1, errorAnimRef.current) }]}>
             <View style={styles.wordContainer}>
@@ -1961,8 +1955,12 @@ export default function SentencePracticeScreen() {
           </View>
         </ScrollView>
 
-        {/* Input Section - 紧跟句子区域 */}
-        <View style={styles.inputSection}>
+        {/* Input Section - 键盘上方 */}
+        <KeyboardAvoidingView
+          behavior="padding"
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+          <View style={styles.inputSection}>
           {/* 手机键盘模式 - 仅输入框 */}
           {keyboardType === 'system' && (
             <View style={styles.inputWrapper}>
@@ -2208,8 +2206,8 @@ export default function SentencePracticeScreen() {
               </View>
             </View>
           )}
-        </View>
-      </KeyboardAvoidingView>
+          </View>
+        </KeyboardAvoidingView>
     </Screen>
   );
 }
