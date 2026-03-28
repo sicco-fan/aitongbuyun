@@ -31,6 +31,13 @@ interface ErrorStats {
   totalErrors: number;
 }
 
+interface Course {
+  id: number;
+  title: string;
+  total_lessons: number;
+  total_sentences: number;
+}
+
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
 export default function HomeScreen() {
@@ -40,11 +47,13 @@ export default function HomeScreen() {
   const { user, isAuthenticated } = useAuth();
   const [sentenceFiles, setSentenceFiles] = useState<SentenceFile[]>([]);
   const [errorStats, setErrorStats] = useState<ErrorStats | null>(null);
+  const [featuredCourse, setFeaturedCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
+      // 获取句库文件
       const sentenceFilesRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`);
       const sentenceFilesData = await sentenceFilesRes.json();
 
@@ -52,6 +61,13 @@ export default function HomeScreen() {
         // 只显示有可学习句子的文件
         const filesWithReady = sentenceFilesData.files.filter((f: SentenceFile) => f.ready_sentences_count > 0);
         setSentenceFiles(filesWithReady);
+      }
+      
+      // 获取精品课程
+      const coursesRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses`);
+      const coursesData = await coursesRes.json();
+      if (coursesData.courses && coursesData.courses.length > 0) {
+        setFeaturedCourse(coursesData.courses[0]);
       }
       
       // 获取错题统计
@@ -166,7 +182,7 @@ export default function HomeScreen() {
               精品课程
             </ThemedText>
             <ThemedText variant="small" color={theme.textSecondary}>
-              新概念英语第三册 · 10课
+              {featuredCourse ? `${featuredCourse.title} · ${featuredCourse.total_lessons}课` : '暂无课程'}
             </ThemedText>
           </View>
           <FontAwesome6 name="chevron-right" size={16} color={theme.primary} />
