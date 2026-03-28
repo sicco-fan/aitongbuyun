@@ -36,7 +36,8 @@ export default function RootLayout() {
             <Stack.Screen name="my-shares" options={{ title: "我的分享" }} />
             <Stack.Screen name="courses" options={{ title: "精品课程" }} />
             <Stack.Screen name="course-lessons" options={{ title: "课时列表" }} />
-            <Stack.Screen name="lesson-practice" options={{ title: "课时练习" }} />
+            <Stack.Screen name="lesson-practice" options={{ title: "课时详情" }} />
+            <Stack.Screen name="lesson-learning" options={{ title: "课程学习" }} />
           </Stack>
           <Toast />
         </GestureHandlerRootView>

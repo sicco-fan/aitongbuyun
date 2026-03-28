@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   ScrollView,
   TouchableOpacity,
@@ -13,6 +13,7 @@ import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
+import { precacheAudios, getCachedAudio } from '@/utils/lessonAudioCache';
 
 interface Sentence {
   id: number;
@@ -69,6 +70,21 @@ export default function LessonPracticeScreen() {
       }
       if (data.sentences) {
         setSentences(data.sentences);
+        
+        // 后台预缓存音频（不阻塞UI）
+        const audiosToCache = data.sentences
+          .filter((s: Sentence) => s.audio_url)
+          .map((s: Sentence, index: number) => ({
+            key: `lesson_${lessonId}_sentence_${s.sentence_index}_${selectedVoice}`,
+            url: s.audio_url,
+          }));
+        
+        if (audiosToCache.length > 0) {
+          // 异步预缓存，不等待
+          precacheAudios(audiosToCache).catch(e => 
+            console.log('[预缓存] 失败:', e)
+          );
+        }
       }
       if (data.available_voices) {
         setVoices(data.available_voices);
@@ -97,10 +113,9 @@ export default function LessonPracticeScreen() {
   }, [router]);
 
   const handleStartPractice = useCallback(() => {
-    // 跳转到听写练习页面
-    router.push('/sentence-practice', {
-      sourceType: 'lesson',
-      sourceId: lessonId,
+    // 跳转到课程学习页面
+    router.push('/lesson-learning', {
+      lessonId: lessonId,
       voiceId: selectedVoice,
       title: title,
     });
