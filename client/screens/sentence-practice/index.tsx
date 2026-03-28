@@ -1806,6 +1806,16 @@ export default function SentencePracticeScreen() {
     }
 
     try {
+      // 先清理可能存在的旧录音对象
+      if (recordingRef.current) {
+        try {
+          await recordingRef.current.stopAndUnloadAsync();
+        } catch (e) {
+          // 忽略清理错误
+        }
+        recordingRef.current = null;
+      }
+
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -1837,9 +1847,9 @@ export default function SentencePracticeScreen() {
       if (uri && currentSentence) {
         const fileData = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
         const formData = new FormData();
-        formData.append('audio', fileData as any);
+        formData.append('file', fileData as any);
 
-        const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech/recognize`, {
+        const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech-recognize`, {
           method: 'POST',
           body: formData,
         });
