@@ -8,9 +8,12 @@ import {
   Modal,
   Alert,
   Platform,
+  TextInput,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
+// @ts-ignore - react-native-sse 类型定义不完整
+import RNSSE from 'react-native-sse';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
 import { Screen } from '@/components/Screen';
@@ -40,10 +43,12 @@ export default function CoursesScreen() {
   const [importing, setImporting] = useState(false);
   const [importPhase, setImportPhase] = useState<'idle' | 'uploading' | 'importing'>('idle');
   const [uploadProgress, setUploadProgress] = useState(0); // 0-100
+  const [importProgress, setImportProgress] = useState(''); // 导入进度消息
   const [showImportModal, setShowImportModal] = useState(false);
   const [importBookTitle, setImportBookTitle] = useState('新概念英语第三册');
   const [importBookNumber, setImportBookNumber] = useState('3');
   const xhrRef = useRef<XMLHttpRequest | null>(null); // 用于取消上传
+  const sseRef = useRef<any>(null); // 用于取消 SSE
 
   const fetchCourses = useCallback(async () => {
     try {
@@ -143,32 +148,71 @@ export default function CoursesScreen() {
 
       console.log('[导入课程] 文件上传成功:', uploadData.url);
 
-      // 调用导入 API
+      // 调用导入 API (使用 SSE 接收进度)
       setImportPhase('importing');
-      setUploadProgress(0); // 重置进度，用于显示"正在导入..."
+      setImportProgress('正在初始化导入...');
 
-      const importResponse = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/import-pdf`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pdf_url: uploadData.url,
-          book_title: importBookTitle,
-          book_number: parseInt(importBookNumber, 10),
-        }),
+      const sseUrl = `${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/import-pdf`;
+      
+      await new Promise<void>((resolve, reject) => {
+        const sse = new RNSSE(sseUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream',
+          },
+          body: JSON.stringify({
+            pdf_url: uploadData.url,
+            book_title: importBookTitle,
+            book_number: parseInt(importBookNumber, 10),
+          }),
+        });
+        
+        sseRef.current = sse;
+
+        sse.addEventListener('message', (event) => {
+          if (!event.data || event.data === '[DONE]') {
+            sse.close();
+            sseRef.current = null;
+            resolve();
+            return;
+          }
+
+          try {
+            const data = JSON.parse(event.data);
+            console.log('[导入课程] SSE 消息:', data);
+
+            if (data.type === 'progress') {
+              setImportProgress(data.message);
+              if (data.percent !== undefined) {
+                setUploadProgress(data.percent);
+              }
+            } else if (data.type === 'complete') {
+              setImportProgress(data.message);
+              setUploadProgress(100);
+              Alert.alert('导入成功', data.message, [
+                { text: '知道了', onPress: () => {
+                  setShowImportModal(false);
+                  fetchCourses();
+                }}
+              ]);
+            } else if (data.type === 'error') {
+              sse.close();
+              sseRef.current = null;
+              reject(new Error(data.message));
+            }
+          } catch (e) {
+            console.error('[导入课程] 解析 SSE 消息失败:', e);
+          }
+        });
+
+        sse.addEventListener('error', (event) => {
+          console.error('[导入课程] SSE 错误:', event);
+          sse.close();
+          sseRef.current = null;
+          reject(new Error('导入过程发生错误'));
+        });
       });
-
-      const importData = await importResponse.json();
-
-      if (importData.success) {
-        Alert.alert('导入成功', importData.message, [
-          { text: '知道了', onPress: () => {
-            setShowImportModal(false);
-            fetchCourses();
-          }}
-        ]);
-      } else {
-        throw new Error(importData.error || '导入失败');
-      }
 
     } catch (error: any) {
       console.error('[导入课程] 失败:', error);
@@ -179,14 +223,20 @@ export default function CoursesScreen() {
       setImporting(false);
       setImportPhase('idle');
       setUploadProgress(0);
+      setImportProgress('');
       xhrRef.current = null;
+      sseRef.current = null;
     }
   }, [importBookTitle, importBookNumber, fetchCourses]);
 
-  // 取消上传
+  // 取消上传或导入
   const handleCancelUpload = useCallback(() => {
     if (xhrRef.current) {
       xhrRef.current.abort();
+    }
+    if (sseRef.current) {
+      sseRef.current.close();
+      sseRef.current = null;
     }
   }, []);
 
@@ -330,7 +380,7 @@ export default function CoursesScreen() {
                 <View style={styles.progressHeader}>
                   <ActivityIndicator size="small" color={theme.primary} />
                   <ThemedText variant="body" color={theme.textPrimary} style={{ marginLeft: 8 }}>
-                    {importPhase === 'uploading' ? `上传中 ${uploadProgress}%` : '正在解析导入...'}
+                    {importPhase === 'uploading' ? `上传中 ${uploadProgress}%` : '正在导入...'}
                   </ThemedText>
                 </View>
                 
@@ -341,9 +391,14 @@ export default function CoursesScreen() {
                 )}
                 
                 {importPhase === 'importing' && (
-                  <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: 8 }}>
-                    正在解析 PDF 并导入课程数据，请稍候...
-                  </ThemedText>
+                  <>
+                    <View style={styles.progressBarContainer}>
+                      <View style={[styles.progressBar, { width: `${uploadProgress}%`, backgroundColor: theme.primary }]} />
+                    </View>
+                    <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: 8 }}>
+                      {importProgress || '正在解析 PDF 并导入课程数据...'}
+                    </ThemedText>
+                  </>
                 )}
 
                 <TouchableOpacity 

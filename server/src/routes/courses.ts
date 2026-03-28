@@ -830,7 +830,7 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
 
 /**
  * POST /api/v1/courses/import-pdf
- * 从 PDF 导入课程数据
+ * 从 PDF 导入课程数据（使用 SSE 返回进度）
  * Body: { pdf_url: string, book_title: string, book_number: number }
  * 
  * PDF 内容格式要求：
@@ -840,15 +840,27 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
  * Lesson 2: ...
  */
 router.post('/import-pdf', async (req: Request, res: Response) => {
+  const { pdf_url, book_title, book_number } = req.body;
+  const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+  
+  // 设置 SSE 响应头
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-store, no-transform, must-revalidate');
+  res.setHeader('Connection', 'keep-alive');
+  
+  const sendProgress = (data: object) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+  
   try {
-    const { pdf_url, book_title, book_number, debug = false } = req.body;
-    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
-    
     if (!pdf_url) {
-      return res.status(400).json({ error: 'PDF URL is required' });
+      sendProgress({ type: 'error', message: 'PDF URL is required' });
+      res.write('data: [DONE]\n\n');
+      return;
     }
     
     console.log(`[导入课程] 开始解析 PDF: ${pdf_url}`);
+    sendProgress({ type: 'progress', phase: 'downloading', message: '正在下载 PDF 文件...', percent: 0 });
     
     // 先下载 PDF 文件，然后用 pdf-parse 解析
     const pdfResponse = await axios.get(pdf_url, { 
@@ -858,26 +870,19 @@ router.post('/import-pdf', async (req: Request, res: Response) => {
     
     const pdfBuffer = Buffer.from(pdfResponse.data);
     console.log(`[导入课程] PDF 文件大小: ${pdfBuffer.length} bytes`);
+    sendProgress({ type: 'progress', phase: 'parsing', message: '正在解析 PDF 内容...', percent: 10 });
     
     // 使用 pdf-parse 解析
     const pdfData = await pdfParse(pdfBuffer);
     const textContent = pdfData.text;
     
-    console.log(`[导入课程] PDF 文本长度: ${textContent.length}`);
-    console.log(`[导入课程] PDF 页数: ${pdfData.numpages}`);
-    
-    // 调试模式：返回原始文本
-    if (debug) {
-      return res.json({
-        text_length: textContent.length,
-        pages: pdfData.numpages,
-        text_preview: textContent.substring(0, 5000),
-      });
-    }
+    console.log(`[导入课程] PDF 文本长度: ${textContent.length}, 页数: ${pdfData.numpages}`);
+    sendProgress({ type: 'progress', phase: 'parsing', message: `PDF 解析完成，共 ${pdfData.numpages} 页`, percent: 20 });
     
     // 解析课程结构
     const lessons = parseNCEText(textContent);
     console.log(`[导入课程] 解析到 ${lessons.length} 个课时`);
+    sendProgress({ type: 'progress', phase: 'importing', message: `解析到 ${lessons.length} 个课时，开始导入...`, percent: 25 });
     
     const supabase = getSupabaseClient();
     
@@ -893,6 +898,7 @@ router.post('/import-pdf', async (req: Request, res: Response) => {
     if (existingCourse) {
       courseId = existingCourse.id;
       console.log(`[导入课程] 使用现有课程: ${existingCourse.title} (ID: ${courseId})`);
+      sendProgress({ type: 'progress', phase: 'importing', message: '正在清除旧数据...', percent: 30 });
       
       // 删除现有的课时和句子
       const { data: existingLessons } = await supabase
@@ -929,6 +935,7 @@ router.post('/import-pdf', async (req: Request, res: Response) => {
           .delete()
           .in('id', lessonIds);
       }
+      sendProgress({ type: 'progress', phase: 'importing', message: '旧数据已清除', percent: 35 });
     } else {
       // 创建新课程
       const { data: newCourse, error: courseError } = await supabase
@@ -951,8 +958,21 @@ router.post('/import-pdf', async (req: Request, res: Response) => {
     
     // 导入课时和句子
     let totalSentences = 0;
+    const basePercent = 35;
+    const percentRange = 60; // 35% - 95% 用于导入课时
     
-    for (const lesson of lessons) {
+    for (let i = 0; i < lessons.length; i++) {
+      const lesson = lessons[i];
+      const lessonPercent = basePercent + Math.round((i / lessons.length) * percentRange);
+      sendProgress({ 
+        type: 'progress', 
+        phase: 'importing', 
+        message: `正在导入 Lesson ${lesson.lesson_number}: ${lesson.title} (${i + 1}/${lessons.length})`, 
+        percent: lessonPercent,
+        current_lesson: i + 1,
+        total_lessons: lessons.length
+      });
+      
       // 创建课时
       const { data: newLesson, error: lessonError } = await supabase
         .from('lessons')
@@ -1001,17 +1021,24 @@ router.post('/import-pdf', async (req: Request, res: Response) => {
       })
       .eq('id', courseId);
     
-    res.json({
-      success: true,
+    sendProgress({ 
+      type: 'complete', 
       message: `导入成功：${book_title}，共 ${lessons.length} 课，${totalSentences} 个句子`,
       course_id: courseId,
       lessons_count: lessons.length,
       sentences_count: totalSentences,
+      percent: 100
     });
     
-  } catch (error: any) {
-    console.error('导入课程失败:', error);
-    res.status(500).json({ error: error.message });
+    console.log(`[导入课程] 导入成功: ${lessons.length} 课, ${totalSentences} 个句子`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+    
+  } catch (error) {
+    console.error('[导入课程] 错误:', error);
+    sendProgress({ type: 'error', message: error instanceof Error ? error.message : '导入失败' });
+    res.write('data: [DONE]\n\n');
+    res.end();
   }
 });
 
