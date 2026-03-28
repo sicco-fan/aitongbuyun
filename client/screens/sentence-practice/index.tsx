@@ -2004,6 +2004,14 @@ export default function SentencePracticeScreen() {
         </View>
         {/* 右侧小控制按钮 */}
         <View style={styles.headerControls}>
+          {/* 语音输入按钮 */}
+          <TouchableOpacity
+            style={[styles.smallControlBtn, isRecording && styles.voiceBtnActive]}
+            onPressIn={startRecording}
+            onPressOut={stopRecordingAndRecognize}
+          >
+            <FontAwesome6 name={isRecording ? "stop" : "microphone"} size={14} color={isRecording ? theme.buttonPrimaryText : theme.textMuted} />
+          </TouchableOpacity>
           {/* 编辑此句按钮 */}
           <TouchableOpacity
             style={styles.smallControlBtn}
@@ -2206,56 +2214,17 @@ export default function SentencePracticeScreen() {
             </View>
           )}
 
-          {/* Navigation Buttons - 移到文本下方 */}
-          <View style={styles.textNavButtons}>
-            <TouchableOpacity
-              style={[styles.textNavBtn, currentIndex === 0 && styles.navBtnDisabled]}
-              onPress={goToPrevSentence}
-              disabled={currentIndex === 0}
-            >
-              <FontAwesome6 name="chevron-left" size={20} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.textNavBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
-              onPress={goToNextSentence}
-              disabled={currentIndex === sentences.length - 1}
-            >
-              <FontAwesome6 name="chevron-right" size={20} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-
-        {/* Input Section */}
-        <View style={styles.inputSection}>
-          {/* 手机键盘模式 - 仅输入框 */}
-          {keyboardType === 'system' && (
-            <View style={styles.inputWrapper}>
-              <TextInput
-                ref={inputRef}
-                style={styles.input}
-                value={currentInput}
-                onChangeText={handleInputChange}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoFocus={true}
-                blurOnSubmit={false}
-                textContentType="none"
-                autoComplete="off"
-              />
-              <TouchableOpacity
-                style={[styles.inputVoiceBtn, isRecording && styles.inputVoiceBtnActive]}
-                onPressIn={startRecording}
-                onPressOut={stopRecordingAndRecognize}
-              >
-                <FontAwesome6
-                  name={isRecording ? "stop" : "microphone"}
-                  size={22}
-                  color={isRecording ? theme.buttonPrimaryText : theme.primary}
-                />
-                <ThemedText variant="tiny" color={isRecording ? theme.buttonPrimaryText : theme.textMuted} style={{ marginTop: 2 }}>
-                  {isRecording ? '松开' : '按住说话'}
-                </ThemedText>
+          {/* 单词重读录音提示 */}
+          {voiceTargetWord && (
+            <View style={styles.voiceTargetHint}>
+              <ThemedText variant="small" color={theme.textSecondary}>
+                请朗读：
+              </ThemedText>
+              <ThemedText variant="h4" color={theme.primary}>
+                {voiceTargetWord}
+              </ThemedText>
+              <TouchableOpacity onPress={() => setVoiceTargetWord(null)}>
+                <FontAwesome6 name="times" size={14} color={theme.textMuted} />
               </TouchableOpacity>
             </View>
           )}
@@ -2329,21 +2298,46 @@ export default function SentencePracticeScreen() {
             </Animated.View>
           )}
 
-          {/* 单词重读录音提示 */}
-          {voiceTargetWord && (
-            <View style={styles.voiceTargetHint}>
-              <ThemedText variant="small" color={theme.textSecondary}>
-                请朗读：
-              </ThemedText>
-              <ThemedText variant="h4" color={theme.primary}>
-                {voiceTargetWord}
-              </ThemedText>
-              <TouchableOpacity onPress={() => setVoiceTargetWord(null)}>
-                <FontAwesome6 name="times" size={14} color={theme.textMuted} />
-              </TouchableOpacity>
+          {/* Navigation Buttons - 移到文本下方 */}
+          <View style={styles.textNavButtons}>
+            <TouchableOpacity
+              style={[styles.textNavBtn, currentIndex === 0 && styles.navBtnDisabled]}
+              onPress={goToPrevSentence}
+              disabled={currentIndex === 0}
+            >
+              <FontAwesome6 name="chevron-left" size={20} color={currentIndex === 0 ? theme.textMuted : theme.primary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.textNavBtn, currentIndex === sentences.length - 1 && styles.navBtnDisabled]}
+              onPress={goToNextSentence}
+              disabled={currentIndex === sentences.length - 1}
+            >
+              <FontAwesome6 name="chevron-right" size={20} color={currentIndex === sentences.length - 1 ? theme.textMuted : theme.primary} />
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+
+        {/* Input Section */}
+        <View style={styles.inputSection}>
+          {/* 手机键盘模式 - 仅输入框 */}
+          {keyboardType === 'system' && (
+            <View style={styles.inputWrapper}>
+              <TextInput
+                ref={inputRef}
+                style={styles.input}
+                value={currentInput}
+                onChangeText={handleInputChange}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus={true}
+                blurOnSubmit={false}
+                textContentType="none"
+                autoComplete="off"
+              />
             </View>
           )}
-
+          
           {/* 自建键盘模式 */}
           {keyboardType === 'custom' && (
             <View style={styles.customKeyboardContainer}>

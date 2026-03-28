@@ -45,6 +45,9 @@ export const createStyles = (theme: Theme) => {
     smallControlBtnActive: {
       backgroundColor: theme.primary + '15',
     },
+    voiceBtnActive: {
+      backgroundColor: theme.error,
+    },
     
     // Progress
     progressContainer: {
@@ -223,27 +226,8 @@ export const createStyles = (theme: Theme) => {
       color: '#4CAF50', // 绿色文字
       fontWeight: '600',
       textAlign: 'center',
-      paddingRight: 70, // 为语音按钮留空间
       includeFontPadding: false, // Android
       textAlignVertical: 'center', // Android
-    },
-    inputVoiceBtn: {
-      position: 'absolute',
-      right: 6,
-      top: '50%',
-      marginTop: -28,
-      width: 56,
-      height: 56,
-      borderRadius: BorderRadius.full,
-      backgroundColor: theme.primary + '15',
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderWidth: 2,
-      borderColor: theme.primary + '30',
-    },
-    inputVoiceBtnActive: {
-      backgroundColor: theme.error,
-      borderColor: theme.error,
     },
     
     // Navigation Buttons - 紧跟输入框
