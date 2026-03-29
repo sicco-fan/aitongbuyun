@@ -25,6 +25,7 @@ import Animated, {
   withSpring,
   withDelay,
   withTiming,
+  withRepeat,
 } from 'react-native-reanimated';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -741,6 +742,11 @@ const generateVariants = (word: string): string[] => {
     }
   }
   
+  // 12. 缩写词/缩约词（contractions）
+  // 语音识别经常把缩写词拆开：it's → it is / it s / its
+  const contractionVariants = expandContraction(w);
+  results.push(...contractionVariants);
+  
   // 去重并返回
   return [...new Set(results.map(r => r.toLowerCase()))];
 };
@@ -795,6 +801,121 @@ const wordsMatchWithVariants = (targetWord: string, recognizedWord: string): boo
  */
 const splitHyphenatedWord = (word: string): string[] => {
   return word.split(/[-–—]/).filter(w => w.length > 0);
+};
+
+/**
+ * 展开缩写词/缩约词（contractions）
+ * 语音识别经常把缩写词拆开：it's → it is / it s / its
+ * 
+ * 支持的缩写词类型：
+ * - 's: it's, he's, she's, that's, what's, who's, there's, here's
+ * - 'm: I'm
+ * - 're: you're, we're, they're
+ * - 've: I've, you've, we've, they've
+ * - 'd: I'd, you'd, he'd, she'd, we'd, they'd
+ * - 'll: I'll, you'll, he'll, she'll, we'll, they'll
+ * - n't: don't, doesn't, didn't, won't, wouldn't, shouldn't, couldn't, can't, isn't, aren't, wasn't, weren't, hasn't, haven't, hadn't
+ * - 's (possessive): 不展开（John's 不变）
+ * - let's: let us
+ */
+const expandContraction = (word: string): string[] => {
+  const results: string[] = [];
+  const w = word.toLowerCase().trim();
+  
+  // 缩写词映射表
+  const contractionMap: Record<string, string[]> = {
+    // 's = is (主谓一致)
+    "it's": ["it is", "its", "it s"],
+    "he's": ["he is", "he s"],
+    "she's": ["she is", "she s"],
+    "that's": ["that is", "that s"],
+    "what's": ["what is", "what s"],
+    "who's": ["who is", "who s"],
+    "where's": ["where is", "where s"],
+    "when's": ["when is", "when s"],
+    "why's": ["why is", "why s"],
+    "how's": ["how is", "how s"],
+    "there's": ["there is", "there s"],
+    "here's": ["here is", "here s"],
+    
+    // 'm = am
+    "i'm": ["i am", "im"],
+    
+    // 're = are
+    "you're": ["you are", "youre"],
+    "we're": ["we are", "were"],
+    "they're": ["they are", "theyre"],
+    
+    // 've = have
+    "i've": ["i have", "ive"],
+    "you've": ["you have", "youve"],
+    "we've": ["we have", "weve"],
+    "they've": ["they have", "theyve"],
+    
+    // 'd = would/had
+    "i'd": ["i would", "i had", "id"],
+    "you'd": ["you would", "you had", "youd"],
+    "he'd": ["he would", "he had", "hed"],
+    "she'd": ["she would", "she had", "shed"],
+    "we'd": ["we would", "we had", "wed"],
+    "they'd": ["they would", "they had", "theyd"],
+    
+    // 'll = will
+    "i'll": ["i will", "ill"],
+    "you'll": ["you will", "youll"],
+    "he'll": ["he will", "hell"],
+    "she'll": ["she will", "shell"],
+    "we'll": ["we will", "well"],
+    "they'll": ["they will", "theyll"],
+    
+    // n't = not
+    "don't": ["do not", "dont"],
+    "doesn't": ["does not", "doesnt"],
+    "didn't": ["did not", "didnt"],
+    "won't": ["will not", "wont"],
+    "wouldn't": ["would not", "wouldnt"],
+    "shouldn't": ["should not", "shouldnt"],
+    "couldn't": ["could not", "couldnt"],
+    "can't": ["cannot", "can not", "cant"],
+    "isn't": ["is not", "isnt"],
+    "aren't": ["are not", "arent"],
+    "wasn't": ["was not", "wasnt"],
+    "weren't": ["were not", "werent"],
+    "hasn't": ["has not", "hasnt"],
+    "haven't": ["have not", "havent"],
+    "hadn't": ["had not", "hadnt"],
+    
+    // let's = let us
+    "let's": ["let us", "lets"],
+  };
+  
+  // 检查是否是已知的缩写词
+  if (contractionMap[w]) {
+    results.push(...contractionMap[w]);
+  }
+  
+  // 通用模式匹配：处理一些未在映射表中的缩写词
+  // 模式1: word's -> word is / words (如: mom's -> mom is / moms)
+  const sMatch = w.match(/^(.+)'s$/);
+  if (sMatch && !contractionMap[w]) {
+    const base = sMatch[1];
+    // 如果是代词或常用词，展开为 is
+    if (['this', 'that', 'everything', 'something', 'nothing', 'everyone', 'someone', 'anyone', 'nobody', 'somebody', 'everybody', 'anybody'].includes(base)) {
+      results.push(`${base} is`);
+      results.push(`${base}s`);
+      results.push(`${base} s`);
+    }
+  }
+  
+  // 模式2: word'n't -> word not (处理一些不在映射表中的否定缩写)
+  const ntMatch = w.match(/^(.+)n't$/);
+  if (ntMatch && !contractionMap[w]) {
+    const base = ntMatch[1];
+    results.push(`${base} not`);
+    results.push(`${base}nt`);
+  }
+  
+  return results;
 };
 
 /**
@@ -970,42 +1091,56 @@ interface WordStatus {
 }
 
 // ============================================================
-// 烟花粒子组件
+// 烟花粒子组件 - 超级加强版
 // ============================================================
+
+// 单个粒子（带拖尾效果）
 interface ParticleProps {
   color: string;
   delay: number;
   startX: number;
-  direction: { x: number; y: number };
+  startY: number;
+  angle: number;
+  speed: number;
+  size: number;
 }
 
-const Particle: React.FC<ParticleProps> = ({ color, delay, startX, direction }) => {
+const Particle: React.FC<ParticleProps> = ({ color, delay, startX, startY, angle, speed, size }) => {
   const scale = useSharedValue(0);
   const opacity = useSharedValue(1);
   const translateX = useSharedValue(startX);
-  const translateY = useSharedValue(0);
+  const translateY = useSharedValue(startY);
+  const rotate = useSharedValue(0);
 
   useEffect(() => {
-    // 延迟启动
     const timeout = setTimeout(() => {
+      // 粒子爆炸
       scale.value = withSequence(
-        withSpring(1, { damping: 8 }),
-        withDelay(500, withTiming(0, { duration: 300 }))
+        withSpring(1.5, { damping: 6, stiffness: 200 }),
+        withDelay(600, withTiming(0.3, { duration: 800 }))
       );
       
-      translateX.value = withTiming(startX + direction.x * 100, { duration: 1200 });
-      translateY.value = withTiming(direction.y * 120, { duration: 1200 });
-      opacity.value = withDelay(800, withTiming(0, { duration: 400 }));
+      // 向外飞散
+      const distance = speed;
+      translateX.value = withTiming(startX + Math.cos(angle) * distance, { duration: 1500 });
+      translateY.value = withTiming(startY + Math.sin(angle) * distance, { duration: 1500 });
+      
+      // 旋转效果
+      rotate.value = withTiming(360, { duration: 1500 });
+      
+      // 淡出
+      opacity.value = withDelay(800, withTiming(0, { duration: 700 }));
     }, delay);
 
     return () => clearTimeout(timeout);
-  }, [delay, direction.x, direction.y, startX, scale, opacity, translateX, translateY]);
+  }, [delay, angle, speed, startX, startY, scale, opacity, translateX, translateY, rotate]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: translateX.value },
       { translateY: translateY.value },
       { scale: scale.value },
+      { rotate: `${rotate.value}deg` },
     ],
     opacity: opacity.value,
   }));
@@ -1015,10 +1150,14 @@ const Particle: React.FC<ParticleProps> = ({ color, delay, startX, direction }) 
       style={[
         {
           position: 'absolute',
-          width: 8,
-          height: 8,
-          borderRadius: 4,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
           backgroundColor: color,
+          shadowColor: color,
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.8,
+          shadowRadius: 4,
         },
         animatedStyle,
       ]}
@@ -1026,41 +1165,149 @@ const Particle: React.FC<ParticleProps> = ({ color, delay, startX, direction }) 
   );
 };
 
-// 烟花组件
+// 闪烁星星背景
+const Sparkle: React.FC<{ delay: number; x: number; y: number; color: string }> = ({ delay, x, y, color }) => {
+  const opacity = useSharedValue(0);
+  const scale = useSharedValue(0.5);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      // 持续闪烁
+      opacity.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 300 }),
+          withDelay(200, withTiming(0.3, { duration: 300 })),
+          withDelay(100, withTiming(1, { duration: 200 })),
+          withDelay(300, withTiming(0, { duration: 400 }))
+        ),
+        -1,
+        false
+      );
+      scale.value = withRepeat(
+        withSequence(
+          withSpring(1.2),
+          withTiming(0.8)
+        ),
+        -1,
+        true
+      );
+    }, delay);
+
+    return () => clearTimeout(timeout);
+  }, [delay, opacity, scale]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        {
+          position: 'absolute',
+          left: x,
+          top: y,
+          width: 6,
+          height: 6,
+        },
+        animatedStyle,
+      ]}
+    >
+      <FontAwesome6 name="star" size={6} color={color} />
+    </Animated.View>
+  );
+};
+
+// 烟花爆炸组件
 interface FireworkProps {
   x: number;
+  y: number;
   delay: number;
   colors: string[];
+  particleCount?: number;
 }
 
-const Firework: React.FC<FireworkProps> = ({ x, delay, colors }) => {
+const Firework: React.FC<FireworkProps> = ({ x, y, delay, colors, particleCount = 24 }) => {
   const particles = useMemo(() => {
     const result = [];
-    for (let i = 0; i < 12; i++) {
-      const angle = (i * 30) * Math.PI / 180;
+    for (let i = 0; i < particleCount; i++) {
+      const angle = (i / particleCount) * Math.PI * 2;
       result.push({
         id: i,
         color: colors[i % colors.length],
-        direction: {
-          x: Math.cos(angle),
-          y: Math.sin(angle) - 0.5, // 稍微向上偏移
-        },
+        angle,
+        speed: 80 + Math.random() * 60, // 随机速度
+        size: 6 + Math.random() * 6, // 随机大小
+      });
+    }
+    return result;
+  }, [colors, particleCount]);
+
+  return (
+    <View style={{ position: 'absolute', left: x, top: y }} pointerEvents="none">
+      {particles.map((p) => (
+        <Particle
+          key={p.id}
+          color={p.color}
+          delay={delay + Math.random() * 100}
+          startX={0}
+          startY={0}
+          angle={p.angle}
+          speed={p.speed}
+          size={p.size}
+        />
+      ))}
+    </View>
+  );
+};
+
+// 主烟花秀组件
+const FireworkShow: React.FC = () => {
+  const colors = useMemo(() => [
+    '#FFD700', // 金色
+    '#FF6B6B', // 珊瑚红
+    '#4ECDC4', // 青绿
+    '#A78BFA', // 紫罗兰
+    '#F472B6', // 粉红
+    '#60A5FA', // 天蓝
+    '#FBBF24', // 橙黄
+    '#34D399', // 翠绿
+  ], []);
+
+  // 随机生成星星位置
+  const sparkles = useMemo(() => {
+    const result = [];
+    for (let i = 0; i < 20; i++) {
+      result.push({
+        id: i,
+        x: Math.random() * 380,
+        y: Math.random() * 400,
+        delay: Math.random() * 500,
+        color: colors[Math.floor(Math.random() * colors.length)],
       });
     }
     return result;
   }, [colors]);
 
   return (
-    <View style={{ position: 'absolute', left: x, bottom: 100 }}>
-      {particles.map((p) => (
-        <Particle
-          key={p.id}
-          color={p.color}
-          delay={delay + p.id * 20}
-          startX={0}
-          direction={p.direction}
-        />
+    <View style={completionStyles.fireworkContainer} pointerEvents="none">
+      {/* 背景星星闪烁 */}
+      {sparkles.map((s) => (
+        <Sparkle key={s.id} delay={s.delay} x={s.x} y={s.y} color={s.color} />
       ))}
+      
+      {/* 多组烟花，不同位置和延迟 */}
+      <Firework x={80} y={120} delay={0} colors={colors} particleCount={28} />
+      <Firework x={200} y={80} delay={150} colors={colors} particleCount={32} />
+      <Firework x={320} y={140} delay={300} colors={colors} particleCount={28} />
+      <Firework x={140} y={200} delay={450} colors={colors} particleCount={24} />
+      <Firework x={260} y={180} delay={600} colors={colors} particleCount={26} />
+      
+      {/* 第二波烟花 */}
+      <Firework x={60} y={250} delay={800} colors={colors} particleCount={20} />
+      <Firework x={200} y={220} delay={950} colors={colors} particleCount={30} />
+      <Firework x={340} y={260} delay={1100} colors={colors} particleCount={20} />
     </View>
   );
 };
@@ -1085,15 +1332,6 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
 }) => {
   const fadeAnim = useRef(new RNAnimated.Value(0)).current;
   const scaleAnim = useRef(new RNAnimated.Value(0.8)).current;
-
-  // 烟花颜色
-  const fireworkColors = useMemo(() => [
-    '#FFD700', // 金色
-    '#FF6B6B', // 红色
-    '#4ECDC4', // 青色
-    '#A78BFA', // 紫色
-    '#F472B6', // 粉色
-  ], []);
 
   // 获取表扬文案
   const avgTime = duration / Math.max(sentenceCount, 1);
@@ -1162,10 +1400,8 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
 
   return (
     <View style={completionStyles.completionOverlay}>
-      {/* 烟花动画 */}
-      <Firework x={60} delay={0} colors={fireworkColors} />
-      <Firework x={200} delay={200} colors={fireworkColors} />
-      <Firework x={340} delay={400} colors={fireworkColors} />
+      {/* 烟花秀动画 */}
+      <FireworkShow />
 
       {/* 背景遮罩 */}
       <TouchableOpacity 
@@ -1241,6 +1477,14 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
 
 // 烟花动画相关样式（需要在 createStyles 外部定义）
 const completionStyles = StyleSheet.create({
+  fireworkContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
+  },
   completionOverlay: {
     position: 'absolute',
     top: 0,
