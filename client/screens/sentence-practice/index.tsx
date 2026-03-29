@@ -374,6 +374,12 @@ export default function SentencePracticeScreen() {
   const [voicePracticeMode, setVoicePracticeMode] = useState<VoicePracticeMode>('auto-match');
   const voicePracticeModeRef = useRef<VoicePracticeMode>('auto-match'); // 用于在回调中获取最新值
   
+  // 跟随朗读模式的当前进度索引（必须按顺序念）
+  const followAlongIndexRef = useRef<number>(0);
+  
+  // 智能引导模式的当前攻克单词索引
+  const smartGuideIndexRef = useRef<number>(0);
+  
   // 语音识别结果
   const [showVoiceResult, setShowVoiceResult] = useState(false);
   const [voiceResultText, setVoiceResultText] = useState('');
@@ -395,6 +401,12 @@ export default function SentencePracticeScreen() {
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
+
+  // 当切换句子时，重置跟随朗读和智能引导的进度
+  useEffect(() => {
+    followAlongIndexRef.current = 0;
+    smartGuideIndexRef.current = 0;
+  }, [currentIndex]);
 
   // 初始化录音权限
   useEffect(() => {
@@ -418,6 +430,19 @@ export default function SentencePracticeScreen() {
       console.log('[语音答题模式] 已加载:', mode);
     })();
   }, []);
+
+  // 当模式切换时，重置相关状态并显示提示
+  useEffect(() => {
+    // 重置进度索引
+    followAlongIndexRef.current = 0;
+    smartGuideIndexRef.current = 0;
+    
+    // 清除语音结果
+    setShowVoiceResult(false);
+    setVoiceTargetWord(null);
+    
+    console.log('[语音答题模式] 模式切换，重置进度');
+  }, [voicePracticeMode]);
 
   // 更新剩余单词数量
   useEffect(() => {
@@ -626,11 +651,23 @@ export default function SentencePracticeScreen() {
     currentIndexRef.current = currentIndex;
   }, [currentIndex]);
 
+  // 每次页面获得焦点时重新加载语音答题模式配置
   useFocusEffect(
     useCallback(() => {
       isMountedRef.current = true;
       isExitingRef.current = false; // 重置退出标记
       hasShownProgressAlert.current = false; // 重置进度弹窗标记，允许每次进入时检查进度
+      
+      // 重新加载语音答题模式配置（用户可能在设置页面修改了）
+      (async () => {
+        const mode = await getVoicePracticeMode();
+        if (mode !== voicePracticeModeRef.current) {
+          console.log('[语音答题模式] 检测到模式变化:', voicePracticeModeRef.current, '->', mode);
+          setVoicePracticeMode(mode);
+          voicePracticeModeRef.current = mode;
+        }
+      })();
+      
       fetchSentences();
       // 注意：fetchPerfectRecordings 在 useEffect 中根据 currentSentence?.id 变化时调用
 
@@ -2064,6 +2101,29 @@ export default function SentencePracticeScreen() {
       await pauseAudio();
     }
 
+    // 跟随朗读模式：显示当前要念的单词
+    if (voicePracticeModeRef.current === 'follow-along') {
+      const incompleteIndices = wordStatusesRef.current
+        .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
+        .filter(idx => idx !== -1);
+      
+      if (incompleteIndices.length > 0) {
+        const targetWords = currentSentence.text
+          .toLowerCase()
+          .replace(/[^\w\s'-]/g, '')
+          .split(' ')
+          .filter(w => w.length > 0);
+        
+        const currentTargetWord = targetWords[followAlongIndexRef.current];
+        if (currentTargetWord) {
+          setVoiceTargetWord(currentTargetWord);
+          setVoiceWordMatches([{ word: currentTargetWord, isMatch: false }]);
+          setVoiceSentenceSuggestion(`请念: "${currentTargetWord}"`);
+          setShowVoiceResult(true);
+        }
+      }
+    }
+
     try {
       // 先清理可能存在的旧录音对象
       if (recordingRef.current) {
@@ -2131,95 +2191,139 @@ export default function SentencePracticeScreen() {
           
           console.log(`[语音识别] 模式: ${mode}, 识别结果: ${recognizedText}`);
           
+          // 获取当前句子中的所有非标点单词
+          const targetWords = currentSentence.text
+            .toLowerCase()
+            .replace(/[^\w\s'-]/g, '')
+            .split(' ')
+            .filter(w => w.length > 0);
+          
+          // 获取当前未完成的单词索引
+          const incompleteIndices = wordStatusesRef.current
+            .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
+            .filter(idx => idx !== -1);
+          
           // 根据语音答题模式采用不同的处理逻辑
           if (mode === 'auto-match') {
             // ===== 方案A：自动匹配模式 =====
-            // 每次识别后自动匹配所有未完成单词，发音容错
+            // 自由念读，念到哪匹配到哪，发音容错
             
-            // 获取当前未完成的单词
-            const incompleteWords = wordStatusesRef.current.filter(ws => !ws.isPunctuation && !ws.revealed);
+            const { score, wordMatches } = calculateMatchScore(recognizedText, currentSentence.text);
+            const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
             
-            if (incompleteWords.length === 0) {
-              // 已经全部完成
+            if (matchedWords.length > 0) {
+              handleLongTextInput(matchedWords.join(' '));
+            }
+            
+            // 获取新的剩余未完成单词
+            const newIncompleteIndices = wordStatusesRef.current
+              .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
+              .filter(idx => idx !== -1);
+            
+            if (newIncompleteIndices.length > 0) {
+              sentenceHadVoiceErrorRef.current = true;
+              const unmatchedWords = wordMatches.filter(w => !w.isMatch);
+              setVoiceResultText(recognizedText);
+              setVoiceMatchScore(score);
+              setVoiceWordMatches(unmatchedWords);
+              setVoiceSentenceSuggestion(`还剩 ${newIncompleteIndices.length} 个单词，继续念`);
+              setShowVoiceResult(true);
+            } else {
+              setShowVoiceResult(false);
+            }
+            
+          } else if (mode === 'follow-along') {
+            // ===== 方案B：跟随朗读模式 =====
+            // 必须按顺序念读，不能跳过前面的单词
+            
+            // 找到第一个未完成的单词索引
+            const firstIncompleteIdx = incompleteIndices[0];
+            if (firstIncompleteIdx === undefined) {
+              setShowVoiceResult(false);
+              return;
+            }
+            
+            // 获取当前应该念的单词
+            const currentTargetWord = targetWords[followAlongIndexRef.current];
+            
+            // 检查识别结果是否包含当前目标单词
+            const recognizedWords = recognizedText.split(' ').filter(w => w.length > 0);
+            let foundCurrentWord = false;
+            
+            for (const recWord of recognizedWords) {
+              if (wordsMatch(recWord, currentTargetWord)) {
+                foundCurrentWord = true;
+                break;
+              }
+            }
+            
+            if (foundCurrentWord) {
+              // 匹配成功，填入这个单词
+              handleLongTextInput(currentTargetWord);
+              
+              // 移动到下一个单词
+              followAlongIndexRef.current++;
+              
+              // 检查是否还有未完成的单词
+              const newIncompleteIndices = wordStatusesRef.current
+                .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
+                .filter(idx => idx !== -1);
+              
+              if (newIncompleteIndices.length === 0) {
+                // 全部完成
+                setShowVoiceResult(false);
+                setVoiceSentenceSuggestion('');
+              } else {
+                // 显示下一个目标单词
+                const nextWord = targetWords[followAlongIndexRef.current];
+                setVoiceTargetWord(nextWord);
+                setVoiceResultText(recognizedText);
+                setVoiceMatchScore(100);
+                setVoiceWordMatches([{ word: nextWord, isMatch: false }]);
+                setVoiceSentenceSuggestion(`请念: "${nextWord}"`);
+                setShowVoiceResult(true);
+              }
+            } else {
+              // 没有匹配到当前目标单词
+              sentenceHadVoiceErrorRef.current = true;
+              setVoiceResultText(recognizedText);
+              setVoiceMatchScore(0);
+              setVoiceWordMatches([{ word: currentTargetWord, isMatch: false }]);
+              setVoiceSentenceSuggestion(`请念: "${currentTargetWord}"（按顺序念）`);
+              setShowVoiceResult(true);
+            }
+            
+          } else if (mode === 'smart-guide') {
+            // ===== 方案C：智能引导模式 =====
+            // 自动播放未完成部分的音频，然后等待用户跟读
+            
+            // 获取第一个未完成的单词
+            const firstIncompleteIdx = incompleteIndices[0];
+            if (firstIncompleteIdx === undefined) {
               setShowVoiceResult(false);
               return;
             }
             
             // 计算匹配度
             const { score, wordMatches } = calculateMatchScore(recognizedText, currentSentence.text);
-            
-            // 提取匹配成功的单词
             const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
             
-            // 如果有匹配成功的单词，直接填入
             if (matchedWords.length > 0) {
               handleLongTextInput(matchedWords.join(' '));
             }
             
-            // 获取新的剩余未完成单词（从最新的 wordStatusesRef）
-            const newIncompleteWords = wordStatusesRef.current.filter(ws => !ws.isPunctuation && !ws.revealed);
+            // 获取新的剩余未完成单词
+            const newIncompleteIndices = wordStatusesRef.current
+              .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
+              .filter(idx => idx !== -1);
             
-            // 如果还有未匹配单词，显示结果卡片
-            if (newIncompleteWords.length > 0) {
+            if (newIncompleteIndices.length > 0) {
               sentenceHadVoiceErrorRef.current = true;
-              
-              // 获取分段建议
-              const suggestion = getSentenceSegmentSuggestion(currentSentence.text, score);
-              
-              // 只显示未匹配的单词（红色块块）
               const unmatchedWords = wordMatches.filter(w => !w.isMatch);
-              
               setVoiceResultText(recognizedText);
               setVoiceMatchScore(score);
               setVoiceWordMatches(unmatchedWords);
-              setVoiceSentenceSuggestion(suggestion || `还剩 ${newIncompleteWords.length} 个单词`);
-              setShowVoiceResult(true);
-            } else {
-              // 全部完成，隐藏结果卡片
-              setShowVoiceResult(false);
-            }
-            
-          } else if (mode === 'follow-along') {
-            // ===== 方案B：跟随朗读模式 =====
-            // 边听边念，实时显示进度（当前先使用与A相同的逻辑）
-            
-            const { score, wordMatches } = calculateMatchScore(recognizedText, currentSentence.text);
-            const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
-            
-            if (matchedWords.length > 0) {
-              handleLongTextInput(matchedWords.join(' '));
-            }
-            
-            const unmatchedWords = wordMatches.filter(w => !w.isMatch);
-            if (unmatchedWords.length > 0) {
-              sentenceHadVoiceErrorRef.current = true;
-              setVoiceResultText(recognizedText);
-              setVoiceMatchScore(score);
-              setVoiceWordMatches(unmatchedWords);
-              setVoiceSentenceSuggestion(`跟着音频再试一次`);
-              setShowVoiceResult(true);
-            } else {
-              setShowVoiceResult(false);
-            }
-            
-          } else if (mode === 'smart-guide') {
-            // ===== 方案C：智能引导模式 =====
-            // 识别后自动播放未完成部分的音频
-            
-            const { score, wordMatches } = calculateMatchScore(recognizedText, currentSentence.text);
-            const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
-            
-            if (matchedWords.length > 0) {
-              handleLongTextInput(matchedWords.join(' '));
-            }
-            
-            const unmatchedWords = wordMatches.filter(w => !w.isMatch);
-            if (unmatchedWords.length > 0) {
-              sentenceHadVoiceErrorRef.current = true;
-              setVoiceResultText(recognizedText);
-              setVoiceMatchScore(score);
-              setVoiceWordMatches(unmatchedWords);
-              setVoiceSentenceSuggestion(`听一下再跟读`);
+              setVoiceSentenceSuggestion(`听听怎么读，再跟读`);
               setShowVoiceResult(true);
               
               // 方案C特有：自动播放原音频帮助用户跟读
@@ -2227,7 +2331,7 @@ export default function SentencePracticeScreen() {
                 if (!isPlaying) {
                   playAudio();
                 }
-              }, 500);
+              }, 800);
             } else {
               setShowVoiceResult(false);
             }
