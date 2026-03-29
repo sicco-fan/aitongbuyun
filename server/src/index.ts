@@ -34,11 +34,14 @@ app.get('/api/v1/health', (req, res) => {
 app.use('/api/v1/upload', uploadRouter);
 app.use('/api/v1/materials/download', videoDownloadRouter);
 app.use('/api/v1/materials', materialsRouter);
-app.use('/api/v1/users', usersRouter);  // 包含头像上传，需要在 body parser 之前
 
 // Body parser - 放在文件上传路由之后
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// 用户路由 - 放在 body parser 之后，因为 PATCH /me 需要 JSON body
+// 头像上传接口使用 multer，不受 body parser 影响
+app.use('/api/v1/users', usersRouter);
 
 // sentence-files 路由 - 放在 body parser 之后，因为有些接口需要解析 JSON body
 app.use('/api/v1/sentence-files', sentenceFilesRouter);
