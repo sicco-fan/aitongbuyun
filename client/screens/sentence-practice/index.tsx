@@ -1018,11 +1018,18 @@ const calculateMatchScore = (
   }
   
   // 计算识别结果中每个词的匹配状态
+  // 使用原始识别文本来显示，保持缩写词格式（如 don't, what's）
+  const originalWords = recognizedText.split(/\s+/).filter(w => w.length > 0);
   const recognizedWordMatches: Array<{ word: string; isMatch: boolean }> = 
-    recognizedWords.map((word, idx) => ({
-      word,
-      isMatch: usedIndices.has(idx)
-    }));
+    originalWords.map((word, idx) => {
+      // 清理原始词来匹配 usedIndices
+      const cleanedWord = cleanText(word);
+      const cleanedIdx = recognizedWords.slice(0, idx + 1).filter(w => w.length > 0).length - 1;
+      return {
+        word, // 保留原始格式显示
+        isMatch: usedIndices.has(cleanedIdx) || recognizedWords.some((rw, ri) => usedIndices.has(ri) && rw === cleanedWord)
+      };
+    });
   
   const matchedCount = wordMatches.filter(w => w.isMatch).length;
   const score = Math.round((matchedCount / targetWords.length) * 100);
@@ -4130,7 +4137,7 @@ export default function SentencePracticeScreen() {
           )}
 
           {/* 语音识别结果 - 显示用户念的内容，匹配到的单词标绿 */}
-          {showVoiceResult && recognizedWordMatches.length > 0 && (
+          {showVoiceResult && voiceResultText.length > 0 && (
             <Animated.View 
               entering={FadeInDown.duration(300)}
               style={styles.voiceResultCard}
@@ -4140,18 +4147,20 @@ export default function SentencePracticeScreen() {
                   <ThemedText variant="small" color={theme.textSecondary}>
                     🎤 你说：
                   </ThemedText>
-                  {recognizedWordMatches.map((wordMatch, idx) => (
-                    <ThemedText 
-                      key={idx}
-                      variant="small" 
-                      color={wordMatch.isMatch ? theme.success : theme.textSecondary}
-                      style={{ 
-                        fontWeight: wordMatch.isMatch ? '600' : '400',
-                      }}
-                    >
-                      {wordMatch.word}{' '}
+                  <ThemedText 
+                    variant="small" 
+                    color={voiceMatchScore >= 80 ? theme.success : voiceMatchScore >= 50 ? theme.accent : theme.textSecondary}
+                    style={{ 
+                      fontWeight: voiceMatchScore >= 80 ? '600' : '400',
+                    }}
+                  >
+                    {voiceResultText}
+                  </ThemedText>
+                  {voiceMatchScore > 0 && voiceMatchScore < 100 && (
+                    <ThemedText variant="small" color={theme.textMuted} style={{ marginLeft: 8 }}>
+                      ({voiceMatchScore}%)
                     </ThemedText>
-                  ))}
+                  )}
                 </View>
                 <TouchableOpacity onPress={() => setShowVoiceResult(false)} style={{ paddingTop: 2 }}>
                   <FontAwesome6 name="times" size={14} color={theme.textMuted} />
@@ -4160,7 +4169,7 @@ export default function SentencePracticeScreen() {
 
               {/* 方案B和方案C才显示提示 */}
               {voiceWordMatches.length > 0 && voiceSentenceSuggestion && (
-                <View style={styles.segmentSuggestionContainer}>
+                <View style={styles.segmentSuggestionContainer">
                   <FontAwesome6 name="lightbulb" size={14} color={theme.accent} />
                   <ThemedText variant="small" color={theme.textSecondary} style={{ flex: 1, marginLeft: 6 }}>
                     {voiceSentenceSuggestion}

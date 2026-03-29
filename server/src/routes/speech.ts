@@ -18,6 +18,92 @@ const pool = new Pool({
 // 26个字母（不区分大小写）
 const LETTERS = 'abcdefghijklmnopqrstuvwxyz';
 
+// 常见英语缩写词修复映射（ASR 常见错误）
+// 格式：[错误模式, 正确形式]
+const CONTRACTION_FIXES: [RegExp, string][] = [
+  // don't, doesn't, didn't, won't, wouldn't, shouldn't, couldn't, can't, isn't, aren't, wasn't, weren't, haven't, hasn't, hadn't
+  [/don\s*t\b/gi, "don't"],
+  [/doesn\s*t\b/gi, "doesn't"],
+  [/didn\s*t\b/gi, "didn't"],
+  [/won\s*t\b/gi, "won't"],
+  [/wouldn\s*t\b/gi, "wouldn't"],
+  [/shouldn\s*t\b/gi, "shouldn't"],
+  [/couldn\s*t\b/gi, "couldn't"],
+  [/can\s*t\b/gi, "can't"],
+  [/isn\s*t\b/gi, "isn't"],
+  [/aren\s*t\b/gi, "aren't"],
+  [/wasn\s*t\b/gi, "wasn't"],
+  [/weren\s*t\b/gi, "weren't"],
+  [/haven\s*t\b/gi, "haven't"],
+  [/hasn\s*t\b/gi, "hasn't"],
+  [/hadn\s*t\b/gi, "hadn't"],
+  
+  // what's, that's, it's, there's, here's, who's, how's, where's, when's
+  [/what\s*s\b/gi, "what's"],
+  [/that\s*s\b/gi, "that's"],
+  [/it\s*s\b/gi, "it's"],
+  [/there\s*s\b/gi, "there's"],
+  [/here\s*s\b/gi, "here's"],
+  [/who\s*s\b/gi, "who's"],
+  [/how\s*s\b/gi, "how's"],
+  [/where\s*s\b/gi, "where's"],
+  [/when\s*s\b/gi, "when's"],
+  
+  // I'm, you're, we're, they're, he's, she's
+  [/i\s*m\b/gi, "I'm"],
+  [/you\s*re\b/gi, "you're"],
+  [/we\s*re\b/gi, "we're"],
+  [/they\s*re\b/gi, "they're"],
+  [/he\s*s\b/gi, "he's"],
+  [/she\s*s\b/gi, "she's"],
+  
+  // I'll, you'll, we'll, they'll, he'll, she'll, it'll
+  [/i\s*ll\b/gi, "I'll"],
+  [/you\s*ll\b/gi, "you'll"],
+  [/we\s*ll\b/gi, "we'll"],
+  [/they\s*ll\b/gi, "they'll"],
+  [/he\s*ll\b/gi, "he'll"],
+  [/she\s*ll\b/gi, "she'll"],
+  [/it\s*ll\b/gi, "it'll"],
+  
+  // I've, you've, we've, they've
+  [/i\s*ve\b/gi, "I've"],
+  [/you\s*ve\b/gi, "you've"],
+  [/we\s*ve\b/gi, "we've"],
+  [/they\s*ve\b/gi, "they've"],
+  
+  // I'd, you'd, we'd, they'd, he'd, she'd, it'd
+  [/i\s*d\b/gi, "I'd"],
+  [/you\s*d\b/gi, "you'd"],
+  [/we\s*d\b/gi, "we'd"],
+  [/they\s*d\b/gi, "they'd"],
+  [/he\s*d\b/gi, "he'd"],
+  [/she\s*d\b/gi, "she'd"],
+  [/it\s*d\b/gi, "it'd"],
+  
+  // let's
+  [/let\s*s\b/gi, "let's"],
+  
+  // 其他常见
+  [/gon\s*na\b/gi, "gonna"],
+  [/got\s*ta\b/gi, "gotta"],
+  [/wan\s*na\b/gi, "wanna"],
+  [/kind\s*a\b/gi, "kinda"],
+  [/out\s*ta\b/gi, "outta"],
+];
+
+/**
+ * 修复 ASR 识别结果中的缩写词
+ * 例如：don t → don't, what s → what's
+ */
+function fixContractions(text: string): string {
+  let fixed = text;
+  for (const [pattern, replacement] of CONTRACTION_FIXES) {
+    fixed = fixed.replace(pattern, replacement);
+  }
+  return fixed;
+}
+
 // 中国人常见发音错误映射（来源 → 可能被识别为）
 const CHINESE_PRONUNCIATION_ERRORS: Record<string, string[]> = {
   // r/l 混淆
@@ -293,8 +379,14 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       lang: 'en', // 固定识别为英语
     } as any);
 
-    const recognizedText = result.text.trim();
-    console.log('[ASR] 原始识别结果:', recognizedText);
+    const rawRecognizedText = result.text.trim();
+    console.log('[ASR] 原始识别结果:', rawRecognizedText);
+    
+    // 自动修复缩写词（don t → don't, what s → what's 等）
+    const recognizedText = fixContractions(rawRecognizedText);
+    if (recognizedText !== rawRecognizedText) {
+      console.log('[ASR] 缩写词修复:', rawRecognizedText, '→', recognizedText);
+    }
     
     if (!recognizedText) {
       return res.json({ 
