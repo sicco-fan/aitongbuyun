@@ -983,15 +983,17 @@ const calculateMatchScore = (
   wordMatches: Array<{ word: string; isMatch: boolean }>;
   recognizedWordMatches: Array<{ word: string; isMatch: boolean }>;
 } => {
-  // 预处理：转小写，移除多余空格和标点
-  // 注意：需要将引号类字符替换为空格，而不是简单移除，否则 'word' 会变成 'word'
-  // 注意：需要将连字符替换为空格，这样 cat-like 会变成 cat like，可以和语音识别结果匹配
+  // 预处理：转小写，统一引号格式，移除多余空格和标点
+  // 【重要】与 extractWords 保持一致，保留单词内部的单引号（如 don't, what's）
   const cleanText = (text: string) => 
     text.toLowerCase()
-      .replace(/['"″′‵ʹʻʼʽ＇`´]/g, ' ') // 将所有单引号类字符替换为空格
-      .replace(/["″‶]/g, ' ') // 将所有双引号类字符替换为空格
-      .replace(/[—–−-]/g, ' ') // 将所有破折号和连字符替换为空格（这样 cat-like 变成 cat like）
-      .replace(/[^\w\s]/g, '') // 移除其他标点符号（保留字母、数字、空格）
+      // 统一所有类型的单引号为标准单引号（与 extractWords 一致）
+      .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035\u02B9\u02BB\u02BC\u02BD\uFF07\u0060\u00B4]/g, "'")
+      // 移除独立引号（单词外部的引号，如 'hello' 中的引号）
+      .replace(/(?<![a-z])'(?![a-z])/g, ' ')
+      .replace(/[""„‶❝❞]/g, ' ') // 将双引号替换为空格
+      .replace(/[—–−]/g, ' ') // 将破折号替换为空格
+      .replace(/[^\w\s']/g, '') // 移除标点符号（保留字母、数字、空格、单引号）
       .replace(/\s+/g, ' ')
       .trim();
   
@@ -2980,13 +2982,16 @@ export default function SentencePracticeScreen() {
     incompleteWords.sort((a, b) => a.index - b.index);
     
     // 提取输入中的单词（去除标点，转小写）
-    // 注意：需要将引号类字符替换为空格，与 calculateMatchScore 保持一致
+    // 【重要】与 extractWords 和 cleanText 保持一致，保留单词内部的单引号
     const inputWords = text
       .toLowerCase()
-      .replace(/['"″′‵ʹʻʼʽ＇`´]/g, ' ') // 将所有单引号类字符替换为空格
-      .replace(/["″‶]/g, ' ') // 将所有双引号类字符替换为空格
-      .replace(/[—–−]/g, ' ') // 将所有破折号类字符替换为空格
-      .replace(/[^\w\s]/g, '') // 移除其他标点符号
+      // 统一所有类型的单引号为标准单引号
+      .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035\u02B9\u02BB\u02BC\u02BD\uFF07\u0060\u00B4]/g, "'")
+      // 移除独立引号（单词外部的引号）
+      .replace(/(?<![a-z])'(?![a-z])/g, ' ')
+      .replace(/[""„‶❝❞]/g, ' ') // 将双引号替换为空格
+      .replace(/[—–−]/g, ' ') // 将破折号替换为空格
+      .replace(/[^\w\s']/g, '') // 移除标点符号（保留字母、数字、空格、单引号）
       .split(/\s+/)
       .filter(w => w.length > 0);
     
