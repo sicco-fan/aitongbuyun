@@ -3543,21 +3543,20 @@ export default function SentencePracticeScreen() {
     // 提交最终学习数据
     submitLearningData(true, completionDuration);
     
-    // 课程模式：如果有下一课，跳转到下一课
+    // 课程模式：如果有下一课，跳转到下一课（lesson-practice 页面，可生成音频）
     if (sourceType === 'lesson' && nextLessonId) {
       console.log(`[课程学习] 跳转到下一课: 第${nextLessonNumber}课 - ${nextLessonTitle}`);
-      router.replace('/lesson-learning', {
+      router.replace('/lesson-practice', {
         lessonId: nextLessonId.toString(),
         title: nextLessonTitle,
         courseId: courseId,
         courseTitle: courseTitle,
         lessonNumber: nextLessonNumber.toString(),
-        voiceId: voiceId,
       });
     } else {
       router.back();
     }
-  }, [submitLearningData, completionDuration, router, sourceType, nextLessonId, nextLessonNumber, nextLessonTitle, courseId, courseTitle, voiceId]);
+  }, [submitLearningData, completionDuration, router, sourceType, nextLessonId, nextLessonNumber, nextLessonTitle, courseId, courseTitle]);
 
   // 倒计时自动返回
   useEffect(() => {
