@@ -853,11 +853,12 @@ const calculateMatchScore = (
 } => {
   // 预处理：转小写，移除多余空格和标点
   // 注意：需要将引号类字符替换为空格，而不是简单移除，否则 'word' 会变成 'word'
+  // 注意：需要将连字符替换为空格，这样 cat-like 会变成 cat like，可以和语音识别结果匹配
   const cleanText = (text: string) => 
     text.toLowerCase()
       .replace(/['"″′‵ʹʻʼʽ＇`´]/g, ' ') // 将所有单引号类字符替换为空格
       .replace(/["″‶]/g, ' ') // 将所有双引号类字符替换为空格
-      .replace(/[—–−]/g, ' ') // 将所有破折号类字符替换为空格
+      .replace(/[—–−-]/g, ' ') // 将所有破折号和连字符替换为空格（这样 cat-like 变成 cat like）
       .replace(/[^\w\s]/g, '') // 移除其他标点符号（保留字母、数字、空格）
       .replace(/\s+/g, ' ')
       .trim();
