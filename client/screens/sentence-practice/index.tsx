@@ -1291,7 +1291,7 @@ export default function SentencePracticeScreen() {
 
       const uploadData = await uploadResponse.json();
 
-      if (!uploadData.success || !uploadData.key) {
+      if (!uploadData.key) {
         console.error('上传完美发音录音失败:', uploadData);
         return;
       }
