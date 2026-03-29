@@ -155,17 +155,58 @@ function extractJSON(content: string): string {
 
 /**
  * 修复截断的 JSON
+ * 策略：找到最后一个完整的对象，丢弃截断部分
  */
 function fixTruncatedJSON(jsonStr: string): string {
+  console.log('[AI解析] 尝试修复截断的 JSON...');
+  
+  // 策略1：尝试找到最后一个完整的 lesson 对象
+  // 查找 "lesson_number": 或 "n": 的位置，找到最后一个完整的对象
+  
+  // 匹配完整 lesson 对象的正则（简化版）
+  // 找到最后一个 }, 后面跟着 { 或者 ]
+  
   let fixed = jsonStr;
   
-  // 计算括号嵌套层级
+  // 如果在字符串中间截断，需要先关闭字符串
+  // 计算引号数量（偶数表示字符串都闭合了）
+  let quoteCount = 0;
+  let i = 0;
+  while (i < fixed.length) {
+    if (fixed[i] === '\\' && i + 1 < fixed.length) {
+      i += 2; // 跳过转义字符
+      continue;
+    }
+    if (fixed[i] === '"') {
+      quoteCount++;
+    }
+    i++;
+  }
+  
+  // 如果引号数量是奇数，说明字符串未闭合
+  if (quoteCount % 2 === 1) {
+    // 找到最后一个完整的句子对象并截断
+    // 查找最后一个 }, 或 }], 或 "sentences": 的位置
+    const lastCompleteSentence = fixed.lastIndexOf('"},');
+    const lastCompleteSentences = fixed.lastIndexOf('"}]');
+    
+    if (lastCompleteSentences > lastCompleteSentence) {
+      // 找到了完整的句子数组结束
+      fixed = fixed.substring(0, lastCompleteSentences + 3); // 包含 "}]
+    } else if (lastCompleteSentence > 0) {
+      // 找到了完整的句子结束，但数组未闭合
+      fixed = fixed.substring(0, lastCompleteSentence + 2); // 包含 "}
+    }
+  }
+  
+  // 计算当前括号嵌套情况
   let depth = 0;
   let inString = false;
   let escapeNext = false;
+  const bracketStack: string[] = []; // 记录括号栈
   
-  for (let i = 0; i < fixed.length; i++) {
-    const char = fixed[i];
+  for (let j = 0; j < fixed.length; j++) {
+    const char = fixed[j];
     
     if (escapeNext) {
       escapeNext = false;
@@ -183,31 +224,48 @@ function fixTruncatedJSON(jsonStr: string): string {
     }
     
     if (!inString) {
-      if (char === '{' || char === '[') depth++;
-      if (char === '}' || char === ']') depth--;
+      if (char === '{') {
+        depth++;
+        bracketStack.push('}');
+      } else if (char === '[') {
+        depth++;
+        bracketStack.push(']');
+      } else if (char === '}' || char === ']') {
+        depth--;
+        bracketStack.pop();
+      }
     }
   }
   
-  console.log('[AI解析] JSON 深度:', depth, '是否在字符串中:', inString);
+  console.log('[AI解析] JSON 深度:', depth, '括号栈:', bracketStack.length);
   
-  // 如果在字符串中被截断，先关闭字符串
-  if (inString) {
-    fixed += '"';
-  }
-  
-  // 关闭未闭合的括号
-  while (depth > 0) {
-    // 猜测需要关闭的是对象还是数组
-    // 简单策略：交替关闭
-    if (depth % 2 === 0) {
-      fixed += ']';
-    } else {
-      fixed += '}';
-    }
-    depth--;
+  // 按正确的顺序关闭未闭合的括号
+  if (bracketStack.length > 0) {
+    // 从栈顶开始关闭（后进先出）
+    fixed += bracketStack.reverse().join('');
   }
   
   console.log('[AI解析] 修复后的 JSON 长度:', fixed.length);
+  
+  // 验证修复后的 JSON 是否有效
+  try {
+    JSON.parse(fixed);
+    console.log('[AI解析] JSON 修复成功');
+  } catch (e) {
+    console.log('[AI解析] JSON 修复后仍无效，尝试其他策略...');
+    
+    // 最后的策略：只保留第一个完整的 lesson 对象
+    const firstLessonMatch = fixed.match(/\{"(?:lesson_number|n)":\d+/);
+    if (firstLessonMatch) {
+      // 找到第一个 lesson 的开始位置
+      const startIdx = firstLessonMatch.index!;
+      // 尝试找到第一个完整的 lesson（简化：只取前 5000 字符）
+      fixed = '[' + fixed.substring(startIdx, Math.min(startIdx + 5000, fixed.length));
+      // 重新闭合
+      fixed = fixTruncatedJSON(fixed);
+    }
+  }
+  
   return fixed;
 }
 
