@@ -156,13 +156,77 @@ const wordsStartWith = (prefix: string, word: string): boolean => {
 };
 
 /**
+ * 将连字符单词拆分成多个部分
+ * 例如：cat-like -> ['cat', 'like']
+ */
+const splitHyphenatedWord = (word: string): string[] => {
+  return word.split(/[-–—]/).filter(w => w.length > 0);
+};
+
+/**
+ * 智能匹配：检查目标单词是否被识别（支持连字符拆分匹配）
+ * 例如：targetWord="cat-like" 可以匹配 recognizedWords 中的 "cat" 和 "like"
+ */
+const smartWordMatch = (
+  targetWord: string,
+  recognizedWords: string[],
+  usedIndices: Set<number>
+): { matched: boolean; usedIndices: number[] } => {
+  const targetLower = targetWord.toLowerCase();
+  
+  // 先尝试直接匹配
+  for (let i = 0; i < recognizedWords.length; i++) {
+    if (usedIndices.has(i)) continue;
+    if (wordsMatch(targetLower, recognizedWords[i].toLowerCase())) {
+      return { matched: true, usedIndices: [i] };
+    }
+  }
+  
+  // 如果目标单词包含连字符，尝试拆分匹配
+  const targetParts = splitHyphenatedWord(targetLower);
+  if (targetParts.length > 1) {
+    const foundIndices: number[] = [];
+    let allPartsFound = true;
+    
+    for (const part of targetParts) {
+      let partFound = false;
+      for (let i = 0; i < recognizedWords.length; i++) {
+        if (usedIndices.has(i) || foundIndices.includes(i)) continue;
+        if (wordsMatch(part, recognizedWords[i].toLowerCase())) {
+          foundIndices.push(i);
+          partFound = true;
+          break;
+        }
+      }
+      if (!partFound) {
+        allPartsFound = false;
+        break;
+      }
+    }
+    
+    if (allPartsFound) {
+      return { matched: true, usedIndices: foundIndices };
+    }
+  }
+  
+  return { matched: false, usedIndices: [] };
+};
+
+/**
  * 计算语音识别结果和目标句子的匹配度
- * 返回：匹配度百分比(0-100) 和 每个词的匹配状态
+ * 返回：
+ * - score: 匹配度百分比(0-100)
+ * - wordMatches: 目标句子中每个词的匹配状态
+ * - recognizedWordMatches: 识别结果中每个词的匹配状态（用于显示绿色）
  */
 const calculateMatchScore = (
   recognizedText: string, 
   targetText: string
-): { score: number; wordMatches: Array<{ word: string; isMatch: boolean }> } => {
+): { 
+  score: number; 
+  wordMatches: Array<{ word: string; isMatch: boolean }>;
+  recognizedWordMatches: Array<{ word: string; isMatch: boolean }>;
+} => {
   // 预处理：转小写，移除多余空格和标点
   const cleanText = (text: string) => 
     text.toLowerCase()
@@ -177,34 +241,32 @@ const calculateMatchScore = (
   const recognizedWords = recognized.split(' ').filter(w => w.length > 0);
   
   if (targetWords.length === 0) {
-    return { score: 0, wordMatches: [] };
+    return { score: 0, wordMatches: [], recognizedWordMatches: [] };
   }
   
   // 为每个目标词找匹配
   const wordMatches: Array<{ word: string; isMatch: boolean }> = [];
-  let matchedCount = 0;
   const usedIndices = new Set<number>();
   
   for (const targetWord of targetWords) {
-    let found = false;
-    
-    for (let i = 0; i < recognizedWords.length; i++) {
-      if (usedIndices.has(i)) continue;
-      
-      if (wordsMatch(targetWord, recognizedWords[i])) {
-        found = true;
-        usedIndices.add(i);
-        break;
-      }
+    const result = smartWordMatch(targetWord, recognizedWords, usedIndices);
+    wordMatches.push({ word: targetWord, isMatch: result.matched });
+    if (result.matched) {
+      result.usedIndices.forEach(idx => usedIndices.add(idx));
     }
-    
-    wordMatches.push({ word: targetWord, isMatch: found });
-    if (found) matchedCount++;
   }
   
+  // 计算识别结果中每个词的匹配状态
+  const recognizedWordMatches: Array<{ word: string; isMatch: boolean }> = 
+    recognizedWords.map((word, idx) => ({
+      word,
+      isMatch: usedIndices.has(idx)
+    }));
+  
+  const matchedCount = wordMatches.filter(w => w.isMatch).length;
   const score = Math.round((matchedCount / targetWords.length) * 100);
   
-  return { score, wordMatches };
+  return { score, wordMatches, recognizedWordMatches };
 };
 
 /**
@@ -388,6 +450,7 @@ export default function SentencePracticeScreen() {
   const [voiceSentenceSuggestion, setVoiceSentenceSuggestion] = useState(''); // 长句子分段建议
   const [voiceTargetWord, setVoiceTargetWord] = useState<string | null>(null); // 当前要重读的单词
   const [remainingWordsCount, setRemainingWordsCount] = useState(0); // 剩余未完成单词数
+  const [recognizedWordMatches, setRecognizedWordMatches] = useState<Array<{ word: string; isMatch: boolean }>>([]); // 识别结果中每个词的匹配状态
   
   // 完美发音记录
   const [showPerfectRecordings, setShowPerfectRecordings] = useState(false); // 显示完美发音列表
@@ -2199,12 +2262,13 @@ export default function SentencePracticeScreen() {
             // ===== 方案A：自动匹配模式 =====
             // 极简风格：显示识别结果，匹配到的变绿，不要任何红色提示
             
-            const { score, wordMatches } = calculateMatchScore(recognizedText, currentSentence.text);
+            const { score, wordMatches, recognizedWordMatches: recMatches } = calculateMatchScore(recognizedText, currentSentence.text);
             const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
             
-            // 显示用户念的内容（成就感）
+            // 显示用户念的内容，并把匹配到的单词标绿
             setVoiceResultText(recognizedText);
             setVoiceMatchScore(score);
+            setRecognizedWordMatches(recMatches); // 保存识别结果中每个词的匹配状态
             setVoiceWordMatches([]); // 不显示红色块块
             setVoiceSentenceSuggestion(''); // 不显示任何提示
             setShowVoiceResult(true);
@@ -2236,8 +2300,7 @@ export default function SentencePracticeScreen() {
             
           } else if (mode === 'follow-along') {
             // ===== 方案B：分段跟读模式 =====
-            // 把句子分成若干段（每段3-5个单词），用户跟读每段
-            // 解决单个单词识别困难的问题
+            // 显示引导提示，帮助用户知道要念什么
             
             // 获取所有未完成的单词
             const incompleteWords = wordStatusesRef.current
@@ -2250,12 +2313,17 @@ export default function SentencePracticeScreen() {
             }
             
             // 计算匹配度
-            const { score, wordMatches } = calculateMatchScore(recognizedText, currentSentence.text);
+            const { score, wordMatches, recognizedWordMatches: recMatches } = calculateMatchScore(recognizedText, currentSentence.text);
             
             // 从识别结果中匹配所有未完成的单词（不需要按顺序）
             const matchedWords = wordMatches
               .filter(w => incompleteWords.includes(w.word.toLowerCase()) && w.isMatch)
               .map(w => w.word);
+            
+            // 显示识别结果，匹配到的标绿
+            setVoiceResultText(recognizedText);
+            setVoiceMatchScore(score);
+            setRecognizedWordMatches(recMatches);
             
             if (matchedWords.length > 0) {
               handleLongTextInput(matchedWords.join(' '));
@@ -2299,8 +2367,13 @@ export default function SentencePracticeScreen() {
             }
             
             // 计算匹配度
-            const { score, wordMatches } = calculateMatchScore(recognizedText, currentSentence.text);
+            const { score, wordMatches, recognizedWordMatches: recMatches } = calculateMatchScore(recognizedText, currentSentence.text);
             const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
+            
+            // 显示识别结果，匹配到的标绿
+            setVoiceResultText(recognizedText);
+            setVoiceMatchScore(score);
+            setRecognizedWordMatches(recMatches);
             
             if (matchedWords.length > 0) {
               handleLongTextInput(matchedWords.join(' '));
@@ -2314,8 +2387,6 @@ export default function SentencePracticeScreen() {
             if (newIncompleteIndices.length > 0) {
               sentenceHadVoiceErrorRef.current = true;
               const unmatchedWords = wordMatches.filter(w => !w.isMatch);
-              setVoiceResultText(recognizedText);
-              setVoiceMatchScore(score);
               setVoiceWordMatches(unmatchedWords);
               setVoiceSentenceSuggestion(`听听怎么读，再跟读`);
               setShowVoiceResult(true);
@@ -2703,16 +2774,30 @@ export default function SentencePracticeScreen() {
             </View>
           )}
 
-          {/* 语音识别结果 - 显示用户念的内容 */}
-          {showVoiceResult && voiceResultText && (
+          {/* 语音识别结果 - 显示用户念的内容，匹配到的单词标绿 */}
+          {showVoiceResult && recognizedWordMatches.length > 0 && (
             <Animated.View 
               entering={FadeInDown.duration(300)}
               style={styles.voiceResultCard}
             >
               <View style={styles.voiceResultHeader}>
-                <ThemedText variant="small" color={theme.textSecondary}>
-                  🎤 你说：{voiceResultText}
-                </ThemedText>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <ThemedText variant="small" color={theme.textSecondary}>
+                    🎤 你说：
+                  </ThemedText>
+                  {recognizedWordMatches.map((wordMatch, idx) => (
+                    <ThemedText 
+                      key={idx}
+                      variant="small" 
+                      color={wordMatch.isMatch ? theme.success : theme.textSecondary}
+                      style={{ 
+                        fontWeight: wordMatch.isMatch ? '600' : '400',
+                      }}
+                    >
+                      {wordMatch.word}{' '}
+                    </ThemedText>
+                  ))}
+                </View>
                 <TouchableOpacity onPress={() => setShowVoiceResult(false)}>
                   <FontAwesome6 name="times" size={14} color={theme.textMuted} />
                 </TouchableOpacity>
