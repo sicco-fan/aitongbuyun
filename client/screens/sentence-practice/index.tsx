@@ -228,9 +228,13 @@ const calculateMatchScore = (
   recognizedWordMatches: Array<{ word: string; isMatch: boolean }>;
 } => {
   // 预处理：转小写，移除多余空格和标点
+  // 注意：需要将引号类字符替换为空格，而不是简单移除，否则 'word' 会变成 'word'
   const cleanText = (text: string) => 
     text.toLowerCase()
-      .replace(/[^\w\s'-]/g, '') // 保留字母、数字、空格、连字符、单引号
+      .replace(/['"″′‵ʹʻʼʽ＇`´]/g, ' ') // 将所有单引号类字符替换为空格
+      .replace(/["″‶]/g, ' ') // 将所有双引号类字符替换为空格
+      .replace(/[—–−]/g, ' ') // 将所有破折号类字符替换为空格
+      .replace(/[^\w\s]/g, '') // 移除其他标点符号（保留字母、数字、空格）
       .replace(/\s+/g, ' ')
       .trim();
   
@@ -1741,17 +1745,27 @@ export default function SentencePracticeScreen() {
     
     // 获取未完成的单词列表
     const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
-    if (incompleteWords.length === 0) return;
+    console.log('[handleLongTextInput] 未完成单词:', incompleteWords.map(w => ({ word: w.word, index: w.index, revealed: w.revealed })));
+    if (incompleteWords.length === 0) {
+      console.log('[handleLongTextInput] 没有未完成的单词，跳过');
+      return;
+    }
     
     // 按位置排序
     incompleteWords.sort((a, b) => a.index - b.index);
     
     // 提取输入中的单词（去除标点，转小写）
+    // 注意：需要将引号类字符替换为空格，与 calculateMatchScore 保持一致
     const inputWords = text
       .toLowerCase()
-      .replace(/[^\w\s'-]/g, '') // 保留字母、数字、空格、连字符、单引号
+      .replace(/['"″′‵ʹʻʼʽ＇`´]/g, ' ') // 将所有单引号类字符替换为空格
+      .replace(/["″‶]/g, ' ') // 将所有双引号类字符替换为空格
+      .replace(/[—–−]/g, ' ') // 将所有破折号类字符替换为空格
+      .replace(/[^\w\s]/g, '') // 移除其他标点符号
       .split(/\s+/)
       .filter(w => w.length > 0);
+    
+    console.log('[handleLongTextInput] 输入单词:', inputWords);
     
     if (inputWords.length === 0) return;
     
@@ -1766,8 +1780,11 @@ export default function SentencePracticeScreen() {
         if (matchedIndices.includes(targetWord.index)) continue;
         
         // 如果匹配成功
-        if (wordsMatch(targetWord.word, inputWord)) {
+        const matched = wordsMatch(targetWord.word, inputWord);
+        console.log(`[handleLongTextInput] 比较: inputWord="${inputWord}" vs targetWord="${targetWord.word}" => ${matched}`);
+        if (matched) {
           matchedIndices.push(targetWord.index);
+          console.log(`[handleLongTextInput] 匹配成功! matchedIndices: ${matchedIndices.join(',')}`);
           break; // 匹配成功后跳出内层循环，处理下一个输入单词
         }
       }
@@ -2324,13 +2341,6 @@ export default function SentencePracticeScreen() {
           
           console.log(`[语音识别] 模式: ${mode}, 识别结果: ${recognizedText}`);
           
-          // 获取当前句子中的所有非标点单词
-          const targetWords = currentSentence.text
-            .toLowerCase()
-            .replace(/[^\w\s'-]/g, '')
-            .split(' ')
-            .filter(w => w.length > 0);
-          
           // 获取当前未完成的单词索引
           const incompleteIndices = wordStatusesRef.current
             .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
@@ -2341,8 +2351,12 @@ export default function SentencePracticeScreen() {
             // ===== 方案A：自动匹配模式 =====
             // 极简风格：显示识别结果，匹配到的变绿，不要任何红色提示
             
+            console.log('[方案A] 原始句子:', currentSentence.text);
+            console.log('[方案A] 识别结果:', recognizedText);
             const { score, wordMatches, recognizedWordMatches: recMatches } = calculateMatchScore(recognizedText, currentSentence.text);
             const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
+            console.log('[方案A] wordMatches:', wordMatches);
+            console.log('[方案A] matchedWords:', matchedWords);
             
             // 显示用户念的内容，并把匹配到的单词标绿
             setVoiceResultText(recognizedText);
