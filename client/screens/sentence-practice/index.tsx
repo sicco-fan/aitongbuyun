@@ -2097,31 +2097,22 @@ export default function SentencePracticeScreen() {
       return;
     }
 
-    if (isPlaying) {
-      await pauseAudio();
+    // 方案B（跟随朗读）：显示友好的引导提示
+    if (voicePracticeModeRef.current === 'follow-along') {
+      const remainingWords = wordStatusesRef.current
+        .filter(ws => !ws.isPunctuation && !ws.revealed)
+        .map(ws => ws.word);
+      
+      if (remainingWords.length > 0) {
+        const displayWords = remainingWords.slice(0, 5).join(' ');
+        const moreCount = remainingWords.length > 5 ? ` +${remainingWords.length - 5}` : '';
+        setVoiceSentenceSuggestion(`🎧 跟着念: ${displayWords}${moreCount}`);
+        setShowVoiceResult(true);
+      }
     }
 
-    // 跟随朗读模式：显示当前要念的单词
-    if (voicePracticeModeRef.current === 'follow-along') {
-      const incompleteIndices = wordStatusesRef.current
-        .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
-        .filter(idx => idx !== -1);
-      
-      if (incompleteIndices.length > 0) {
-        const targetWords = currentSentence.text
-          .toLowerCase()
-          .replace(/[^\w\s'-]/g, '')
-          .split(' ')
-          .filter(w => w.length > 0);
-        
-        const currentTargetWord = targetWords[followAlongIndexRef.current];
-        if (currentTargetWord) {
-          setVoiceTargetWord(currentTargetWord);
-          setVoiceWordMatches([{ word: currentTargetWord, isMatch: false }]);
-          setVoiceSentenceSuggestion(`请念: "${currentTargetWord}"`);
-          setShowVoiceResult(true);
-        }
-      }
+    if (isPlaying) {
+      await pauseAudio();
     }
 
     try {
@@ -2233,66 +2224,58 @@ export default function SentencePracticeScreen() {
             }
             
           } else if (mode === 'follow-along') {
-            // ===== 方案B：跟随朗读模式 =====
-            // 必须按顺序念读，不能跳过前面的单词
+            // ===== 方案B：分段跟读模式 =====
+            // 把句子分成若干段（每段3-5个单词），用户跟读每段
+            // 解决单个单词识别困难的问题
             
-            // 找到第一个未完成的单词索引
-            const firstIncompleteIdx = incompleteIndices[0];
-            if (firstIncompleteIdx === undefined) {
+            // 获取所有未完成的单词
+            const incompleteWords = wordStatusesRef.current
+              .filter(ws => !ws.isPunctuation && !ws.revealed)
+              .map(ws => ws.word.toLowerCase());
+            
+            if (incompleteWords.length === 0) {
               setShowVoiceResult(false);
               return;
             }
             
-            // 获取当前应该念的单词
-            const currentTargetWord = targetWords[followAlongIndexRef.current];
+            // 计算匹配度
+            const { score, wordMatches } = calculateMatchScore(recognizedText, currentSentence.text);
             
-            // 检查识别结果是否包含当前目标单词
-            const recognizedWords = recognizedText.split(' ').filter(w => w.length > 0);
-            let foundCurrentWord = false;
+            // 从识别结果中匹配所有未完成的单词（不需要按顺序）
+            const matchedWords = wordMatches
+              .filter(w => incompleteWords.includes(w.word.toLowerCase()) && w.isMatch)
+              .map(w => w.word);
             
-            for (const recWord of recognizedWords) {
-              if (wordsMatch(recWord, currentTargetWord)) {
-                foundCurrentWord = true;
-                break;
-              }
+            if (matchedWords.length > 0) {
+              handleLongTextInput(matchedWords.join(' '));
             }
             
-            if (foundCurrentWord) {
-              // 匹配成功，填入这个单词
-              handleLongTextInput(currentTargetWord);
-              
-              // 移动到下一个单词
-              followAlongIndexRef.current++;
-              
-              // 检查是否还有未完成的单词
-              const newIncompleteIndices = wordStatusesRef.current
-                .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
-                .filter(idx => idx !== -1);
-              
-              if (newIncompleteIndices.length === 0) {
-                // 全部完成
-                setShowVoiceResult(false);
-                setVoiceSentenceSuggestion('');
-              } else {
-                // 显示下一个目标单词
-                const nextWord = targetWords[followAlongIndexRef.current];
-                setVoiceTargetWord(nextWord);
-                setVoiceResultText(recognizedText);
-                setVoiceMatchScore(100);
-                setVoiceWordMatches([{ word: nextWord, isMatch: false }]);
-                setVoiceSentenceSuggestion(`请念: "${nextWord}"`);
-                setShowVoiceResult(true);
-              }
-            } else {
-              // 没有匹配到当前目标单词
+            // 获取新的剩余未完成单词
+            const newIncompleteIndices = wordStatusesRef.current
+              .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
+              .filter(idx => idx !== -1);
+            
+            if (newIncompleteIndices.length > 0) {
               sentenceHadVoiceErrorRef.current = true;
+              const unmatchedWords = wordMatches.filter(w => !w.isMatch);
+              
+              // 获取剩余的未完成单词列表
+              const remainingWords = wordStatusesRef.current
+                .filter(ws => !ws.isPunctuation && !ws.revealed)
+                .map(ws => ws.word);
+              
               setVoiceResultText(recognizedText);
-              setVoiceMatchScore(0);
-              setVoiceWordMatches([{ word: currentTargetWord, isMatch: false }]);
-              setVoiceSentenceSuggestion(`请念: "${currentTargetWord}"（按顺序念）`);
+              setVoiceMatchScore(score);
+              setVoiceWordMatches(unmatchedWords);
+              
+              // 提示用户剩余的单词（最多显示5个）
+              const displayWords = remainingWords.slice(0, 5).join(' ');
+              const moreCount = remainingWords.length > 5 ? ` +${remainingWords.length - 5}` : '';
+              setVoiceSentenceSuggestion(`继续念: ${displayWords}${moreCount}`);
               setShowVoiceResult(true);
+            } else {
+              setShowVoiceResult(false);
             }
-            
           } else if (mode === 'smart-guide') {
             // ===== 方案C：智能引导模式 =====
             // 自动播放未完成部分的音频，然后等待用户跟读
