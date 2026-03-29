@@ -597,7 +597,7 @@ export default function CoursesScreen() {
                   📝 文本格式要求
                 </ThemedText>
                 <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
-                  为了正确识别课时和句子，请按以下格式组织文档：
+                  为确保正确识别，请按以下格式组织文档内容：
                 </ThemedText>
                 
                 {/* 格式示范 */}
@@ -608,13 +608,15 @@ export default function CoursesScreen() {
                   <View style={styles.formatExampleCode}>
                     <ThemedText variant="small" color={theme.textPrimary} style={{ fontFamily: 'monospace' }}>
                       {'Lesson 1\n'}
-                      {'A private conversation 私人谈话\n'}
+                      {'A private conversation\n'}
+                      {'私人谈话\n'}
                       {'Last week I went to the theatre.\n'}
                       {'上周我去看戏。\n'}
                       {'I had a very good seat.\n'}
                       {'我的座位很好。\n\n'}
                       {'Lesson 2\n'}
-                      {'Breakfast or lunch? 早餐还是午餐？\n'}
+                      {'Breakfast or lunch?\n'}
+                      {'早餐还是午餐？\n'}
                       {'It was Sunday.\n'}
                       {'那是星期天。'}
                     </ThemedText>
@@ -622,9 +624,16 @@ export default function CoursesScreen() {
                 </View>
                 
                 <View style={[styles.infoHighlight, { marginTop: 8 }]}>
-                  <FontAwesome6 name="info-circle" size={14} color={theme.primary} />
+                  <FontAwesome6 name="check-circle" size={14} color={theme.success} />
                   <ThemedText variant="small" color={theme.textSecondary} style={{ marginLeft: 6, flex: 1 }}>
-                    {'• 课时标题以 "Lesson" 或 "第X课" 开头\n• 英文句子后可跟中文翻译\n• 句子间用换行分隔'}
+                    {'• 课时标题：以 "Lesson X" 开头\n• 句子格式：一行英文，下一行中文翻译\n• 句子间用换行分隔，课时间空一行'}
+                  </ThemedText>
+                </View>
+                
+                <View style={[styles.infoHighlight, { marginTop: 8, backgroundColor: theme.error + '10' }]}>
+                  <FontAwesome6 name="times-circle" size={14} color={theme.error} />
+                  <ThemedText variant="small" color={theme.textSecondary} style={{ marginLeft: 6, flex: 1 }}>
+                    {'不支持：英文和中文写同一行\n例如：Last week I went to the theatre. 上周我去看戏。'}
                   </ThemedText>
                 </View>
               </View>
