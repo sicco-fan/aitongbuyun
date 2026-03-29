@@ -145,17 +145,6 @@ export default function HomeScreen() {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  // 获取课程图标
-  const getBookIcon = (bookNumber: number): string => {
-    const icons: Record<number, string> = {
-      1: 'book-open',
-      2: 'book',
-      3: 'graduation-cap',
-      4: 'award',
-    };
-    return icons[bookNumber] || 'book';
-  };
-
   // 渲染课程卡片
   const renderCourseCard = (course: Course) => {
     const isLastLearned = lastLearningPosition?.sourceType === 'lesson' && 
@@ -181,7 +170,7 @@ export default function HomeScreen() {
         <View style={styles.materialHeader}>
           <View style={[styles.materialIconContainer, { backgroundColor: theme.primary + '20' }]}>
             <FontAwesome6 
-              name={getBookIcon(course.book_number)} 
+              name="graduation-cap" 
               size={20} 
               color={theme.primary} 
             />
@@ -227,7 +216,7 @@ export default function HomeScreen() {
           { backgroundColor: isAI ? theme.primary + '20' : theme.accent + '20' }
         ]}>
           <FontAwesome6 
-            name={isAI ? "wand-magic-sparkles" : "book-open"} 
+            name={isAI ? "graduation-cap" : "book-open"} 
             size={20} 
             color={isAI ? theme.primary : theme.accent} 
           />
@@ -372,7 +361,7 @@ export default function HomeScreen() {
         {/* AI 句库 Section */}
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleRow}>
-            <FontAwesome6 name="wand-magic-sparkles" size={18} color={theme.primary} />
+            <FontAwesome6 name="graduation-cap" size={18} color={theme.primary} />
             <ThemedText variant="h4" color={theme.textPrimary}>
               AI 句库
             </ThemedText>
