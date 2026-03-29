@@ -1107,7 +1107,9 @@ export default function SentencePracticeScreen() {
       clearTimeout(timer);
       stopPlayback();
     };
-  }, [currentSentence?.id, fetchPerfectRecordings, playAudio, stopPlayback]);
+    // 注意：playAudio、stopPlayback、fetchPerfectRecordings 不要加入依赖数组
+    // fetchPerfectRecordings 依赖 currentSentence?.id，会导致循环
+  }, [currentSentence?.id]);
 
   // 显示错误闪烁效果
   const showErrorFlash = useCallback(() => {
