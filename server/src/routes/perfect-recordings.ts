@@ -85,6 +85,8 @@ router.get('/', async (req, res) => {
     const supabase = getSupabaseClient();
     const { userId, limit = 10, sentenceFileId, sentenceId } = req.query;
 
+    console.log('[完美发音] GET 请求参数:', { userId, sentenceId, sentenceFileId, limit });
+
     if (!userId) {
       return res.status(400).json({ 
         success: false, 
@@ -100,12 +102,16 @@ router.get('/', async (req, res) => {
       .limit(Number(limit));
 
     if (sentenceId) {
+      console.log('[完美发音] 筛选 sentence_id:', Number(sentenceId));
       query = query.eq('sentence_id', Number(sentenceId));
     } else if (sentenceFileId) {
+      console.log('[完美发音] 筛选 sentence_file_id:', Number(sentenceFileId));
       query = query.eq('sentence_file_id', Number(sentenceFileId));
     }
 
     const { data, error } = await query;
+
+    console.log('[完美发音] 查询结果:', data?.length, '条记录');
 
     if (error) {
       console.error('获取完美发音记录失败:', error);
