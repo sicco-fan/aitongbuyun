@@ -4169,7 +4169,7 @@ export default function SentencePracticeScreen() {
 
               {/* 方案B和方案C才显示提示 */}
               {voiceWordMatches.length > 0 && voiceSentenceSuggestion && (
-                <View style={styles.segmentSuggestionContainer">
+                <View style={styles.segmentSuggestionContainer}>
                   <FontAwesome6 name="lightbulb" size={14} color={theme.accent} />
                   <ThemedText variant="small" color={theme.textSecondary} style={{ flex: 1, marginLeft: 6 }}>
                     {voiceSentenceSuggestion}
