@@ -2,6 +2,7 @@ import express, { Router } from 'express';
 import type { Request, Response } from 'express';
 import multer from 'multer';
 import pdfParse from 'pdf-parse';
+import mammoth from 'mammoth';
 import { getSupabaseClient } from '../storage/database/supabase-client';
 import { TTSClient, Config, HeaderUtils, S3Storage, LLMClient, FetchClient } from 'coze-coding-dev-sdk';
 import axios from 'axios';
@@ -843,6 +844,162 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
   } catch (error: any) {
     console.error('获取可学习课时数据失败:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/courses/import-text
+ * 通用文本导入接口（支持多种格式，使用 SSE 返回进度）
+ * Body: { file_url?: string, file_key?: string, book_title: string, book_number: number, file_type: 'pdf' | 'docx' | 'txt' }
+ * 
+ * 支持的文件格式：PDF、Word(.docx)、纯文本(.txt)
+ * 
+ * 文本内容格式要求：
+ * - 课程标题：如"新概念英语第三册"
+ * - 课时标题：以 "Lesson X:" 或 "第X课:" 开头
+ * - 句子内容：每行一个英文句子
+ * - 空行分隔课时
+ */
+
+// 通用文本解析函数
+async function parseFileContent(fileBuffer: Buffer, fileType: string): Promise<string> {
+  if (fileType === 'pdf') {
+    const pdfData = await pdfParse(fileBuffer);
+    return pdfData.text;
+  } else if (fileType === 'docx') {
+    const result = await mammoth.extractRawText({ buffer: fileBuffer });
+    return result.value;
+  } else if (fileType === 'txt') {
+    return fileBuffer.toString('utf-8');
+  }
+  throw new Error(`不支持的文件类型: ${fileType}`);
+}
+
+/**
+ * POST /api/v1/courses/import-text
+ * 通用文本导入接口（支持 PDF、Word、TXT，使用 SSE 返回进度）
+ * Body: { file_url?: string, file_key?: string, book_title: string, book_number: number, file_type: 'pdf' | 'docx' | 'txt' }
+ */
+router.post('/import-text', async (req: Request, res: Response) => {
+  const { file_url, file_key, book_title, book_number, file_type = 'pdf' } = req.body;
+  const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+  
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-store, no-transform, must-revalidate');
+  res.setHeader('Connection', 'keep-alive');
+  
+  const sendProgress = (data: object) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+  
+  try {
+    let downloadUrl = file_url;
+    
+    if (!downloadUrl && file_key) {
+      downloadUrl = await storage.generatePresignedUrl({ key: file_key, expireTime: 86400 });
+      console.log(`[导入课程] 刷新URL成功: ${file_key}`);
+    }
+    
+    if (!downloadUrl) {
+      sendProgress({ type: 'error', message: '请提供文件 URL 或 key' });
+      res.write('data: [DONE]\n\n');
+      return;
+    }
+    
+    console.log(`[导入课程] 开始下载: ${downloadUrl}, 类型: ${file_type}`);
+    sendProgress({ type: 'progress', phase: 'downloading', message: '正在下载文件...', percent: 0 });
+    
+    const fileResponse = await axios.get(downloadUrl, { responseType: 'arraybuffer', headers: customHeaders });
+    const fileBuffer = Buffer.from(fileResponse.data);
+    
+    console.log(`[导入课程] 文件大小: ${fileBuffer.length} bytes`);
+    sendProgress({ type: 'progress', phase: 'parsing', message: '正在解析文件...', percent: 10 });
+    
+    const textContent = await parseFileContent(fileBuffer, file_type);
+    
+    console.log(`[导入课程] 文本长度: ${textContent.length}`);
+    sendProgress({ type: 'progress', phase: 'parsing', message: '文件解析完成', percent: 20 });
+    
+    // 解析课程结构（复用 import-pdf 的逻辑）
+    const lessons = parseNCEText(textContent);
+    console.log(`[导入课程] 解析到 ${lessons.length} 个课时`);
+    sendProgress({ type: 'progress', phase: 'importing', message: `解析到 ${lessons.length} 个课时，开始导入...`, percent: 25 });
+    
+    // 导入到数据库（复用 import-pdf 的逻辑）
+    const supabase = getSupabaseClient();
+    
+    let { data: existingCourse } = await supabase.from('courses').select('*').eq('book_number', book_number).single();
+    let courseId: number;
+    
+    if (existingCourse) {
+      courseId = existingCourse.id;
+      sendProgress({ type: 'progress', phase: 'importing', message: '正在清除旧数据...', percent: 30 });
+      
+      const { data: existingLessons } = await supabase.from('lessons').select('id').eq('course_id', courseId);
+      if (existingLessons && existingLessons.length > 0) {
+        const lessonIds = existingLessons.map(l => l.id);
+        const { data: existingSentences } = await supabase.from('lesson_sentences').select('id').in('lesson_id', lessonIds);
+        if (existingSentences && existingSentences.length > 0) {
+          const sentenceIds = existingSentences.map(s => s.id);
+          await supabase.from('lesson_sentence_audio').delete().in('sentence_id', sentenceIds);
+        }
+        await supabase.from('lesson_sentences').delete().in('lesson_id', lessonIds);
+        await supabase.from('lessons').delete().in('id', lessonIds);
+      }
+      sendProgress({ type: 'progress', phase: 'importing', message: '旧数据已清除', percent: 35 });
+    } else {
+      const { data: newCourse, error: courseError } = await supabase
+        .from('courses')
+        .insert({ title: book_title, book_number, description: `${book_title} - 共 ${lessons.length} 课`, total_lessons: lessons.length })
+        .select().single();
+      
+      if (courseError) throw new Error(courseError.message);
+      courseId = newCourse.id;
+      console.log(`[导入课程] 创建新课程: ${book_title} (ID: ${courseId})`);
+    }
+    
+    // 导入课时和句子
+    let totalSentences = 0;
+    const basePercent = 35;
+    const percentRange = 60;
+    
+    for (let i = 0; i < lessons.length; i++) {
+      const lesson = lessons[i];
+      const percent = basePercent + Math.round((i / lessons.length) * percentRange);
+      sendProgress({ type: 'progress', phase: 'importing', message: `正在导入第 ${lesson.lesson_number} 课: ${lesson.title}`, percent });
+      
+      const { data: lessonData, error: lessonError } = await supabase
+        .from('lessons')
+        .insert({ course_id: courseId, lesson_number: lesson.lesson_number, title: lesson.title, description: lesson.description || '', sentences_count: lesson.sentences.length })
+        .select().single();
+      
+      if (lessonError) throw new Error(lessonError.message);
+      
+      if (lesson.sentences.length > 0) {
+        const sentencesData = lesson.sentences.map((s, idx) => ({
+          lesson_id: lessonData.id,
+          sentence_index: idx + 1,
+          english_text: s.english,
+          chinese_text: s.chinese || null,
+        }));
+        
+        const { error: sentencesError } = await supabase.from('lesson_sentences').insert(sentencesData);
+        if (sentencesError) throw new Error(sentencesError.message);
+        
+        totalSentences += lesson.sentences.length;
+      }
+    }
+    
+    // 更新课程统计
+    await supabase.from('courses').update({ total_lessons: lessons.length }).eq('id', courseId);
+    
+    sendProgress({ type: 'complete', message: `导入完成！共 ${lessons.length} 课，${totalSentences} 个句子` });
+    res.write('data: [DONE]\n\n');
+    
+  } catch (error: any) {
+    console.error('[导入课程] 失败:', error);
+    sendProgress({ type: 'error', message: error.message || '导入失败' });
+    res.write('data: [DONE]\n\n');
   }
 });
 

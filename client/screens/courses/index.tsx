@@ -79,11 +79,24 @@ export default function CoursesScreen() {
     fetchCourses();
   }, [fetchCourses]);
 
-  // 选择并上传 PDF 文件
-  const handlePickPdf = useCallback(async () => {
+  // 选择并上传文件（支持 PDF、Word、TXT）
+  const handlePickFile = useCallback(async (fileType: 'pdf' | 'word' | 'txt') => {
     try {
+      // 根据文件类型设置 MIME 类型
+      const mimeTypes = {
+        pdf: 'application/pdf',
+        word: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        txt: 'text/plain',
+      };
+      
+      const extensions = {
+        pdf: 'pdf',
+        word: 'docx',
+        txt: 'txt',
+      };
+
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
+        type: mimeTypes[fileType],
         copyToCacheDirectory: true,
       });
 
@@ -100,7 +113,7 @@ export default function CoursesScreen() {
       setUploadProgress(0);
 
       const formData = new FormData();
-      const fileData = await createFormDataFile(file.uri, file.name, 'application/pdf');
+      const fileData = await createFormDataFile(file.uri, file.name, mimeTypes[fileType]);
       formData.append('file', fileData as any);
 
       // 使用 XMLHttpRequest 跟踪上传进度
@@ -154,7 +167,7 @@ export default function CoursesScreen() {
       setImportPhase('importing');
       setImportProgress('正在初始化导入...');
 
-      const sseUrl = `${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/import-pdf`;
+      const sseUrl = `${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/import-text`;
       
       await new Promise<void>((resolve, reject) => {
         const sse = new RNSSE(sseUrl, {
@@ -164,7 +177,8 @@ export default function CoursesScreen() {
             'Accept': 'text/event-stream',
           },
           body: JSON.stringify({
-            pdf_url: uploadData.url,
+            file_url: uploadData.url,
+            file_type: fileType,
             book_title: importBookTitle,
             book_number: parseInt(importBookNumber, 10),
           }),
@@ -381,7 +395,7 @@ export default function CoursesScreen() {
             </ThemedText>
             
             <ThemedText variant="body" color={theme.textSecondary} style={{ marginBottom: 16 }}>
-              上传 PDF 文件导入课程内容。如果课程已存在，将覆盖原有数据。
+              支持 PDF、Word(.docx)、TXT 三种格式导入课程。如果课程已存在，将覆盖原有数据。
             </ThemedText>
 
             {/* 上传进度显示 */}
@@ -406,7 +420,7 @@ export default function CoursesScreen() {
                       <View style={[styles.progressBar, { width: `${uploadProgress}%`, backgroundColor: theme.primary }]} />
                     </View>
                     <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: 8 }}>
-                      {importProgress || '正在解析 PDF 并导入课程数据...'}
+                      {importProgress || '正在解析文件并导入课程数据...'}
                     </ThemedText>
                   </>
                 )}
@@ -419,22 +433,64 @@ export default function CoursesScreen() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <TouchableOpacity 
-                style={styles.importOption}
-                onPress={handlePickPdf}
-              >
-                <View style={styles.importOptionIcon}>
-                  <FontAwesome6 name="file-pdf" size={24} color={theme.error} />
-                </View>
-                <View style={styles.importOptionContent}>
-                  <ThemedText variant="body" color={theme.textPrimary}>
-                    选择 PDF 文件
-                  </ThemedText>
-                  <ThemedText variant="small" color={theme.textMuted}>
-                    支持新概念英语格式
-                  </ThemedText>
-                </View>
-              </TouchableOpacity>
+              <>
+                {/* PDF 导入 */}
+                <TouchableOpacity 
+                  style={styles.importOption}
+                  onPress={() => handlePickFile('pdf')}
+                >
+                  <View style={[styles.importOptionIcon, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+                    <FontAwesome6 name="file-pdf" size={24} color="#EF4444" />
+                  </View>
+                  <View style={styles.importOptionContent}>
+                    <ThemedText variant="body" color={theme.textPrimary}>
+                      PDF 文件
+                    </ThemedText>
+                    <ThemedText variant="small" color={theme.textMuted}>
+                      支持新概念英语格式
+                    </ThemedText>
+                  </View>
+                  <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+                </TouchableOpacity>
+
+                {/* Word 导入 */}
+                <TouchableOpacity 
+                  style={[styles.importOption, { marginTop: 12 }]}
+                  onPress={() => handlePickFile('word')}
+                >
+                  <View style={[styles.importOptionIcon, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
+                    <FontAwesome6 name="file-word" size={24} color="#3B82F6" />
+                  </View>
+                  <View style={styles.importOptionContent}>
+                    <ThemedText variant="body" color={theme.textPrimary}>
+                      Word 文档 (.docx)
+                    </ThemedText>
+                    <ThemedText variant="small" color={theme.textMuted}>
+                      自动提取文本内容
+                    </ThemedText>
+                  </View>
+                  <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+                </TouchableOpacity>
+
+                {/* TXT 导入 */}
+                <TouchableOpacity 
+                  style={[styles.importOption, { marginTop: 12 }]}
+                  onPress={() => handlePickFile('txt')}
+                >
+                  <View style={[styles.importOptionIcon, { backgroundColor: 'rgba(107, 114, 128, 0.1)' }]}>
+                    <FontAwesome6 name="file-lines" size={24} color="#6B7280" />
+                  </View>
+                  <View style={styles.importOptionContent}>
+                    <ThemedText variant="body" color={theme.textPrimary}>
+                      纯文本文件 (.txt)
+                    </ThemedText>
+                    <ThemedText variant="small" color={theme.textMuted}>
+                      UTF-8 编码格式
+                    </ThemedText>
+                  </View>
+                  <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+                </TouchableOpacity>
+              </>
             )}
 
             <View style={styles.modalActions}>
@@ -485,12 +541,12 @@ export default function CoursesScreen() {
                   📥 关于"导入"功能
                 </ThemedText>
                 <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
-                  点击右上角的「导入」按钮，可以上传 PDF 文件来创建新的课程或更新已有课程。
+                  点击右上角的「导入」按钮，可以上传 PDF、Word 或 TXT 文件来创建新的课程或更新已有课程。
                 </ThemedText>
                 <View style={styles.infoHighlight}>
                   <FontAwesome6 name="lightbulb" size={16} color={theme.accent} />
                   <ThemedText variant="small" color={theme.textPrimary} style={{ marginLeft: 8, flex: 1 }}>
-                    导入时系统会根据 PDF 内容自动识别课程名称（如"新概念英语第二册"或"第三册"），自动创建或更新对应的课程，不会混淆。
+                    导入时系统会根据文件内容自动识别课程名称（如"新概念英语第二册"或"第三册"），自动创建或更新对应的课程，不会混淆。
                   </ThemedText>
                 </View>
               </View>
@@ -498,10 +554,50 @@ export default function CoursesScreen() {
               {/* 支持的格式 */}
               <View style={styles.infoSection}>
                 <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
-                  📄 支持的 PDF 格式
+                  📄 支持的文件格式
+                </ThemedText>
+                
+                {/* PDF 格式 */}
+                <View style={[styles.infoHighlight, { marginBottom: 8 }]}>
+                  <FontAwesome6 name="file-pdf" size={16} color="#EF4444" />
+                  <View style={{ marginLeft: 8, flex: 1 }}>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>PDF 文件</ThemedText>
+                    <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: 2 }}>
+                      支持新概念英语系列教材格式，自动识别课时和句子
+                    </ThemedText>
+                  </View>
+                </View>
+                
+                {/* Word 格式 */}
+                <View style={[styles.infoHighlight, { marginBottom: 8 }]}>
+                  <FontAwesome6 name="file-word" size={16} color="#3B82F6" />
+                  <View style={{ marginLeft: 8, flex: 1 }}>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>Word 文档 (.docx)</ThemedText>
+                    <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: 2 }}>
+                      自动提取文本内容，按段落分句
+                    </ThemedText>
+                  </View>
+                </View>
+                
+                {/* TXT 格式 */}
+                <View style={[styles.infoHighlight, { marginBottom: 8 }]}>
+                  <FontAwesome6 name="file-lines" size={16} color="#6B7280" />
+                  <View style={{ marginLeft: 8, flex: 1 }}>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>纯文本文件 (.txt)</ThemedText>
+                    <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: 2 }}>
+                      UTF-8 编码，每行一个句子或按换行分段
+                    </ThemedText>
+                  </View>
+                </View>
+              </View>
+
+              {/* 文本格式要求 */}
+              <View style={styles.infoSection}>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
+                  📝 文本格式要求
                 </ThemedText>
                 <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
-                  目前支持新概念英语系列教材的 PDF 格式，系统会自动识别课时和句子内容。
+                  {'• 每个句子独立一行\n• 课时标题格式：Lesson X 或 第X课\n• 支持中英文混合内容\n• 系统会自动识别英文句子和中文翻译'}
                 </ThemedText>
               </View>
             </ScrollView>
