@@ -15,6 +15,7 @@ import errorWordsRouter from "./routes/error-words";
 import pdfParseRouter from "./routes/pdf-parse";
 import coursesRouter from "./routes/courses";
 import uploadRouter from "./routes/upload";
+import perfectRecordingsRouter from "./routes/perfect-recordings";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -66,6 +67,9 @@ app.use('/api/v1/pdf-parse', pdfParseRouter);
 
 // 课程路由
 app.use('/api/v1/courses', coursesRouter);
+
+// 完美发音记录路由
+app.use('/api/v1/perfect-recordings', perfectRecordingsRouter);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   BackHandler,
+  Keyboard,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from 'expo-router';
@@ -372,6 +373,14 @@ export default function SentencePracticeScreen() {
   const [voiceWordMatches, setVoiceWordMatches] = useState<Array<{ word: string; isMatch: boolean }>>([]);
   const [voiceSentenceSuggestion, setVoiceSentenceSuggestion] = useState(''); // 长句子分段建议
   const [voiceTargetWord, setVoiceTargetWord] = useState<string | null>(null); // 当前要重读的单词
+  
+  // 完美发音记录
+  const [showPerfectRecordings, setShowPerfectRecordings] = useState(false); // 显示完美发音列表
+  const [perfectRecordings, setPerfectRecordings] = useState<Array<any>>([]); // 完美发音列表
+  const lastRecordingUriRef = useRef<string | null>(null); // 最后一次录音的URI
+  const sentenceStartedWithVoiceRef = useRef(false); // 当前句子是否以语音模式开始
+  const sentenceHadTypingRef = useRef(false); // 当前句子是否有过打字输入
+  const sentenceHadVoiceErrorRef = useRef(false); // 当前句子是否有过语音识别错误
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -534,6 +543,24 @@ export default function SentencePracticeScreen() {
     }
   }, [fileId, isAuthenticated, user?.id, errorPriority, params.sentenceIndex, sourceType, lessonId, voiceId]);
 
+  // 获取完美发音列表
+  const fetchPerfectRecordings = useCallback(async () => {
+    if (!isAuthenticated || !user?.id) return;
+
+    try {
+      const response = await fetch(
+        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/perfect-recordings?userId=${user.id}&limit=10`
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        setPerfectRecordings(data.data || []);
+      }
+    } catch (error) {
+      console.error('获取完美发音列表失败:', error);
+    }
+  }, [isAuthenticated, user?.id]);
+
   // 保存学习进度
   const saveProgress = useCallback(async (sentenceIndex: number) => {
     if (!isAuthenticated || !user?.id || !fileId) return;
@@ -573,6 +600,7 @@ export default function SentencePracticeScreen() {
       isExitingRef.current = false; // 重置退出标记
       hasShownProgressAlert.current = false; // 重置进度弹窗标记，允许每次进入时检查进度
       fetchSentences();
+      fetchPerfectRecordings(); // 获取完美发音列表
 
       return () => {
         isMountedRef.current = false;
@@ -614,7 +642,7 @@ export default function SentencePracticeScreen() {
           console.log('[学习位置] 已保存:', position);
         }
       };
-    }, [fetchSentences, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId])
+    }, [fetchSentences, fetchPerfectRecordings, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId])
   );
 
   // 处理返回键/退出 - 注意：这个函数在 calculateSessionDuration 和 submitLearningData 之后定义
@@ -997,6 +1025,12 @@ export default function SentencePracticeScreen() {
     // 重置句子积分
     currentSentencePointsRef.current = 0;
 
+    // 重置完美发音跟踪状态
+    sentenceStartedWithVoiceRef.current = false;
+    sentenceHadTypingRef.current = false;
+    sentenceHadVoiceErrorRef.current = false;
+    lastRecordingUriRef.current = null;
+
     const tokens = extractWords(currentSentence.text);
     const newWordStatuses = tokens.map((token, index) => ({
       word: token.word,
@@ -1237,6 +1271,76 @@ export default function SentencePracticeScreen() {
     }
   }, [errorPriority, reduceErrorCount, recordScore, targetWord, targetCorrectCount]);
 
+  // 保存完美发音记录
+  const savePerfectRecording = useCallback(async () => {
+    if (!isAuthenticated || !user?.id || !currentSentence || !lastRecordingUriRef.current) {
+      return;
+    }
+
+    try {
+      // 上传录音文件
+      const fileData = await createFormDataFile(lastRecordingUriRef.current, `perfect_${currentSentence.id}.m4a`, 'audio/m4a');
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', fileData as any);
+      uploadFormData.append('folder', 'perfect-recordings');
+
+      const uploadResponse = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/upload`, {
+        method: 'POST',
+        body: uploadFormData,
+      });
+
+      const uploadData = await uploadResponse.json();
+
+      if (!uploadData.success || !uploadData.key) {
+        console.error('上传完美发音录音失败:', uploadData);
+        return;
+      }
+
+      // 保存记录到数据库
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/perfect-recordings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          sentenceId: currentSentence.id,
+          sentenceFileId: fileId,
+          sentenceText: currentSentence.text,
+          audioKey: uploadData.key,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log('[完美发音] 已保存:', currentSentence.text);
+      }
+    } catch (error) {
+      console.error('保存完美发音失败:', error);
+    }
+  }, [isAuthenticated, user?.id, currentSentence, fileId]);
+
+  // 检测句子完成状态
+  useEffect(() => {
+    if (!wordStatuses || wordStatuses.length === 0) return;
+
+    // 检查是否所有非标点单词都已完成
+    const allWordsCompleted = wordStatuses
+      .filter(ws => !ws.isPunctuation)
+      .every(ws => ws.revealed);
+
+    if (allWordsCompleted && currentSentence) {
+      // 句子完成，检查是否是完美发音
+      if (
+        sentenceStartedWithVoiceRef.current &&
+        !sentenceHadTypingRef.current &&
+        !sentenceHadVoiceErrorRef.current
+      ) {
+        console.log('[完美发音] 检测到完美发音，准备保存');
+        savePerfectRecording();
+      }
+    }
+  }, [wordStatuses, currentSentence, savePerfectRecording]);
+
   // 处理返回键/退出
   const handleBackPress = useCallback((): boolean => {
     // 如果正在退出，不再处理
@@ -1467,6 +1571,9 @@ export default function SentencePracticeScreen() {
 
   // 处理手机键盘/电脑键盘输入
   const handleInputChange = useCallback((text: string) => {
+    // 标记有过打字输入
+    sentenceHadTypingRef.current = true;
+    
     // 记录学习时间（用户有输入）
     recordLearningTime();
     
@@ -1905,6 +2012,11 @@ export default function SentencePracticeScreen() {
 
       recordingRef.current = recording;
       setIsRecording(true);
+      
+      // 标记为语音模式开始（如果还没有打字输入）
+      if (!sentenceHadTypingRef.current) {
+        sentenceStartedWithVoiceRef.current = true;
+      }
     } catch (error) {
       console.error('开始录音失败:', error);
       Alert.alert('录音失败', '无法启动录音');
@@ -1921,6 +2033,11 @@ export default function SentencePracticeScreen() {
       await recordingRef.current.stopAndUnloadAsync();
       const uri = recordingRef.current.getURI();
       recordingRef.current = null;
+      
+      // 保存录音URI（可能用于完美发音记录）
+      if (uri) {
+        lastRecordingUriRef.current = uri;
+      }
 
       if (uri && currentSentence) {
         const fileData = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
@@ -1960,7 +2077,9 @@ export default function SentencePracticeScreen() {
               // 显示成功提示
               setShowVoiceResult(false);
             } else {
-              // 匹配失败，显示识别结果和目标单词
+              // 匹配失败，标记有过语音错误
+              sentenceHadVoiceErrorRef.current = true;
+              // 显示识别结果和目标单词
               setVoiceResultText(`识别: ${recognizedText}`);
               setVoiceMatchScore(0);
               setVoiceWordMatches([{ word: voiceTargetWord, isMatch: false }]);
@@ -1984,6 +2103,12 @@ export default function SentencePracticeScreen() {
             
             // 设置结果状态（用于显示红色单词和分段建议）
             const unmatchedWords = wordMatches.filter(w => !w.isMatch);
+            
+            // 如果有未匹配单词，标记有过语音错误
+            if (unmatchedWords.length > 0) {
+              sentenceHadVoiceErrorRef.current = true;
+            }
+            
             if (unmatchedWords.length > 0 || suggestion) {
               setVoiceResultText(recognizedText);
               setVoiceMatchScore(score);
@@ -2081,6 +2206,15 @@ export default function SentencePracticeScreen() {
         </View>
         {/* 右侧小控制按钮 */}
         <View style={styles.headerControls}>
+          {/* 完美发音按钮 */}
+          {perfectRecordings.length > 0 && (
+            <TouchableOpacity
+              style={[styles.smallControlBtn, showPerfectRecordings && styles.smallControlBtnActive]}
+              onPress={() => setShowPerfectRecordings(prev => !prev)}
+            >
+              <FontAwesome6 name="star" size={14} color={showPerfectRecordings ? theme.accent : theme.textMuted} />
+            </TouchableOpacity>
+          )}
           {/* 编辑此句按钮 */}
           <TouchableOpacity
             style={styles.smallControlBtn}
@@ -2207,6 +2341,8 @@ export default function SentencePracticeScreen() {
           scrollEnabled={!isRecording}
           onTouchStart={(e) => {
             showAudioSettings && setShowAudioSettings(false);
+            // 先收起键盘，允许从打字模式切换到语音模式
+            Keyboard.dismiss();
             // 记录触摸起点，准备长按录音
             if (!isRecording) {
               touchStartRef.current = {
@@ -2355,13 +2491,13 @@ export default function SentencePracticeScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* 未匹配的单词（红色，可点击重读） */}
+              {/* 未匹配的单词（红色块块，可点击重读） */}
               <View style={styles.wordMatchContainer}>
                 <View style={styles.wordMatchWords}>
                   {voiceWordMatches.map((match, idx) => (
                     <TouchableOpacity 
                       key={idx} 
-                      style={styles.unmatchedWordBadge}
+                      style={[styles.unmatchedWordBadge, { backgroundColor: theme.error + '30' }]}
                       onPress={() => {
                         // 设置目标单词，准备重读
                         setVoiceTargetWord(match.word);
@@ -2373,15 +2509,8 @@ export default function SentencePracticeScreen() {
                       }}
                       activeOpacity={0.7}
                     >
-                      <View style={styles.unmatchedWordText}>
-                        <ThemedText 
-                          variant="bodyMedium"
-                          color={theme.error}
-                        >
-                          {match.word}
-                        </ThemedText>
-                      </View>
-                      <FontAwesome6 name="microphone" size={10} color={theme.error} style={{ marginLeft: 4 }} />
+                      {/* 红色块块，不显示单词文字 */}
+                      <View style={[styles.unmatchedWordBlock, { backgroundColor: theme.error }]} />
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -2684,6 +2813,88 @@ export default function SentencePracticeScreen() {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      {/* 完美发音列表 Modal */}
+      {showPerfectRecordings && (
+        <View style={styles.perfectRecordingsOverlay}>
+          <TouchableOpacity 
+            style={styles.perfectRecordingsBackdrop}
+            onPress={() => setShowPerfectRecordings(false)}
+            activeOpacity={1}
+          />
+          <View style={[styles.perfectRecordingsPanel, { backgroundColor: theme.backgroundDefault }]}>
+            <View style={[styles.perfectRecordingsHeader, { borderBottomColor: theme.border }]}>
+              <ThemedText variant="h4" color={theme.textPrimary}>我的完美发音</ThemedText>
+              <TouchableOpacity onPress={() => setShowPerfectRecordings(false)}>
+                <FontAwesome6 name="times" size={18} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.perfectRecordingsList}>
+              {perfectRecordings.map((record: any, idx: number) => (
+                <View key={record.id || idx} style={[styles.perfectRecordingItem, { borderBottomColor: theme.borderLight }]}>
+                  <View style={styles.perfectRecordingInfo}>
+                    <ThemedText variant="body" color={theme.textPrimary} numberOfLines={2}>
+                      {record.sentence_text}
+                    </ThemedText>
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      {new Date(record.created_at).toLocaleDateString()}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.perfectRecordingActions}>
+                    <TouchableOpacity
+                      style={[styles.playPerfectBtn, { backgroundColor: theme.primary + '15' }]}
+                      onPress={async () => {
+                        if (record.audio_url) {
+                          const { sound } = await Audio.Sound.createAsync({ uri: record.audio_url });
+                          await sound.playAsync();
+                        }
+                      }}
+                    >
+                      <FontAwesome6 name="play" size={14} color={theme.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.deletePerfectBtn, { backgroundColor: theme.error + '15' }]}
+                      onPress={async () => {
+                        Alert.alert('删除确认', '确定要删除这条完美发音吗？', [
+                          { text: '取消', style: 'cancel' },
+                          { 
+                            text: '删除', 
+                            style: 'destructive',
+                            onPress: async () => {
+                              try {
+                                await fetch(
+                                  `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/perfect-recordings/${record.id}?userId=${user?.id}`,
+                                  { method: 'DELETE' }
+                                );
+                                setPerfectRecordings(prev => prev.filter((r: any) => r.id !== record.id));
+                              } catch (e) {
+                                console.error('删除完美发音失败:', e);
+                              }
+                            }
+                          }
+                        ]);
+                      }}
+                    >
+                      <FontAwesome6 name="trash" size={14} color={theme.error} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+              {perfectRecordings.length === 0 && (
+                <View style={styles.emptyPerfectRecordings}>
+                  <FontAwesome6 name="microphone-slash" size={32} color={theme.textMuted} />
+                  <ThemedText variant="body" color={theme.textMuted} style={{ marginTop: Spacing.md }}>
+                    暂无完美发音记录
+                  </ThemedText>
+                  <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: Spacing.sm }}>
+                    用语音模式一次性答对整句即可记录
+                  </ThemedText>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      )}
     </Screen>
   );
 }

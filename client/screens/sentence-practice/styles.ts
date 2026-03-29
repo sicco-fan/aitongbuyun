@@ -406,12 +406,15 @@ export const createStyles = (theme: Theme) => {
     unmatchedWordBadge: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: theme.error + '15',
+      justifyContent: 'center',
       paddingHorizontal: Spacing.md,
       paddingVertical: Spacing.sm,
       borderRadius: BorderRadius.lg,
-      borderWidth: 1,
-      borderColor: theme.error + '40',
+    },
+    unmatchedWordBlock: {
+      width: 40,
+      height: 24,
+      borderRadius: BorderRadius.md,
     },
     unmatchedWordText: {
       backgroundColor: theme.error + '20',
@@ -443,6 +446,80 @@ export const createStyles = (theme: Theme) => {
       padding: Spacing.md,
       marginTop: Spacing.sm,
       gap: Spacing.sm,
+    },
+    
+    // 完美发音列表
+    perfectRecordingsOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 200,
+    },
+    perfectRecordingsBackdrop: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    perfectRecordingsPanel: {
+      position: 'absolute',
+      top: 80,
+      right: Spacing.lg,
+      width: 280,
+      maxHeight: 400,
+      borderRadius: BorderRadius.lg,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    perfectRecordingsHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: Spacing.md,
+      borderBottomWidth: 1,
+    },
+    perfectRecordingsList: {
+      maxHeight: 340,
+    },
+    perfectRecordingItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: Spacing.md,
+      borderBottomWidth: 1,
+    },
+    perfectRecordingInfo: {
+      flex: 1,
+      marginRight: Spacing.sm,
+    },
+    perfectRecordingActions: {
+      flexDirection: 'row',
+      gap: Spacing.sm,
+    },
+    playPerfectBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: BorderRadius.full,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    deletePerfectBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: BorderRadius.full,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    emptyPerfectRecordings: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: Spacing['2xl'],
     },
   });
 };
