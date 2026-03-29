@@ -11,10 +11,21 @@ import {
   Platform,
   BackHandler,
   Keyboard,
+  StyleSheet,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from 'expo-router';
-import Animated, { FadeInDown, FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, { 
+  FadeInDown, 
+  FadeIn, 
+  FadeOut,
+  useSharedValue,
+  useAnimatedStyle,
+  withSequence,
+  withSpring,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/contexts/AuthContext';
@@ -958,6 +969,341 @@ interface WordStatus {
   isPunctuation: boolean;
 }
 
+// ============================================================
+// 烟花粒子组件
+// ============================================================
+interface ParticleProps {
+  color: string;
+  delay: number;
+  startX: number;
+  direction: { x: number; y: number };
+}
+
+const Particle: React.FC<ParticleProps> = ({ color, delay, startX, direction }) => {
+  const scale = useSharedValue(0);
+  const opacity = useSharedValue(1);
+  const translateX = useSharedValue(startX);
+  const translateY = useSharedValue(0);
+
+  useEffect(() => {
+    // 延迟启动
+    const timeout = setTimeout(() => {
+      scale.value = withSequence(
+        withSpring(1, { damping: 8 }),
+        withDelay(500, withTiming(0, { duration: 300 }))
+      );
+      
+      translateX.value = withTiming(startX + direction.x * 100, { duration: 1200 });
+      translateY.value = withTiming(direction.y * 120, { duration: 1200 });
+      opacity.value = withDelay(800, withTiming(0, { duration: 400 }));
+    }, delay);
+
+    return () => clearTimeout(timeout);
+  }, [delay, direction.x, direction.y, startX, scale, opacity, translateX, translateY]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        {
+          position: 'absolute',
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: color,
+        },
+        animatedStyle,
+      ]}
+    />
+  );
+};
+
+// 烟花组件
+interface FireworkProps {
+  x: number;
+  delay: number;
+  colors: string[];
+}
+
+const Firework: React.FC<FireworkProps> = ({ x, delay, colors }) => {
+  const particles = useMemo(() => {
+    const result = [];
+    for (let i = 0; i < 12; i++) {
+      const angle = (i * 30) * Math.PI / 180;
+      result.push({
+        id: i,
+        color: colors[i % colors.length],
+        direction: {
+          x: Math.cos(angle),
+          y: Math.sin(angle) - 0.5, // 稍微向上偏移
+        },
+      });
+    }
+    return result;
+  }, [colors]);
+
+  return (
+    <View style={{ position: 'absolute', left: x, bottom: 100 }}>
+      {particles.map((p) => (
+        <Particle
+          key={p.id}
+          color={p.color}
+          delay={delay + p.id * 20}
+          startX={0}
+          direction={p.direction}
+        />
+      ))}
+    </View>
+  );
+};
+
+// 课程完成弹窗组件
+interface CompletionModalProps {
+  visible: boolean;
+  duration: number;
+  sentenceCount: number;
+  countdown: number;
+  onClose: () => void;
+  theme: any;
+}
+
+const CompletionModal: React.FC<CompletionModalProps> = ({
+  visible,
+  duration,
+  sentenceCount,
+  countdown,
+  onClose,
+  theme,
+}) => {
+  const fadeAnim = useRef(new RNAnimated.Value(0)).current;
+  const scaleAnim = useRef(new RNAnimated.Value(0.8)).current;
+
+  // 烟花颜色
+  const fireworkColors = useMemo(() => [
+    '#FFD700', // 金色
+    '#FF6B6B', // 红色
+    '#4ECDC4', // 青色
+    '#A78BFA', // 紫色
+    '#F472B6', // 粉色
+  ], []);
+
+  // 获取表扬文案
+  const avgTime = duration / Math.max(sentenceCount, 1);
+  const praise = useMemo(() => {
+    if (avgTime < 60) {
+      return {
+        emoji: '🚀',
+        title: '神速完成！',
+        subtitle: '效率超高，继续保持！',
+        highlight: '闪电般的速度'
+      };
+    } else if (avgTime < 180) {
+      return {
+        emoji: '💪',
+        title: '太棒了！',
+        subtitle: '稳扎稳打，学习效果好！',
+        highlight: '恰到好处的节奏'
+      };
+    } else {
+      return {
+        emoji: '🌟',
+        title: '坚持不懈！',
+        subtitle: '这种学习精神最可贵！',
+        highlight: '专注且用心'
+      };
+    }
+  }, [avgTime]);
+
+  // 格式化时长
+  const formatDuration = (seconds: number) => {
+    if (seconds < 60) {
+      return `${seconds}秒`;
+    } else if (seconds < 3600) {
+      const minutes = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return secs > 0 ? `${minutes}分${secs}秒` : `${minutes}分钟`;
+    } else {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      return minutes > 0 ? `${hours}小时${minutes}分` : `${hours}小时`;
+    }
+  };
+
+  useEffect(() => {
+    if (visible) {
+      RNAnimated.parallel([
+        RNAnimated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        RNAnimated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 8,
+          tension: 100,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      fadeAnim.setValue(0);
+      scaleAnim.setValue(0.8);
+    }
+  }, [visible, fadeAnim, scaleAnim]);
+
+  if (!visible) return null;
+
+  return (
+    <View style={completionStyles.completionOverlay}>
+      {/* 烟花动画 */}
+      <Firework x={60} delay={0} colors={fireworkColors} />
+      <Firework x={200} delay={200} colors={fireworkColors} />
+      <Firework x={340} delay={400} colors={fireworkColors} />
+
+      {/* 背景遮罩 */}
+      <TouchableOpacity 
+        style={completionStyles.completionBackdrop}
+        activeOpacity={1}
+        onPress={onClose}
+      />
+
+      {/* 弹窗内容 */}
+      <RNAnimated.View
+        style={[
+          completionStyles.completionModal,
+          {
+            backgroundColor: theme.backgroundDefault,
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }],
+          },
+        ]}
+      >
+        {/* 标题 */}
+        <ThemedText variant="h2" color={theme.primary} style={completionStyles.completionTitle}>
+          🎉 课程完成！
+        </ThemedText>
+
+        {/* 表扬文案 */}
+        <View style={completionStyles.praiseContainer}>
+          <ThemedText variant="h3" color={theme.textPrimary}>
+            {praise.emoji} {praise.title}
+          </ThemedText>
+          <ThemedText variant="body" color={theme.textSecondary} style={{ marginTop: Spacing.sm }}>
+            {praise.subtitle}
+          </ThemedText>
+        </View>
+
+        {/* 数据统计 */}
+        <View style={completionStyles.statsContainer}>
+          <View style={[completionStyles.statItem, { backgroundColor: theme.backgroundTertiary }]}>
+            <FontAwesome6 name="clock" size={24} color={theme.primary} />
+            <ThemedText variant="h3" color={theme.textPrimary} style={{ marginTop: Spacing.sm }}>
+              {formatDuration(duration)}
+            </ThemedText>
+            <ThemedText variant="caption" color={theme.textMuted}>学习时长</ThemedText>
+          </View>
+          <View style={[completionStyles.statItem, { backgroundColor: theme.backgroundTertiary }]}>
+            <FontAwesome6 name="check-circle" size={24} color={theme.success} />
+            <ThemedText variant="h3" color={theme.textPrimary} style={{ marginTop: Spacing.sm }}>
+              {sentenceCount}句
+            </ThemedText>
+            <ThemedText variant="caption" color={theme.textMuted}>完成句子</ThemedText>
+          </View>
+        </View>
+
+        {/* 亮点标签 */}
+        <View style={[completionStyles.highlightBadge, { backgroundColor: theme.primary + '15' }]}>
+          <ThemedText variant="smallMedium" color={theme.primary}>
+            ✨ {praise.highlight}
+          </ThemedText>
+        </View>
+
+        {/* 底部按钮 */}
+        <TouchableOpacity
+          style={[completionStyles.completionButton, { backgroundColor: theme.primary }]}
+          onPress={onClose}
+        >
+          <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
+            返回 ({countdown}s)
+          </ThemedText>
+        </TouchableOpacity>
+      </RNAnimated.View>
+    </View>
+  );
+};
+
+// 烟花动画相关样式（需要在 createStyles 外部定义）
+const completionStyles = StyleSheet.create({
+  completionOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  completionBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  completionModal: {
+    width: '85%',
+    maxWidth: 360,
+    borderRadius: 24,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  completionTitle: {
+    textAlign: 'center',
+  },
+  praiseContainer: {
+    alignItems: 'center',
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    gap: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    padding: Spacing.lg,
+    borderRadius: 16,
+  },
+  highlightBadge: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: 20,
+    marginBottom: Spacing.lg,
+  },
+  completionButton: {
+    width: '100%',
+    paddingVertical: Spacing.lg,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+});
+
 export default function SentencePracticeScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -1023,6 +1369,11 @@ export default function SentencePracticeScreen() {
 
   // 句子积分累积（仅后台记录，不显示弹窗）
   const currentSentencePointsRef = useRef(0);
+
+  // 课程完成弹窗状态
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [completionDuration, setCompletionDuration] = useState(0); // 学习时长（秒）
+  const [countdown, setCountdown] = useState(3); // 自动返回倒计时
 
   // 学习时长计时器 - 带空闲超时检测
   // 逻辑：
@@ -2846,12 +3197,62 @@ export default function SentencePracticeScreen() {
       setVoiceResultText('');
       setCurrentIndex(prev => prev + 1);
     } else {
+      // 课程完成，显示庆祝弹窗
       stopPlayback();
-      Alert.alert('恭喜！', '你已经完成了所有句子的学习！', [
-        { text: '返回', onPress: () => router.back() }
-      ]);
+      const duration = Math.round(calculateEffectiveDuration());
+      setCompletionDuration(duration);
+      setCountdown(3);
+      setShowCompletionModal(true);
+      
+      // 播放成功音效
+      playSuccessSound();
     }
-  }, [currentIndex, sentences.length, stopPlayback, router, recordActivity]);
+  }, [currentIndex, sentences.length, stopPlayback, recordActivity, calculateEffectiveDuration]);
+
+  // 播放成功音效（使用简短的在线音效）
+  const playSuccessSound = useCallback(async () => {
+    try {
+      // 使用一个简短的成功音效
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3' },
+        { volume: 0.5 }
+      );
+      await sound.playAsync();
+      // 播放完成后自动释放
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (error) {
+      // 音效播放失败不影响主流程
+      console.log('[音效] 播放成功音效失败（可忽略）:', error);
+    }
+  }, []);
+
+  // 处理课程完成弹窗关闭
+  const handleCompletionClose = useCallback(() => {
+    setShowCompletionModal(false);
+    // 提交最终学习数据
+    submitLearningData(true, completionDuration);
+    router.back();
+  }, [submitLearningData, completionDuration, router]);
+
+  // 倒计时自动返回
+  useEffect(() => {
+    if (!showCompletionModal) return;
+    
+    if (countdown <= 0) {
+      handleCompletionClose();
+      return;
+    }
+    
+    const timer = setTimeout(() => {
+      setCountdown(prev => prev - 1);
+    }, 1000);
+    
+    return () => clearTimeout(timer);
+  }, [showCompletionModal, countdown, handleCompletionClose]);
 
   // 开始语音输入
   const startRecording = useCallback(async () => {
@@ -3925,6 +4326,16 @@ export default function SentencePracticeScreen() {
           </View>
         </View>
       )}
+
+      {/* 课程完成弹窗 */}
+      <CompletionModal
+        visible={showCompletionModal}
+        duration={completionDuration}
+        sentenceCount={sentences.length}
+        countdown={countdown}
+        onClose={handleCompletionClose}
+        theme={theme}
+      />
     </Screen>
   );
 }
