@@ -24,6 +24,110 @@ const storage = new S3Storage({
   region: 'cn-beijing',
 });
 
+/**
+ * 使用 AI 智能识别课时结构
+ * 支持各种不同格式的教材（如 starter unit、unit1、unitN、Lesson X 等）
+ */
+async function parseLessonsWithAI(text: string): Promise<Array<{
+  lesson_number: number;
+  title: string;
+  description?: string;
+  sentences: Array<{ english: string; chinese?: string }>;
+}>> {
+  console.log('[AI解析] 开始使用 AI 智能识别课时结构...');
+  
+  const config = new Config();
+  const client = new LLMClient(config);
+  
+  // 截取文本内容（避免过长）
+  const maxTextLength = 15000;
+  const truncatedText = text.length > maxTextLength 
+    ? text.substring(0, maxTextLength) + '\n...(文本过长已截断)'
+    : text;
+  
+  const systemPrompt = `你是一个专业的英语教材解析助手。你的任务是分析英语教材文本，识别出其中的章节/单元/课时结构。
+
+你需要返回一个 JSON 数组，每个元素代表一个课时/单元，格式如下：
+[
+  {
+    "lesson_number": 1,
+    "title": "课时标题",
+    "sentences": [
+      {"english": "英文句子", "chinese": "中文翻译（如果有）"}
+    ]
+  }
+]
+
+注意事项：
+1. 识别各种格式：Lesson 1、Unit 1、Starter Unit、Part 1、Chapter 1 等都是课时标记
+2. lesson_number 应该是数字序号（从 1 开始）
+3. 如果没有明确的标题，可以用 "Unit 1"、"Lesson 1" 等作为标题
+4. 英文句子和中文翻译通常成对出现
+5. 如果没有中文翻译，chinese 字段可以省略
+6. 跳过标题行、页码、版权信息等非正文内容
+7. 每个句子应该是完整的一句话
+
+只返回 JSON 数组，不要返回其他内容。`;
+
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `请分析以下英语教材文本，识别出所有的课时/单元结构：\n\n${truncatedText}` }
+  ];
+  
+  try {
+    const response = await client.invoke(messages, { 
+      model: 'doubao-seed-1-6-251015',
+      temperature: 0.3 
+    });
+    
+    const content = response.content.trim();
+    console.log('[AI解析] AI 返回内容长度:', content.length);
+    
+    // 尝试提取 JSON
+    let jsonStr = content;
+    
+    // 如果返回内容包含 markdown 代码块，提取其中的 JSON
+    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[1].trim();
+    }
+    
+    // 解析 JSON
+    const lessons = JSON.parse(jsonStr);
+    
+    if (!Array.isArray(lessons)) {
+      throw new Error('AI 返回的不是数组');
+    }
+    
+    // 验证并标准化数据
+    const validLessons = lessons.filter((lesson: any) => {
+      return lesson && 
+             typeof lesson.lesson_number === 'number' && 
+             Array.isArray(lesson.sentences) &&
+             lesson.sentences.length > 0;
+    }).map((lesson: any) => ({
+      lesson_number: lesson.lesson_number,
+      title: lesson.title || `Unit ${lesson.lesson_number}`,
+      description: lesson.description || lesson.title || `Unit ${lesson.lesson_number}`,
+      sentences: lesson.sentences.filter((s: any) => s && s.english).map((s: any) => ({
+        english: s.english.trim(),
+        chinese: s.chinese?.trim()
+      }))
+    }));
+    
+    console.log(`[AI解析] 成功识别 ${validLessons.length} 个课时`);
+    validLessons.forEach((lesson, idx) => {
+      console.log(`[AI解析]   课时 ${lesson.lesson_number}: ${lesson.title} (${lesson.sentences.length} 句)`);
+    });
+    
+    return validLessons;
+    
+  } catch (error: any) {
+    console.error('[AI解析] 解析失败:', error.message);
+    throw error;
+  }
+}
+
 // 定义可用的音色
 // 注意：当前TTS服务仅支持中文音色，但部分音色支持双语（中英）
 // 对于英语学习，推荐使用双语音色
@@ -920,8 +1024,8 @@ router.post('/import-text', async (req: Request, res: Response) => {
     console.log(`[导入课程] 文本长度: ${textContent.length}`);
     sendProgress({ type: 'progress', phase: 'parsing', message: '文件解析完成', percent: 20 });
     
-    // 解析课程结构（复用 import-pdf 的逻辑）
-    const lessons = parseNCEText(textContent);
+    // 解析课程结构（复用 import-pdf 的逻辑，支持 AI 智能识别）
+    const lessons = await parseNCEText(textContent);
     console.log(`[导入课程] 解析到 ${lessons.length} 个课时`);
     sendProgress({ type: 'progress', phase: 'importing', message: `解析到 ${lessons.length} 个课时，开始导入...`, percent: 25 });
     
@@ -1075,8 +1179,8 @@ router.post('/import-pdf', async (req: Request, res: Response) => {
     console.log(`[导入课程] PDF 文本长度: ${textContent.length}, 页数: ${pdfData.numpages}`);
     sendProgress({ type: 'progress', phase: 'parsing', message: `PDF 解析完成，共 ${pdfData.numpages} 页`, percent: 20 });
     
-    // 解析课程结构
-    const lessons = parseNCEText(textContent);
+    // 解析课程结构（支持 AI 智能识别）
+    const lessons = await parseNCEText(textContent);
     console.log(`[导入课程] 解析到 ${lessons.length} 个课时`);
     sendProgress({ type: 'progress', phase: 'importing', message: `解析到 ${lessons.length} 个课时，开始导入...`, percent: 25 });
     
@@ -1239,18 +1343,21 @@ router.post('/import-pdf', async (req: Request, res: Response) => {
 });
 
 /**
- * 解析新概念英语文本
- * 格式：
- * Lesson 1: A puma at large
- * 句子内容（英文）
- * ...
+ * 解析课程文本（支持多种格式）
+ * 首先尝试使用正则匹配，如果失败则使用 AI 智能识别
+ * 支持格式：
+ * - Lesson 1: A puma at large
+ * - Unit 1: Title
+ * - Starter Unit: Title
+ * - Part 1: Title
+ * - Chapter 1: Title
  */
-function parseNCEText(text: string): Array<{
+async function parseNCEText(text: string): Promise<Array<{
   lesson_number: number;
   title: string;
   description?: string;
   sentences: Array<{ english: string; chinese?: string }>;
-}> {
+}>> {
   const lessons: Array<{
     lesson_number: number;
     title: string;
@@ -1333,6 +1440,22 @@ function parseNCEText(text: string): Array<{
   }
   
   console.log(`[解析] 课时列表: ${matches.map(m => `Lesson ${m.lesson_number}: ${m.title}`).join(', ')}`);
+  
+  // 如果正则匹配失败或匹配结果太少，尝试使用 AI 智能识别
+  if (matches.length === 0) {
+    console.log(`[解析] 正则未匹配到课时，尝试使用 AI 智能识别...`);
+    try {
+      const aiLessons = await parseLessonsWithAI(text);
+      if (aiLessons.length > 0) {
+        console.log(`[解析] AI 智能识别成功，返回 ${aiLessons.length} 个课时`);
+        return aiLessons;
+      }
+    } catch (aiError) {
+      console.error('[解析] AI 智能识别失败:', aiError);
+    }
+    // AI 也失败了，返回空数组
+    return [];
+  }
   
   // 按课时分割文本
   for (let i = 0; i < matches.length; i++) {
