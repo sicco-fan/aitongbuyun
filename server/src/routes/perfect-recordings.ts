@@ -78,12 +78,12 @@ router.post('/', async (req, res) => {
 /**
  * 获取用户的完美发音记录列表
  * GET /api/v1/perfect-recordings
- * Query: userId, limit?, sentenceFileId?
+ * Query: userId, limit?, sentenceFileId?, sentenceId?
  */
 router.get('/', async (req, res) => {
   try {
     const supabase = getSupabaseClient();
-    const { userId, limit = 10, sentenceFileId } = req.query;
+    const { userId, limit = 10, sentenceFileId, sentenceId } = req.query;
 
     if (!userId) {
       return res.status(400).json({ 
@@ -99,7 +99,9 @@ router.get('/', async (req, res) => {
       .order('created_at', { ascending: false })
       .limit(Number(limit));
 
-    if (sentenceFileId) {
+    if (sentenceId) {
+      query = query.eq('sentence_id', Number(sentenceId));
+    } else if (sentenceFileId) {
       query = query.eq('sentence_file_id', Number(sentenceFileId));
     }
 

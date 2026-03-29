@@ -381,6 +381,8 @@ export default function SentencePracticeScreen() {
   const sentenceStartedWithVoiceRef = useRef(false); // 当前句子是否以语音模式开始
   const sentenceHadTypingRef = useRef(false); // 当前句子是否有过打字输入
   const sentenceHadVoiceErrorRef = useRef(false); // 当前句子是否有过语音识别错误
+  const wasPlayingBeforePerfectRef = useRef(false); // 打开完美发音面板前是否在播放
+  const perfectSoundRef = useRef<Audio.Sound | null>(null); // 完美发音播放器
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -543,13 +545,18 @@ export default function SentencePracticeScreen() {
     }
   }, [fileId, isAuthenticated, user?.id, errorPriority, params.sentenceIndex, sourceType, lessonId, voiceId]);
 
-  // 获取完美发音列表
+  // 获取完美发音列表（当前句子）
   const fetchPerfectRecordings = useCallback(async () => {
-    if (!isAuthenticated || !user?.id) return;
+    if (!isAuthenticated || !user?.id || !currentSentence?.id) return;
 
     try {
+      /**
+       * 服务端文件：server/src/routes/perfect-recordings.ts
+       * 接口：GET /api/v1/perfect-recordings
+       * Query 参数：userId: string, sentenceId?: number, limit?: number
+       */
       const response = await fetch(
-        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/perfect-recordings?userId=${user.id}&limit=10`
+        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/perfect-recordings?userId=${user.id}&sentenceId=${currentSentence.id}&limit=10`
       );
       const data = await response.json();
 
@@ -559,7 +566,7 @@ export default function SentencePracticeScreen() {
     } catch (error) {
       console.error('获取完美发音列表失败:', error);
     }
-  }, [isAuthenticated, user?.id]);
+  }, [isAuthenticated, user?.id, currentSentence?.id]);
 
   // 保存学习进度
   const saveProgress = useCallback(async (sentenceIndex: number) => {
@@ -1082,6 +1089,9 @@ export default function SentencePracticeScreen() {
       playAudio();
     }, 500);
 
+    // 获取当前句子的完美发音记录
+    fetchPerfectRecordings();
+
     return () => {
       clearTimeout(timer);
       stopPlayback();
@@ -1340,6 +1350,43 @@ export default function SentencePracticeScreen() {
       }
     }
   }, [wordStatuses, currentSentence, savePerfectRecording]);
+
+  // 关闭完美发音面板
+  const closePerfectRecordings = useCallback(() => {
+    setShowPerfectRecordings(false);
+    // 停止完美发音播放
+    if (perfectSoundRef.current) {
+      perfectSoundRef.current.unloadAsync();
+      perfectSoundRef.current = null;
+    }
+    // 恢复循环播放
+    if (wasPlayingBeforePerfectRef.current) {
+      playAudio();
+    }
+  }, [playAudio]);
+
+  // 播放完美发音录音
+  const playPerfectRecording = useCallback(async (audioUrl: string) => {
+    try {
+      // 停止之前的完美发音播放
+      if (perfectSoundRef.current) {
+        await perfectSoundRef.current.unloadAsync();
+      }
+      // 播放新的录音
+      const { sound } = await Audio.Sound.createAsync({ uri: audioUrl });
+      perfectSoundRef.current = sound;
+      await sound.playAsync();
+      // 播放完成后自动释放
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+          perfectSoundRef.current = null;
+        }
+      });
+    } catch (error) {
+      console.error('播放完美发音失败:', error);
+    }
+  }, []);
 
   // 处理返回键/退出
   const handleBackPress = useCallback((): boolean => {
@@ -2206,11 +2253,25 @@ export default function SentencePracticeScreen() {
         </View>
         {/* 右侧小控制按钮 */}
         <View style={styles.headerControls}>
-          {/* 完美发音按钮 */}
+          {/* 完美发音按钮 - 只在有当前句子的完美发音记录时显示 */}
           {perfectRecordings.length > 0 && (
             <TouchableOpacity
               style={[styles.smallControlBtn, showPerfectRecordings && styles.smallControlBtnActive]}
-              onPress={() => setShowPerfectRecordings(prev => !prev)}
+              onPress={() => {
+                if (!showPerfectRecordings) {
+                  // 打开面板：暂停循环播放
+                  wasPlayingBeforePerfectRef.current = isPlaying;
+                  if (isPlaying) {
+                    pauseAudio();
+                  }
+                } else {
+                  // 关闭面板：恢复播放
+                  if (wasPlayingBeforePerfectRef.current) {
+                    playAudio();
+                  }
+                }
+                setShowPerfectRecordings(prev => !prev);
+              }}
             >
               <FontAwesome6 name="star" size={14} color={showPerfectRecordings ? theme.accent : theme.textMuted} />
             </TouchableOpacity>
@@ -2819,13 +2880,13 @@ export default function SentencePracticeScreen() {
         <View style={styles.perfectRecordingsOverlay}>
           <TouchableOpacity 
             style={styles.perfectRecordingsBackdrop}
-            onPress={() => setShowPerfectRecordings(false)}
+            onPress={closePerfectRecordings}
             activeOpacity={1}
           />
           <View style={[styles.perfectRecordingsPanel, { backgroundColor: theme.backgroundDefault }]}>
             <View style={[styles.perfectRecordingsHeader, { borderBottomColor: theme.border }]}>
               <ThemedText variant="h4" color={theme.textPrimary}>我的完美发音</ThemedText>
-              <TouchableOpacity onPress={() => setShowPerfectRecordings(false)}>
+              <TouchableOpacity onPress={closePerfectRecordings}>
                 <FontAwesome6 name="times" size={18} color={theme.textMuted} />
               </TouchableOpacity>
             </View>
@@ -2843,10 +2904,9 @@ export default function SentencePracticeScreen() {
                   <View style={styles.perfectRecordingActions}>
                     <TouchableOpacity
                       style={[styles.playPerfectBtn, { backgroundColor: theme.primary + '15' }]}
-                      onPress={async () => {
+                      onPress={() => {
                         if (record.audio_url) {
-                          const { sound } = await Audio.Sound.createAsync({ uri: record.audio_url });
-                          await sound.playAsync();
+                          playPerfectRecording(record.audio_url);
                         }
                       }}
                     >
