@@ -17,9 +17,11 @@ interface User {
   id: string;
   phone?: string;
   nickname?: string;
+  username?: string;
   device_id?: string;
   is_guest?: boolean;
-  role?: 'admin' | 'user';
+  role?: 'admin' | 'teacher' | 'student' | 'user';
+  avatar_url?: string;
 }
 
 // 认证上下文类型

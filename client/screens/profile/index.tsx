@@ -45,6 +45,9 @@ export default function ProfileScreen() {
   const [nicknameModalVisible, setNicknameModalVisible] = useState(false);
   const [newNickname, setNewNickname] = useState('');
   const [updatingNickname, setUpdatingNickname] = useState(false);
+  const [userManageModalVisible, setUserManageModalVisible] = useState(false);
+  const [users, setUsers] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -167,6 +170,71 @@ export default function ProfileScreen() {
       Alert.alert('错误', result.error || '更新失败');
     }
   };
+
+  // 获取用户列表
+  const fetchUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      /**
+       * 服务端文件：server/src/routes/users.ts
+       * 接口：GET /api/v1/users
+       * Query 参数：page?: number, limit?: number
+       */
+      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/users?page=1&limit=50`, {
+        headers: {
+          'X-User-Id': user?.id || '',
+        },
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setUsers(data.users || []);
+      } else {
+        Alert.alert('错误', data.error || '获取用户列表失败');
+      }
+    } catch (error) {
+      console.error('获取用户列表失败:', error);
+      Alert.alert('错误', '获取用户列表失败');
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  // 修改用户角色
+  const handleChangeRole = async (userId: number, newRole: string) => {
+    try {
+      /**
+       * 服务端文件：server/src/routes/users.ts
+       * 接口：PUT /api/v1/users/:id/role
+       * Body 参数：role: 'admin' | 'teacher' | 'student'
+       */
+      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/users/${userId}/role`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Id': user?.id || '',
+        },
+        body: JSON.stringify({ role: newRole }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        // 刷新用户列表
+        fetchUsers();
+        Alert.alert('成功', '角色已更新');
+      } else {
+        Alert.alert('错误', data.error || '更新角色失败');
+      }
+    } catch (error) {
+      console.error('更新角色失败:', error);
+      Alert.alert('错误', '更新角色失败');
+    }
+  };
+
+  // 打开用户管理弹窗时加载用户列表
+  useEffect(() => {
+    if (userManageModalVisible && user?.role === 'admin') {
+      fetchUsers();
+    }
+  }, [userManageModalVisible]);
 
   const accuracy = stats.totalSentences > 0 
     ? Math.round((stats.learnedSentences / stats.totalSentences) * 100) 
@@ -404,6 +472,27 @@ export default function ProfileScreen() {
           </View>
           <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
         </TouchableOpacity>
+
+        {/* 用户管理 - 仅管理员可见 */}
+        {user?.role === 'admin' && (
+          <TouchableOpacity 
+            style={styles.adminCard}
+            onPress={() => setUserManageModalVisible(true)}
+          >
+            <View style={[styles.adminIcon, { backgroundColor: theme.success + '15' }]}>
+              <FontAwesome6 name="users-gear" size={24} color={theme.success} />
+            </View>
+            <View style={styles.adminContent}>
+              <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                用户管理
+              </ThemedText>
+              <ThemedText variant="small" color={theme.textMuted}>
+                管理用户角色和权限
+              </ThemedText>
+            </View>
+            <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
       {/* 修改昵称弹窗 */}
@@ -473,6 +562,134 @@ export default function ProfileScreen() {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 用户管理弹窗 - 仅管理员可用 */}
+      <Modal visible={userManageModalVisible} transparent animationType="slide">
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          justifyContent: 'flex-end',
+        }}>
+          <View style={{
+            backgroundColor: theme.backgroundDefault,
+            borderTopLeftRadius: BorderRadius.xl,
+            borderTopRightRadius: BorderRadius.xl,
+            maxHeight: '80%',
+            paddingTop: Spacing.md,
+          }}>
+            {/* 弹窗标题 */}
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: Spacing.xl,
+              paddingBottom: Spacing.md,
+              borderBottomWidth: 1,
+              borderBottomColor: theme.borderLight,
+            }}>
+              <ThemedText variant="h4" color={theme.textPrimary}>用户管理</ThemedText>
+              <TouchableOpacity onPress={() => setUserManageModalVisible(false)}>
+                <FontAwesome6 name="xmark" size={24} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* 用户列表 */}
+            {loadingUsers ? (
+              <View style={{ padding: Spacing['2xl'], alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={theme.primary} />
+              </View>
+            ) : (
+              <ScrollView style={{ paddingHorizontal: Spacing.lg }}>
+                {users.map((u: any) => (
+                  <View 
+                    key={u.id}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingVertical: Spacing.lg,
+                      borderBottomWidth: 1,
+                      borderBottomColor: theme.borderLight,
+                    }}
+                  >
+                    {/* 用户信息 */}
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                          {u.nickname || u.username || '未设置昵称'}
+                        </ThemedText>
+                        <View style={{
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                          borderRadius: 8,
+                          backgroundColor: 
+                            u.role === 'admin' ? theme.error + '15' :
+                            u.role === 'teacher' ? theme.primary + '15' :
+                            theme.textMuted + '15',
+                        }}>
+                          <ThemedText 
+                            variant="caption" 
+                            color={
+                              u.role === 'admin' ? theme.error :
+                              u.role === 'teacher' ? theme.primary :
+                              theme.textMuted
+                            }
+                          >
+                            {u.role === 'admin' ? '管理员' :
+                             u.role === 'teacher' ? '教师' : '学生'}
+                          </ThemedText>
+                        </View>
+                      </View>
+                      <ThemedText variant="caption" color={theme.textMuted}>
+                        {u.phone || '未绑定手机'}
+                      </ThemedText>
+                    </View>
+
+                    {/* 修改角色按钮 */}
+                    {u.id !== user?.id && (
+                      <TouchableOpacity
+                        style={{
+                          paddingHorizontal: Spacing.md,
+                          paddingVertical: Spacing.sm,
+                          borderRadius: BorderRadius.md,
+                          backgroundColor: theme.primary,
+                        }}
+                        onPress={() => {
+                          const roles = ['student', 'teacher', 'admin'];
+                          const currentIndex = roles.indexOf(u.role);
+                          const nextRole = roles[(currentIndex + 1) % roles.length];
+                          Alert.alert(
+                            '修改角色',
+                            `确定将此用户角色修改为 ${
+                              nextRole === 'admin' ? '管理员' :
+                              nextRole === 'teacher' ? '教师' : '学生'
+                            }？`,
+                            [
+                              { text: '取消', style: 'cancel' },
+                              { 
+                                text: '确定', 
+                                onPress: () => handleChangeRole(u.id, nextRole)
+                              }
+                            ]
+                          );
+                        }}
+                      >
+                        <ThemedText variant="smallMedium" color={theme.buttonPrimaryText}>
+                          切换角色
+                        </ThemedText>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+                {users.length === 0 && (
+                  <View style={{ padding: Spacing['2xl'], alignItems: 'center' }}>
+                    <ThemedText variant="body" color={theme.textMuted}>暂无用户</ThemedText>
+                  </View>
+                )}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
