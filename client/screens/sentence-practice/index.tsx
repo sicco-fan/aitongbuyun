@@ -2085,17 +2085,19 @@ export default function SentencePracticeScreen() {
   const extractWords = useCallback((text: string) => {
     const result: { word: string; displayText: string; isPunctuation: boolean }[] = [];
     
-    // 先将文本中的各种引号和破折号统一为标准格式
-    // 使用更宽松的匹配：任何看起来像引号的字符都替换
+    // 【终极修复】先将所有类型的单引号统一为标准 ASCII 单引号 (U+0027)
+    // 这样 don't, what's 等缩写词才能被正确识别为一个单词
+    // 使用 Unicode 码点确保匹配所有引号变体
     let normalizedText = text
-      .replace(/[^\w\s.,!?;:(){}\-]/g, (char) => {
-        // 如果是字母、数字、空格、标点，保留
-        // 如果是引号类字符（各种单引号、双引号变体），替换
-        if (/['"″′‵ʹʻʼʽ＇`´]/.test(char)) return "'";
-        if (/["″‶]/.test(char)) return '"';
-        if (/[—–−]/.test(char)) return '-';
-        return char;
-      });
+      // 所有类型的单引号 → 标准单引号
+      // U+2018('), U+2019('), U+201A(‚), U+201B(‛), U+2032(′), U+2035(‵)
+      // U+02B9(ʹ), U+02BB(ʻ), U+02BC(ʼ), U+02BD(ʽ), U+FF07(＇), U+0060(`), U+00B4(´)
+      .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035\u02B9\u02BB\u02BC\u02BD\uFF07\u0060\u00B4]/g, "'")
+      // 所有类型的双引号 → 标准双引号
+      // U+201C("), U+201D("), U+201E(„), U+2033(″), U+2036(‶)
+      .replace(/[\u201C\u201D\u201E\u2033\u2036]/g, '"')
+      // 破折号统一
+      .replace(/[—–−]/g, '-');
     
     // 处理成对引号：识别独立的引号（成对出现的引号），将它们标记为直接显示
     // 使用特殊占位符标记独立引号，避免被当作单词的一部分
@@ -3596,6 +3598,8 @@ export default function SentencePracticeScreen() {
         const fileData = await createFormDataFile(uri, 'recording.m4a', 'audio/m4a');
         const formData = new FormData();
         formData.append('file', fileData as any);
+        // 传递目标句子文本，用于 ASR 混淆词修复（如 we'll → well）
+        formData.append('targetText', currentSentence.text);
 
         const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech-recognize`, {
           method: 'POST',

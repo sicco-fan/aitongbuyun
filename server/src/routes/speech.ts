@@ -20,17 +20,20 @@ const LETTERS = 'abcdefghijklmnopqrstuvwxyz';
 
 // 常见英语缩写词修复映射（ASR 常见错误）
 // 格式：[错误模式, 正确形式]
+// 注意：必须匹配"有空格分隔"的情况，避免将完整单词错误替换
+// 例如：we ll → we'll（正确），但 well 不应该被替换（错误）
 const CONTRACTION_FIXES: [RegExp, string][] = [
   // don't, doesn't, didn't, won't, wouldn't, shouldn't, couldn't, can't, isn't, aren't, wasn't, weren't, haven't, hasn't, hadn't
-  [/don\s*t\b/gi, "don't"],
-  [/doesn\s*t\b/gi, "doesn't"],
-  [/didn\s*t\b/gi, "didn't"],
-  [/won\s*t\b/gi, "won't"],
-  [/wouldn\s*t\b/gi, "wouldn't"],
-  [/shouldn\s*t\b/gi, "shouldn't"],
-  [/couldn\s*t\b/gi, "couldn't"],
-  [/can\s*t\b/gi, "can't"],
-  [/isn\s*t\b/gi, "isn't"],
+  // 使用 \s+ 确保只匹配有空格的情况，避免将完整单词（如 dont, wont）错误替换
+  [/don\s+t\b/gi, "don't"],
+  [/doesn\s+t\b/gi, "doesn't"],
+  [/didn\s+t\b/gi, "didn't"],
+  [/won\s+t\b/gi, "won't"],
+  [/wouldn\s+t\b/gi, "wouldn't"],
+  [/shouldn\s+t\b/gi, "shouldn't"],
+  [/couldn\s+t\b/gi, "couldn't"],
+  [/can\s+t\b/gi, "can't"],
+  [/isn\s+t\b/gi, "isn't"],
   [/aren\s*t\b/gi, "aren't"],
   [/wasn\s*t\b/gi, "wasn't"],
   [/weren\s*t\b/gi, "weren't"],
@@ -39,57 +42,58 @@ const CONTRACTION_FIXES: [RegExp, string][] = [
   [/hadn\s*t\b/gi, "hadn't"],
   
   // what's, that's, it's, there's, here's, who's, how's, where's, when's
-  [/what\s*s\b/gi, "what's"],
-  [/that\s*s\b/gi, "that's"],
-  [/it\s*s\b/gi, "it's"],
-  [/there\s*s\b/gi, "there's"],
-  [/here\s*s\b/gi, "here's"],
-  [/who\s*s\b/gi, "who's"],
-  [/how\s*s\b/gi, "how's"],
-  [/where\s*s\b/gi, "where's"],
-  [/when\s*s\b/gi, "when's"],
+  [/what\s+s\b/gi, "what's"],
+  [/that\s+s\b/gi, "that's"],
+  [/it\s+s\b/gi, "it's"],
+  [/there\s+s\b/gi, "there's"],
+  [/here\s+s\b/gi, "here's"],
+  [/who\s+s\b/gi, "who's"],
+  [/how\s+s\b/gi, "how's"],
+  [/where\s+s\b/gi, "where's"],
+  [/when\s+s\b/gi, "when's"],
   
   // I'm, you're, we're, they're, he's, she's
-  [/i\s*m\b/gi, "I'm"],
-  [/you\s*re\b/gi, "you're"],
-  [/we\s*re\b/gi, "we're"],
-  [/they\s*re\b/gi, "they're"],
-  [/he\s*s\b/gi, "he's"],
-  [/she\s*s\b/gi, "she's"],
+  [/i\s+m\b/gi, "I'm"],
+  [/you\s+re\b/gi, "you're"],
+  [/we\s+re\b/gi, "we're"],
+  [/they\s+re\b/gi, "they're"],
+  [/he\s+s\b/gi, "he's"],
+  [/she\s+s\b/gi, "she's"],
   
   // I'll, you'll, we'll, they'll, he'll, she'll, it'll
-  [/i\s*ll\b/gi, "I'll"],
-  [/you\s*ll\b/gi, "you'll"],
-  [/we\s*ll\b/gi, "we'll"],
-  [/they\s*ll\b/gi, "they'll"],
-  [/he\s*ll\b/gi, "he'll"],
-  [/she\s*ll\b/gi, "she'll"],
-  [/it\s*ll\b/gi, "it'll"],
+  // 注意：使用 \s+ 避免将 well, ill, all 等完整单词错误替换
+  [/i\s+ll\b/gi, "I'll"],
+  [/you\s+ll\b/gi, "you'll"],
+  [/we\s+ll\b/gi, "we'll"],
+  [/they\s+ll\b/gi, "they'll"],
+  [/he\s+ll\b/gi, "he'll"],
+  [/she\s+ll\b/gi, "she'll"],
+  [/it\s+ll\b/gi, "it'll"],
   
   // I've, you've, we've, they've
-  [/i\s*ve\b/gi, "I've"],
-  [/you\s*ve\b/gi, "you've"],
-  [/we\s*ve\b/gi, "we've"],
-  [/they\s*ve\b/gi, "they've"],
+  [/i\s+ve\b/gi, "I've"],
+  [/you\s+ve\b/gi, "you've"],
+  [/we\s+ve\b/gi, "we've"],
+  [/they\s+ve\b/gi, "they've"],
   
   // I'd, you'd, we'd, they'd, he'd, she'd, it'd
-  [/i\s*d\b/gi, "I'd"],
-  [/you\s*d\b/gi, "you'd"],
-  [/we\s*d\b/gi, "we'd"],
-  [/they\s*d\b/gi, "they'd"],
-  [/he\s*d\b/gi, "he'd"],
-  [/she\s*d\b/gi, "she'd"],
-  [/it\s*d\b/gi, "it'd"],
+  [/i\s+d\b/gi, "I'd"],
+  [/you\s+d\b/gi, "you'd"],
+  [/we\s+d\b/gi, "we'd"],
+  [/they\s+d\b/gi, "they'd"],
+  [/he\s+d\b/gi, "he'd"],
+  [/she\s+d\b/gi, "she'd"],
+  [/it\s+d\b/gi, "it'd"],
   
   // let's
-  [/let\s*s\b/gi, "let's"],
+  [/let\s+s\b/gi, "let's"],
   
-  // 其他常见
-  [/gon\s*na\b/gi, "gonna"],
-  [/got\s*ta\b/gi, "gotta"],
-  [/wan\s*na\b/gi, "wanna"],
-  [/kind\s*a\b/gi, "kinda"],
-  [/out\s*ta\b/gi, "outta"],
+  // 其他常见口语缩写
+  [/gon\s+na\b/gi, "gonna"],
+  [/got\s+ta\b/gi, "gotta"],
+  [/wan\s+na\b/gi, "wanna"],
+  [/kind\s+a\b/gi, "kinda"],
+  [/out\s+ta\b/gi, "outta"],
 ];
 
 /**
@@ -102,6 +106,53 @@ function fixContractions(text: string): string {
     fixed = fixed.replace(pattern, replacement);
   }
   return fixed;
+}
+
+/**
+ * 修复 ASR 常见混淆词
+ * 例如：we'll → well（当用户说的明显是 well 时）
+ * 注意：这个函数需要根据上下文判断，这里只做简单的替换
+ */
+function fixCommonConfusions(text: string, targetText?: string): string {
+  // 如果有目标文本，检查目标文本中是否有对应的词
+  // 例如：目标是 "You don't look well"，识别结果中有 "we'll"
+  // 如果目标中有 "well"，就把 "we'll" 改成 "well"
+  
+  if (targetText) {
+    const targetWords = new Set(targetText.toLowerCase().split(/\s+/));
+    const words = text.split(/\s+/);
+    
+    // ASR 常见混淆映射
+    const confusionMap: Record<string, string[]> = {
+      "we'll": ["well", "will"],
+      "i'll": ["ill", "i'll"],
+      "they'll": ["they'll"],
+      "you'll": ["you'll"],
+      "he'll": ["he'll", "heel", "heal"],
+      "she'll": ["she'll"],
+      "it'll": ["it'll"],
+    };
+    
+    const fixedWords = words.map(word => {
+      const lowerWord = word.toLowerCase().replace(/[.,!?;:]/g, '');
+      const punctuation = word.match(/[.,!?;:]*$/)?.[0] || '';
+      
+      if (confusionMap[lowerWord]) {
+        // 检查目标文本中是否有混淆词的变体
+        for (const alternative of confusionMap[lowerWord]) {
+          if (targetWords.has(alternative)) {
+            // 如果目标中有替代词，使用替代词
+            return alternative + punctuation;
+          }
+        }
+      }
+      return word;
+    });
+    
+    return fixedWords.join(' ');
+  }
+  
+  return text;
 }
 
 // 中国人常见发音错误映射（来源 → 可能被识别为）
@@ -383,9 +434,21 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     console.log('[ASR] 原始识别结果:', rawRecognizedText);
     
     // 自动修复缩写词（don t → don't, what s → what's 等）
-    const recognizedText = fixContractions(rawRecognizedText);
+    let recognizedText = fixContractions(rawRecognizedText);
     if (recognizedText !== rawRecognizedText) {
       console.log('[ASR] 缩写词修复:', rawRecognizedText, '→', recognizedText);
+    }
+    
+    // 获取目标文本（用于混淆词修复）
+    const targetText = req.body.targetText as string | undefined;
+    
+    // 修复常见混淆词（如 we'll → well，当目标文本中有 well 时）
+    if (targetText) {
+      const afterConfusionFix = fixCommonConfusions(recognizedText, targetText);
+      if (afterConfusionFix !== recognizedText) {
+        console.log('[ASR] 混淆词修复:', recognizedText, '→', afterConfusionFix, '(目标:', targetText, ')');
+        recognizedText = afterConfusionFix;
+      }
     }
     
     if (!recognizedText) {
