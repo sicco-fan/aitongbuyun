@@ -18,13 +18,19 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createFormDataFile } from '@/utils';
-import { Spacing } from '@/constants/theme';
+import { Spacing, BorderRadius } from '@/constants/theme';
 import { 
   getHomeLayoutConfig, 
   setHomeLayoutType, 
   HomeLayoutType, 
   HOME_LAYOUT_OPTIONS 
 } from '@/utils/homeLayoutConfig';
+import {
+  getVoicePracticeMode,
+  setVoicePracticeMode,
+  VoicePracticeMode,
+  VOICE_PRACTICE_MODE_OPTIONS,
+} from '@/utils/voicePracticeConfig';
 import { createStyles } from './styles';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
@@ -44,6 +50,7 @@ export default function ProfileSettingsScreen() {
   const [username, setUsername] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [selectedLayout, setSelectedLayout] = useState<HomeLayoutType>('state-driven');
+  const [selectedVoiceMode, setSelectedVoiceMode] = useState<VoicePracticeMode>('auto-match');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -57,6 +64,10 @@ export default function ProfileSettingsScreen() {
       // 加载布局配置
       const config = await getHomeLayoutConfig();
       setSelectedLayout(config.layoutType);
+
+      // 加载语音答题模式配置
+      const voiceMode = await getVoicePracticeMode();
+      setSelectedVoiceMode(voiceMode);
 
       // 加载用户信息
       if (isAuthenticated && user?.id) {
@@ -140,6 +151,9 @@ export default function ProfileSettingsScreen() {
       // 保存布局配置
       await setHomeLayoutType(selectedLayout);
 
+      // 保存语音答题模式配置
+      await setVoicePracticeMode(selectedVoiceMode);
+
       // 保存用户名（如果已登录）
       if (isAuthenticated && user?.id && username.trim()) {
         await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/users/me`, {
@@ -179,7 +193,7 @@ export default function ProfileSettingsScreen() {
             <FontAwesome6 name="chevron-left" size={20} color={theme.textPrimary} />
           </TouchableOpacity>
           <ThemedText variant="h4" color={theme.textPrimary} style={styles.headerTitle}>
-            个人设置
+            设置
           </ThemedText>
           <View style={{ width: 20 }} />
         </View>
@@ -268,6 +282,65 @@ export default function ProfileSettingsScreen() {
                   <ThemedText variant="small" color={theme.textMuted} style={styles.layoutDescription}>
                     {option.description}
                   </ThemedText>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* 语音答题模式选择区域 */}
+        <View style={styles.layoutSection}>
+          <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.sectionTitle}>
+            语音答题模式
+          </ThemedText>
+          <ThemedText variant="small" color={theme.textMuted} style={styles.sectionSubtitle}>
+            选择适合你的语音答题方式
+          </ThemedText>
+          <View style={styles.voiceModeList}>
+            {VOICE_PRACTICE_MODE_OPTIONS.map((option) => {
+              const isSelected = selectedVoiceMode === option.key;
+              return (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[styles.voiceModeCard, isSelected && styles.voiceModeCardSelected]}
+                  onPress={() => setSelectedVoiceMode(option.key)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.voiceModeHeader}>
+                    <View style={[
+                      styles.voiceModeIconContainer, 
+                      { backgroundColor: isSelected ? theme.primary + '20' : theme.backgroundTertiary }
+                    ]}>
+                      <FontAwesome6 
+                        name={option.icon as any} 
+                        size={20} 
+                        color={isSelected ? theme.primary : theme.textMuted} 
+                      />
+                    </View>
+                    <View style={styles.voiceModeTitleRow}>
+                      <ThemedText variant="bodyMedium" color={isSelected ? theme.primary : theme.textPrimary}>
+                        {option.name}
+                      </ThemedText>
+                      <ThemedText variant="small" color={theme.textMuted}>
+                        {option.description}
+                      </ThemedText>
+                    </View>
+                    {isSelected && (
+                      <View style={styles.voiceModeCheckmark}>
+                        <FontAwesome6 name="check" size={12} color="#fff" />
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.voiceModeFeatures}>
+                    {option.features.map((feature, idx) => (
+                      <View key={idx} style={styles.voiceModeFeatureItem}>
+                        <FontAwesome6 name="check" size={10} color={isSelected ? theme.success : theme.textMuted} />
+                        <ThemedText variant="tiny" color={theme.textMuted} style={{ marginLeft: 6 }}>
+                          {feature}
+                        </ThemedText>
+                      </View>
+                    ))}
+                  </View>
                 </TouchableOpacity>
               );
             })}

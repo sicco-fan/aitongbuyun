@@ -210,7 +210,7 @@ export default function ProfileScreen() {
                   {user.is_guest ? '游客模式' : user.phone}
                 </ThemedText>
                 <ThemedText variant="tiny" color={theme.textMuted} style={{ marginTop: 2 }}>
-                  点击编辑个人资料和界面设置
+                  点击进入设置
                 </ThemedText>
               </View>
               <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
