@@ -25,7 +25,7 @@ const storage = new S3Storage({
 });
 
 /**
- * 使用 AI 智能识别课时结构（分批解析，支持长文本）
+ * 使用 AI 智能识别课时结构（分批解析，按 Unit 分割）
  * 支持各种不同格式的教材（如 starter unit、unit1、unitN、Lesson X 等）
  */
 async function parseLessonsWithAI(text: string): Promise<Array<{
@@ -40,8 +40,63 @@ async function parseLessonsWithAI(text: string): Promise<Array<{
   const config = new Config();
   const client = new LLMClient(config);
   
-  // 分批处理：每批处理约 6000 字符，确保 AI 有足够空间返回完整 JSON
-  const batchSize = 6000;
+  // 短文本直接解析
+  if (text.length <= 6000) {
+    return await parseSingleBatch(client, text, 1);
+  }
+  
+  // 长文本：按 Unit 边界分割，分批解析
+  console.log('[AI解析] 文本较长，尝试按 Unit 分割...');
+  
+  // 识别 Unit 边界（支持多种格式）
+  // 格式：Unit 1, Unit1, UNIT 1, unit 1, Starter Unit, Lesson 1 等
+  const unitPatterns = [
+    /(?:^|\n)\s*(Unit\s*\d+|Starter\s*Unit|UNIT\s*\d+|Lesson\s*\d+)/gi,
+    /(?:^|\n)\s*(Unit\s*\d+\s*:)/gi,
+  ];
+  
+  // 找到所有 Unit 边界
+  const unitBoundaries: { index: number; title: string }[] = [];
+  
+  for (const pattern of unitPatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const title = match[1].trim();
+      // 避免重复
+      if (!unitBoundaries.some(b => Math.abs(b.index - match!.index) < 10)) {
+        unitBoundaries.push({ index: match.index, title });
+      }
+    }
+  }
+  
+  // 按位置排序
+  unitBoundaries.sort((a, b) => a.index - b.index);
+  
+  console.log(`[AI解析] 识别到 ${unitBoundaries.length} 个 Unit 边界:`);
+  unitBoundaries.forEach((b, i) => {
+    console.log(`  ${i + 1}. ${b.title} @ ${b.index}`);
+  });
+  
+  // 如果没有识别到 Unit 边界，或者 Unit 数量太少，回退到整体解析
+  if (unitBoundaries.length < 2) {
+    console.log('[AI解析] 未识别到足够的 Unit 边界，回退到整体解析...');
+    return await parseAsSingleBatch(client, text);
+  }
+  
+  // 按 Unit 边界分割文本
+  const unitTexts: string[] = [];
+  for (let i = 0; i < unitBoundaries.length; i++) {
+    const start = unitBoundaries[i].index;
+    const end = i < unitBoundaries.length - 1 ? unitBoundaries[i + 1].index : text.length;
+    const unitText = text.substring(start, end).trim();
+    if (unitText.length > 100) { // 忽略太短的片段
+      unitTexts.push(unitText);
+    }
+  }
+  
+  console.log(`[AI解析] 分割为 ${unitTexts.length} 个片段，开始分批解析...`);
+  
+  // 分批解析每个 Unit
   const allLessons: Array<{
     lesson_number: number;
     title: string;
@@ -49,17 +104,37 @@ async function parseLessonsWithAI(text: string): Promise<Array<{
     sentences: Array<{ english: string; chinese?: string }>;
   }> = [];
   
-  // 如果文本较短，直接解析
-  if (text.length <= batchSize) {
-    return await parseSingleBatch(client, text, 1);
+  for (let i = 0; i < unitTexts.length; i++) {
+    console.log(`[AI解析] 解析第 ${i + 1}/${unitTexts.length} 个片段 (${unitTexts[i].length} 字符)...`);
+    
+    try {
+      const lessons = await parseSingleUnit(client, unitTexts[i], allLessons.length + 1);
+      if (lessons.length > 0) {
+        allLessons.push(...lessons);
+        console.log(`[AI解析] 第 ${i + 1} 个片段解析成功，获得 ${lessons.length} 个课时`);
+      }
+    } catch (error: any) {
+      console.error(`[AI解析] 第 ${i + 1} 个片段解析失败:`, error.message);
+      // 继续解析下一个片段
+    }
   }
   
-  // 长文本：尝试一次性解析（使用更精简的格式）
-  console.log('[AI解析] 文本较长，尝试精简格式解析...');
-  
+  console.log(`[AI解析] 分批解析完成，共 ${allLessons.length} 个课时`);
+  return allLessons;
+}
+
+/**
+ * 整体解析（回退方案）
+ */
+async function parseAsSingleBatch(client: LLMClient, text: string): Promise<Array<{
+  lesson_number: number;
+  title: string;
+  description?: string;
+  sentences: Array<{ english: string; chinese?: string }>;
+}>> {
   const systemPrompt = `你是英语教材解析助手。分析文本，识别课时结构。
 
-返回格式（紧凑JSON数组，每个句子一行，无多余空格）：
+返回格式（紧凑JSON数组）：
 [{"n":1,"t":"标题","s":[{"e":"英文","c":"中文"}]}]
 
 规则：
@@ -67,68 +142,108 @@ async function parseLessonsWithAI(text: string): Promise<Array<{
 2. 识别 Unit 1、Lesson 1 等课时标记
 3. 每个句子英文和中文成对
 4. 只返回JSON，不要代码块标记
-5. 确保JSON完整有效，不要截断`;
+5. 确保JSON完整有效`;
 
-  const truncatedText = text.length > 15000 
-    ? text.substring(0, 15000) + '\n...(文本过长已截断，请解析已提供的部分)'
-    : text;
+  const truncatedText = text.length > 12000 ? text.substring(0, 12000) : text;
   
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: `分析以下教材，返回紧凑JSON数组：\n\n${truncatedText}` }
   ];
   
+  const response = await client.invoke(messages, { 
+    model: 'doubao-seed-1-6-lite-251015',
+    temperature: 0.1
+  });
+  
+  const content = response.content.trim();
+  console.log('[AI解析] AI 返回内容长度:', content.length);
+  
+  let jsonStr = extractJSON(content);
+  
   try {
-    const response = await client.invoke(messages, { 
-      model: 'doubao-seed-1-6-lite-251015',
-      temperature: 0.1
-    });
-    
-    const content = response.content.trim();
-    console.log('[AI解析] AI 返回内容长度:', content.length);
-    
-    // 尝试提取 JSON
-    let jsonStr = extractJSON(content);
-    
-    // 尝试修复截断的 JSON
-    let lessons;
-    try {
-      lessons = JSON.parse(jsonStr);
-    } catch (parseError) {
-      console.log('[AI解析] JSON 解析失败，尝试修复截断...');
-      jsonStr = fixTruncatedJSON(jsonStr);
-      lessons = JSON.parse(jsonStr);
-    }
-    
-    if (!Array.isArray(lessons)) {
-      throw new Error('AI 返回的不是数组');
-    }
-    
-    // 标准化数据（兼容精简格式）
-    const validLessons = lessons.filter((lesson: any) => {
-      const hasSentences = lesson.s?.length > 0 || lesson.sentences?.length > 0;
-      return lesson && hasSentences;
-    }).map((lesson: any, idx: number) => ({
-      lesson_number: lesson.n || lesson.lesson_number || idx + 1,
-      title: lesson.t || lesson.title || `Unit ${lesson.n || idx + 1}`,
-      description: lesson.t || lesson.title || lesson.description || `Unit ${lesson.n || idx + 1}`,
-      sentences: (lesson.s || lesson.sentences || []).filter((s: any) => s && (s.e || s.english)).map((s: any) => ({
-        english: (s.e || s.english || '').trim(),
-        chinese: (s.c || s.chinese || '')?.trim()
-      }))
-    }));
-    
-    console.log(`[AI解析] 成功识别 ${validLessons.length} 个课时`);
-    validLessons.forEach((lesson) => {
-      console.log(`[AI解析]   课时 ${lesson.lesson_number}: ${lesson.title} (${lesson.sentences.length} 句)`);
-    });
-    
-    return validLessons;
-    
-  } catch (error: any) {
-    console.error('[AI解析] 解析失败:', error.message);
-    throw error;
+    const lessons = JSON.parse(jsonStr);
+    return normalizeLessons(lessons);
+  } catch (parseError) {
+    console.log('[AI解析] JSON 解析失败，尝试修复...');
+    jsonStr = fixTruncatedJSON(jsonStr);
+    const lessons = JSON.parse(jsonStr);
+    return normalizeLessons(lessons);
   }
+}
+
+/**
+ * 解析单个 Unit 片段
+ */
+async function parseSingleUnit(client: LLMClient, text: string, startLessonNumber: number): Promise<Array<{
+  lesson_number: number;
+  title: string;
+  description?: string;
+  sentences: Array<{ english: string; chinese?: string }>;
+}>> {
+  const systemPrompt = `你是英语教材解析助手。分析单个 Unit 的文本，识别其中的对话和句子。
+
+返回格式（紧凑JSON数组）：
+[{"n":1,"t":"对话标题","s":[{"e":"英文","c":"中文"}]}]
+
+规则：
+1. n=对话序号（从1开始），t=对话标题，s=句子数组，e=英文，c=中文
+2. 识别对话中的每一句话，英文和中文成对
+3. 如果一个 Unit 有多个对话，分别返回
+4. 只返回JSON数组，不要代码块标记
+5. 确保JSON完整有效`;
+
+  // 限制单个 Unit 的文本长度
+  const truncatedText = text.length > 8000 ? text.substring(0, 8000) : text;
+  
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `分析以下 Unit 文本：\n\n${truncatedText}` }
+  ];
+  
+  const response = await client.invoke(messages, { 
+    model: 'doubao-seed-1-6-lite-251015',
+    temperature: 0.1
+  });
+  
+  const content = response.content.trim();
+  
+  let jsonStr = extractJSON(content);
+  
+  try {
+    const lessons = JSON.parse(jsonStr);
+    return normalizeLessons(lessons, startLessonNumber);
+  } catch (parseError) {
+    console.log('[AI解析] 单片段 JSON 解析失败，尝试修复...');
+    jsonStr = fixTruncatedJSON(jsonStr);
+    const lessons = JSON.parse(jsonStr);
+    return normalizeLessons(lessons, startLessonNumber);
+  }
+}
+
+/**
+ * 标准化课时数据
+ */
+function normalizeLessons(lessons: any[], startLessonNumber: number = 1): Array<{
+  lesson_number: number;
+  title: string;
+  description?: string;
+  sentences: Array<{ english: string; chinese?: string }>;
+}> {
+  if (!Array.isArray(lessons)) return [];
+  
+  return lessons.filter((lesson: any) => {
+    const hasSentences = lesson.s?.length > 0 || lesson.sentences?.length > 0;
+    return lesson && hasSentences;
+  }).map((lesson: any, idx: number) => ({
+    lesson_number: lesson.n || lesson.lesson_number || startLessonNumber + idx,
+    title: lesson.t || lesson.title || `Lesson ${startLessonNumber + idx}`,
+    description: lesson.t || lesson.title || lesson.description || `Lesson ${startLessonNumber + idx}`,
+    sentences: (lesson.s || lesson.sentences || []).filter((s: any) => s && (s.e || s.english)).map((s: any) => ({
+      english: (s.e || s.english || '').trim(),
+      chinese: (s.c || s.chinese || '')?.trim()
+    }))
+  }));
 }
 
 /**
@@ -155,58 +270,149 @@ function extractJSON(content: string): string {
 
 /**
  * 修复截断的 JSON
- * 策略：找到最后一个完整的对象，丢弃截断部分
+ * 策略：向后搜索，找到最后一个完整的课时对象，丢弃截断部分
  */
 function fixTruncatedJSON(jsonStr: string): string {
   console.log('[AI解析] 尝试修复截断的 JSON...');
+  console.log('[AI解析] 原始 JSON 长度:', jsonStr.length);
   
-  // 策略1：尝试找到最后一个完整的 lesson 对象
-  // 查找 "lesson_number": 或 "n": 的位置，找到最后一个完整的对象
+  // 检查是否以 ] 结尾（完整JSON）
+  const trimmed = jsonStr.trim();
+  if (trimmed.endsWith(']')) {
+    try {
+      JSON.parse(trimmed);
+      console.log('[AI解析] JSON 已经完整，无需修复');
+      return trimmed;
+    } catch (e) {
+      // 继续修复
+    }
+  }
   
-  // 匹配完整 lesson 对象的正则（简化版）
-  // 找到最后一个 }, 后面跟着 { 或者 ]
+  // 策略：找到最后一个完整的课时对象
+  // 课时对象的分隔符是 },{ 或 }]（最后一个课时）
+  // 我们向后搜索，找到 "n":数字 或 "lesson_number":数字 的完整课时
   
-  let fixed = jsonStr;
+  // 尝试多个截断点，从后往前找
+  const truncatePatterns = [
+    /\},\s*\{"n":\d+/g,           // },{n:数字
+    /\},\s*\{"lesson_number":\d+/g, // },{lesson_number:数字
+    /\}\s*\]/g,                    // }]
+  ];
   
-  // 如果在字符串中间截断，需要先关闭字符串
-  // 计算引号数量（偶数表示字符串都闭合了）
-  let quoteCount = 0;
-  let i = 0;
-  while (i < fixed.length) {
-    if (fixed[i] === '\\' && i + 1 < fixed.length) {
-      i += 2; // 跳过转义字符
+  // 方法1：找到最后一个完整的课时分隔点
+  // 向后搜索 "n":X 后面的 },{ 的位置
+  const lessonSeparator = /\},\s*\{"/g;
+  const separators: number[] = [];
+  let match;
+  while ((match = lessonSeparator.exec(jsonStr)) !== null) {
+    separators.push(match.index + 1); // 保留前面的 }
+  }
+  
+  console.log('[AI解析] 找到课时分隔点数量:', separators.length);
+  
+  // 从后往前尝试每个截断点
+  for (let i = separators.length - 1; i >= 0; i--) {
+    const truncateAt = separators[i];
+    const candidate = jsonStr.substring(0, truncateAt + 1) + ']'; // 闭合数组
+    
+    try {
+      const parsed = JSON.parse(candidate);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        console.log(`[AI解析] 在分隔点 ${i} 处成功截断，保留 ${parsed.length} 个课时`);
+        return candidate;
+      }
+    } catch (e) {
+      // 继续尝试前一个分隔点
       continue;
     }
-    if (fixed[i] === '"') {
-      quoteCount++;
-    }
-    i++;
   }
   
-  // 如果引号数量是奇数，说明字符串未闭合
-  if (quoteCount % 2 === 1) {
-    // 找到最后一个完整的句子对象并截断
-    // 查找最后一个 }, 或 }], 或 "sentences": 的位置
-    const lastCompleteSentence = fixed.lastIndexOf('"},');
-    const lastCompleteSentences = fixed.lastIndexOf('"}]');
+  // 方法2：尝试找最后一个完整的 sentences 数组
+  const lastSentencesEnd = jsonStr.lastIndexOf('"}]');
+  if (lastSentencesEnd > 0) {
+    // 从这个位置往前找对应的课时开始
+    const candidate = jsonStr.substring(0, lastSentencesEnd + 3) + ']';
     
-    if (lastCompleteSentences > lastCompleteSentence) {
-      // 找到了完整的句子数组结束
-      fixed = fixed.substring(0, lastCompleteSentences + 3); // 包含 "}]
-    } else if (lastCompleteSentence > 0) {
-      // 找到了完整的句子结束，但数组未闭合
-      fixed = fixed.substring(0, lastCompleteSentence + 2); // 包含 "}
+    // 需要找到这个课时对象在哪里结束
+    // 尝试解析
+    try {
+      // 先尝试直接加 ] 闭合
+      const testStr = jsonStr.substring(0, lastSentencesEnd + 3);
+      // 计算需要闭合的括号
+      const bracketResult = countBrackets(testStr);
+      const closed = testStr + bracketResult.closing;
+      const parsed = JSON.parse(closed);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        console.log(`[AI解析] 通过 sentences 数组截断成功，保留 ${parsed.length} 个课时`);
+        return closed;
+      }
+    } catch (e) {
+      // 继续
     }
   }
   
-  // 计算当前括号嵌套情况
-  let depth = 0;
+  // 方法3：找最后一个完整的句子
+  const lastCompleteSentence = jsonStr.lastIndexOf('"},');
+  if (lastCompleteSentence > 0) {
+    // 截断到最后一个完整的句子，然后闭合
+    let candidate = jsonStr.substring(0, lastCompleteSentence + 2); // 保留 "}
+    
+    // 计算括号并闭合
+    const bracketResult = countBrackets(candidate);
+    candidate += bracketResult.closing;
+    
+    try {
+      const parsed = JSON.parse(candidate);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        console.log(`[AI解析] 通过句子截断成功，保留 ${parsed.length} 个课时`);
+        return candidate;
+      }
+    } catch (e) {
+      // 继续
+    }
+  }
+  
+  // 方法4：最后尝试 - 只保留第一个课时
+  // 找到第一个课时结束后立即截断
+  const firstLessonEnd = jsonStr.indexOf('},{"n":');
+  if (firstLessonEnd > 0) {
+    let candidate = jsonStr.substring(0, firstLessonEnd + 1) + ']';
+    try {
+      const parsed = JSON.parse(candidate);
+      console.log('[AI解析] 只保留了第一个课时');
+      return candidate;
+    } catch (e) {
+      // 最后的努力：尝试第一个课时的另一种格式
+    }
+  }
+  
+  // 尝试第一种格式的第一个课时
+  const firstLessonEndAlt = jsonStr.indexOf('},{"lesson_number":');
+  if (firstLessonEndAlt > 0) {
+    let candidate = jsonStr.substring(0, firstLessonEndAlt + 1) + ']';
+    try {
+      const parsed = JSON.parse(candidate);
+      console.log('[AI解析] 只保留了第一个课时（格式2）');
+      return candidate;
+    } catch (e) {
+      // 放弃
+    }
+  }
+  
+  console.log('[AI解析] 所有修复策略都失败了');
+  throw new Error('无法修复截断的 JSON');
+}
+
+/**
+ * 计算 JSON 字符串中需要闭合的括号
+ */
+function countBrackets(str: string): { depth: number; closing: string } {
   let inString = false;
   let escapeNext = false;
-  const bracketStack: string[] = []; // 记录括号栈
+  const stack: string[] = [];
   
-  for (let j = 0; j < fixed.length; j++) {
-    const char = fixed[j];
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
     
     if (escapeNext) {
       escapeNext = false;
@@ -225,48 +431,20 @@ function fixTruncatedJSON(jsonStr: string): string {
     
     if (!inString) {
       if (char === '{') {
-        depth++;
-        bracketStack.push('}');
+        stack.push('}');
       } else if (char === '[') {
-        depth++;
-        bracketStack.push(']');
+        stack.push(']');
       } else if (char === '}' || char === ']') {
-        depth--;
-        bracketStack.pop();
+        stack.pop();
       }
     }
   }
   
-  console.log('[AI解析] JSON 深度:', depth, '括号栈:', bracketStack.length);
-  
-  // 按正确的顺序关闭未闭合的括号
-  if (bracketStack.length > 0) {
-    // 从栈顶开始关闭（后进先出）
-    fixed += bracketStack.reverse().join('');
-  }
-  
-  console.log('[AI解析] 修复后的 JSON 长度:', fixed.length);
-  
-  // 验证修复后的 JSON 是否有效
-  try {
-    JSON.parse(fixed);
-    console.log('[AI解析] JSON 修复成功');
-  } catch (e) {
-    console.log('[AI解析] JSON 修复后仍无效，尝试其他策略...');
-    
-    // 最后的策略：只保留第一个完整的 lesson 对象
-    const firstLessonMatch = fixed.match(/\{"(?:lesson_number|n)":\d+/);
-    if (firstLessonMatch) {
-      // 找到第一个 lesson 的开始位置
-      const startIdx = firstLessonMatch.index!;
-      // 尝试找到第一个完整的 lesson（简化：只取前 5000 字符）
-      fixed = '[' + fixed.substring(startIdx, Math.min(startIdx + 5000, fixed.length));
-      // 重新闭合
-      fixed = fixTruncatedJSON(fixed);
-    }
-  }
-  
-  return fixed;
+  // 返回需要按顺序闭合的括号
+  return {
+    depth: stack.length,
+    closing: stack.reverse().join('')
+  };
 }
 
 /**
