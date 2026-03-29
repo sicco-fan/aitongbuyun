@@ -569,7 +569,8 @@ export default function SentencePracticeScreen() {
         
         // 如果用户还没有通过 BackHandler 处理退出（比如 Web 端），这里保存进度
         // 注意：这个 cleanup 会在 BackHandler 的回调之后执行
-        if (!isExitingRef.current && currentIndex > 0) {
+        // 只要有句子数据就保存学习位置（即使只学了第一句也要保存）
+        if (!isExitingRef.current && sentences.length > 0) {
           // 保存进度（不提交学习时长，因为用户可能是意外退出）
           saveProgress(currentIndex);
           console.log(`[学习进度] 退出时自动保存: 第 ${currentIndex + 1} 句`);
@@ -1226,8 +1227,8 @@ export default function SentencePracticeScreen() {
     // 如果正在退出，不再处理
     if (isExitingRef.current) return true;
     
-    // 如果有进度需要存档，显示确认弹窗
-    if (hasProgressToSave && currentIndex > 0) {
+    // 如果有句子数据，显示保存确认弹窗
+    if (hasProgressToSave && sentences.length > 0) {
       Alert.alert(
         '保存进度',
         '是否保存当前学习进度？',
@@ -1251,6 +1252,30 @@ export default function SentencePracticeScreen() {
               }
               // 保存进度
               await saveProgress(currentIndex);
+              
+              // 保存学习位置（用于首页"继续学习"快捷入口）
+              const position: LastLearningPosition = {
+                sourceType: sourceType === 'lesson' ? 'lesson' : 'sentence_file',
+                sentenceIndex: currentIndex,
+                totalSentences: sentences.length,
+                updatedAt: Date.now(),
+              };
+              
+              if (sourceType === 'lesson' && lessonId && courseId) {
+                position.courseId = parseInt(courseId, 10);
+                position.courseTitle = courseTitle || '';
+                position.lessonId = parseInt(lessonId, 10);
+                position.lessonNumber = lessonNumber ? parseInt(lessonNumber, 10) : 1;
+                position.lessonTitle = practiceTitle;
+                position.voiceId = voiceId;
+              } else if (fileId) {
+                position.fileId = fileId;
+                position.fileTitle = practiceTitle;
+              }
+              
+              saveLastLearningPosition(position);
+              console.log('[学习位置] 已保存:', position);
+              
               router.back();
             },
           },
@@ -1262,7 +1287,7 @@ export default function SentencePracticeScreen() {
     
     // 没有进度需要保存，直接返回
     return false;
-  }, [hasProgressToSave, currentIndex, calculateSessionDuration, submitLearningData, saveProgress, router]);
+  }, [hasProgressToSave, currentIndex, calculateSessionDuration, submitLearningData, saveProgress, router, sentences.length, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId]);
 
   // 监听返回键
   useEffect(() => {
