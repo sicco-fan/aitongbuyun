@@ -294,7 +294,7 @@ export default function ProfileScreen() {
 
         <TouchableOpacity 
           style={styles.adminCard}
-          onPress={() => router.push('/create-sentence-file')}
+          onPress={() => router.push('/create-ai-sentence-file')}
         >
           <View style={[styles.adminIcon, { backgroundColor: theme.primary + '15' }]}>
             <FontAwesome6 name="wand-magic-sparkles" size={24} color={theme.primary} />

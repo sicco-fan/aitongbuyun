@@ -27,6 +27,7 @@ export default function RootLayout() {
             <Stack.Screen name="error-words" options={{ title: "错题本" }} />
             <Stack.Screen name="sentence-workshop" options={{ title: "句库制作" }} />
             <Stack.Screen name="create-sentence-file" options={{ title: "创建句库文件" }} />
+            <Stack.Screen name="create-ai-sentence-file" options={{ title: "创建AI句库" }} />
             <Stack.Screen name="edit-text-content" options={{ title: "编辑文本内容" }} />
             <Stack.Screen name="edit-sentence-audio" options={{ title: "剪辑句子语音" }} />
             <Stack.Screen name="sentence-practice" options={{ title: "句库学习" }} />
