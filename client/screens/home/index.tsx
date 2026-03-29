@@ -28,16 +28,19 @@ interface SentenceFile {
   source_type?: string; // 'upload' | 'link' | 'share' | 'ai_tts'
 }
 
-interface ErrorStats {
-  uniqueWords: number;
-  totalErrors: number;
-}
-
 interface Course {
   id: number;
   title: string;
+  book_number: number;
+  description: string;
   total_lessons: number;
-  total_sentences: number;
+  total_sentences?: number;
+  cover_image?: string;
+}
+
+interface ErrorStats {
+  uniqueWords: number;
+  totalErrors: number;
 }
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
@@ -48,20 +51,28 @@ export default function HomeScreen() {
   const router = useSafeRouter();
   const { user, isAuthenticated } = useAuth();
   const [sentenceFiles, setSentenceFiles] = useState<SentenceFile[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [errorStats, setErrorStats] = useState<ErrorStats | null>(null);
-  const [featuredCourse, setFeaturedCourse] = useState<Course | null>(null);
   const [lastLearningPosition, setLastLearningPosition] = useState<LastLearningPosition | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // 区分 AI 句库和自制句库
+  // AI 句库文件（source_type === 'ai_tts'）
   const aiSentenceFiles = useMemo(() => {
     return sentenceFiles.filter(f => f.source_type === 'ai_tts');
   }, [sentenceFiles]);
 
+  // 自制句库（source_type !== 'ai_tts'）
   const customSentenceFiles = useMemo(() => {
     return sentenceFiles.filter(f => f.source_type !== 'ai_tts');
   }, [sentenceFiles]);
+
+  // AI 句库总句数（课程 + AI句库文件）
+  const aiTotalSentences = useMemo(() => {
+    const courseSentences = courses.reduce((sum, c) => sum + (c.total_sentences || c.total_lessons * 18), 0);
+    const fileSentences = aiSentenceFiles.reduce((sum, f) => sum + f.ready_sentences_count, 0);
+    return courseSentences + fileSentences;
+  }, [courses, aiSentenceFiles]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -69,21 +80,22 @@ export default function HomeScreen() {
       const lastPosition = await getLastLearningPosition();
       setLastLearningPosition(lastPosition);
       
+      // 获取精品课程（按 book_number 排序）
+      const coursesRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses`);
+      const coursesData = await coursesRes.json();
+      if (coursesData.courses) {
+        // 按 book_number 排序
+        const sortedCourses = [...coursesData.courses].sort((a, b) => a.book_number - b.book_number);
+        setCourses(sortedCourses);
+      }
+      
       // 获取句库文件
       const sentenceFilesRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`);
       const sentenceFilesData = await sentenceFilesRes.json();
 
       if (sentenceFilesData.files) {
-        // 只显示有可学习句子的文件
         const filesWithReady = sentenceFilesData.files.filter((f: SentenceFile) => f.ready_sentences_count > 0);
         setSentenceFiles(filesWithReady);
-      }
-      
-      // 获取精品课程
-      const coursesRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses`);
-      const coursesData = await coursesRes.json();
-      if (coursesData.courses && coursesData.courses.length > 0) {
-        setFeaturedCourse(coursesData.courses[0]);
       }
       
       // 获取错题统计
@@ -123,10 +135,82 @@ export default function HomeScreen() {
     router.push('/sentence-practice', { fileId: file.id, title: file.title });
   };
 
+  const handleCoursePress = (course: Course) => {
+    router.push('/course-lessons', { courseId: course.id.toString() });
+  };
+
   const formatDuration = (ms: number) => {
     const minutes = Math.floor(ms / 60000);
     const seconds = Math.floor((ms % 60000) / 1000);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // 获取课程图标
+  const getBookIcon = (bookNumber: number): string => {
+    const icons: Record<number, string> = {
+      1: 'book-open',
+      2: 'book',
+      3: 'graduation-cap',
+      4: 'award',
+    };
+    return icons[bookNumber] || 'book';
+  };
+
+  // 渲染课程卡片
+  const renderCourseCard = (course: Course) => {
+    const isLastLearned = lastLearningPosition?.sourceType === 'lesson' && 
+                          lastLearningPosition.courseId === course.id;
+    
+    return (
+      <TouchableOpacity
+        key={`course-${course.id}`}
+        style={[styles.materialCard, isLastLearned && styles.lastLearnedCard]}
+        onPress={() => handleCoursePress(course)}
+        activeOpacity={0.7}
+      >
+        {/* 上次学习提示 */}
+        {isLastLearned && (
+          <View style={[styles.lastLearnedBadge, { backgroundColor: theme.success + '20' }]}>
+            <FontAwesome6 name="clock-rotate-left" size={12} color={theme.success} />
+            <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 4 }}>
+              上次学到 第{lastLearningPosition.lessonNumber}课
+            </ThemedText>
+          </View>
+        )}
+
+        <View style={styles.materialHeader}>
+          <View style={[styles.materialIconContainer, { backgroundColor: theme.primary + '20' }]}>
+            <FontAwesome6 
+              name={getBookIcon(course.book_number)} 
+              size={20} 
+              color={theme.primary} 
+            />
+          </View>
+          <View style={styles.materialInfo}>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.materialTitle}>
+              {course.title}
+            </ThemedText>
+            <View style={styles.materialMeta}>
+              <View style={styles.metaTag}>
+                <FontAwesome6 name="graduation-cap" size={10} color={theme.textMuted} />
+                <ThemedText variant="tiny" color={theme.textMuted}>
+                  {course.total_lessons} 课
+                </ThemedText>
+              </View>
+              <View style={styles.metaTag}>
+                <FontAwesome6 name="list" size={10} color={theme.textMuted} />
+                <ThemedText variant="tiny" color={theme.textMuted}>
+                  {course.total_sentences || course.total_lessons * 18} 句
+                </ThemedText>
+              </View>
+            </View>
+          </View>
+          <View style={styles.materialArrow}>
+            <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   // 渲染句库卡片
@@ -207,9 +291,7 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={[styles.continueCard, { backgroundColor: theme.success + '10', borderColor: theme.success + '30' }]}
             onPress={() => {
-              // 根据 sourceType 跳转到不同的页面
               if (lastLearningPosition.sourceType === 'lesson' && lastLearningPosition.lessonId) {
-                // 课程模式：跳转到 sentence-practice，带上所有课程参数
                 router.push('/sentence-practice', {
                   sourceType: 'lesson',
                   lessonId: lastLearningPosition.lessonId.toString(),
@@ -221,7 +303,6 @@ export default function HomeScreen() {
                   sentenceIndex: lastLearningPosition.sentenceIndex,
                 });
               } else if (lastLearningPosition.sourceType === 'sentence_file' && lastLearningPosition.fileId) {
-                // 句库模式：跳转到 sentence-practice，带上文件参数
                 router.push('/sentence-practice', {
                   sourceType: 'file',
                   fileId: lastLearningPosition.fileId,
@@ -297,31 +378,14 @@ export default function HomeScreen() {
             </ThemedText>
           </View>
           <ThemedText variant="caption" color={theme.textMuted}>
-            {aiSentenceFiles.reduce((sum, f) => sum + f.ready_sentences_count, 0)} 句可学
+            {aiTotalSentences} 句可学
           </ThemedText>
         </View>
 
-        {/* 精品课程入口 - 属于 AI 句库 */}
-        <TouchableOpacity
-          style={[styles.courseCard, { backgroundColor: theme.primary + '08', borderColor: theme.primary + '20' }]}
-          onPress={() => router.push('/courses')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.courseIconContainer, { backgroundColor: theme.primary + '15' }]}>
-            <FontAwesome6 name="graduation-cap" size={24} color={theme.primary} />
-          </View>
-          <View style={styles.courseInfo}>
-            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-              精品课程
-            </ThemedText>
-            <ThemedText variant="small" color={theme.textSecondary}>
-              {featuredCourse ? `${featuredCourse.title} · ${featuredCourse.total_lessons}课` : '暂无课程'}
-            </ThemedText>
-          </View>
-          <FontAwesome6 name="chevron-right" size={16} color={theme.primary} />
-        </TouchableOpacity>
+        {/* 精品课程列表 */}
+        {courses.map((course) => renderCourseCard(course))}
 
-        {/* AI 句库列表 */}
+        {/* AI 句库文件列表 */}
         {aiSentenceFiles.map((file) => renderSentenceFileCard(file, true))}
 
         {/* 自制句库 Section */}
