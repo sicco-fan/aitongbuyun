@@ -541,12 +541,12 @@ export default function CoursesScreen() {
                   📥 关于"导入"功能
                 </ThemedText>
                 <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
-                  点击右上角的「导入」按钮，可以上传 PDF、Word 或 TXT 文件来创建新的课程或更新已有课程。
+                  点击右上角的「导入」按钮，上传文档文件即可自动创建课程。系统会提取文本内容、划分课时和句子，并为每个句子生成 AI 语音，方便您进行听力练习。
                 </ThemedText>
                 <View style={styles.infoHighlight}>
                   <FontAwesome6 name="lightbulb" size={16} color={theme.accent} />
                   <ThemedText variant="small" color={theme.textPrimary} style={{ marginLeft: 8, flex: 1 }}>
-                    导入时系统会根据文件内容自动识别课程名称（如"新概念英语第二册"或"第三册"），自动创建或更新对应的课程，不会混淆。
+                    导入后可在课程详情页为句子选择不同的 AI 音色并下载音频，支持多种发音风格。
                   </ThemedText>
                 </View>
               </View>
@@ -563,7 +563,7 @@ export default function CoursesScreen() {
                   <View style={{ marginLeft: 8, flex: 1 }}>
                     <ThemedText variant="bodyMedium" color={theme.textPrimary}>PDF 文件</ThemedText>
                     <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: 2 }}>
-                      支持新概念英语系列教材格式，自动识别课时和句子
+                      自动提取文本内容，识别课时和句子
                     </ThemedText>
                   </View>
                 </View>
@@ -591,14 +591,42 @@ export default function CoursesScreen() {
                 </View>
               </View>
 
-              {/* 文本格式要求 */}
+              {/* 文本格式要求与示范 */}
               <View style={styles.infoSection}>
                 <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
                   📝 文本格式要求
                 </ThemedText>
                 <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
-                  {'• 每个句子独立一行\n• 课时标题格式：Lesson X 或 第X课\n• 支持中英文混合内容\n• 系统会自动识别英文句子和中文翻译'}
+                  为了正确识别课时和句子，请按以下格式组织文档：
                 </ThemedText>
+                
+                {/* 格式示范 */}
+                <View style={styles.formatExample}>
+                  <ThemedText variant="smallMedium" color={theme.textMuted} style={{ marginBottom: 4 }}>
+                    格式示范：
+                  </ThemedText>
+                  <View style={styles.formatExampleCode}>
+                    <ThemedText variant="small" color={theme.textPrimary} style={{ fontFamily: 'monospace' }}>
+                      {'Lesson 1\n'}
+                      {'A private conversation 私人谈话\n'}
+                      {'Last week I went to the theatre.\n'}
+                      {'上周我去看戏。\n'}
+                      {'I had a very good seat.\n'}
+                      {'我的座位很好。\n\n'}
+                      {'Lesson 2\n'}
+                      {'Breakfast or lunch? 早餐还是午餐？\n'}
+                      {'It was Sunday.\n'}
+                      {'那是星期天。'}
+                    </ThemedText>
+                  </View>
+                </View>
+                
+                <View style={[styles.infoHighlight, { marginTop: 8 }]}>
+                  <FontAwesome6 name="info-circle" size={14} color={theme.primary} />
+                  <ThemedText variant="small" color={theme.textSecondary} style={{ marginLeft: 6, flex: 1 }}>
+                    {'• 课时标题以 "Lesson" 或 "第X课" 开头\n• 英文句子后可跟中文翻译\n• 句子间用换行分隔'}
+                  </ThemedText>
+                </View>
               </View>
             </ScrollView>
 

@@ -332,6 +332,18 @@ export const createStyles = (theme: Theme) => {
       padding: Spacing.md,
       marginTop: Spacing.sm,
     },
+    // 格式示范样式
+    formatExample: {
+      marginTop: Spacing.sm,
+    },
+    formatExampleCode: {
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: BorderRadius.md,
+      padding: Spacing.md,
+      marginTop: Spacing.xs,
+      borderLeftWidth: 3,
+      borderLeftColor: theme.primary,
+    },
     infoModalCloseBtn: {
       backgroundColor: theme.primary,
       borderRadius: BorderRadius.lg,
