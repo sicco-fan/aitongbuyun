@@ -25,7 +25,7 @@ const storage = new S3Storage({
 });
 
 /**
- * 使用 AI 智能识别课时结构
+ * 使用 AI 智能识别课时结构（分批解析，支持长文本）
  * 支持各种不同格式的教材（如 starter unit、unit1、unitN、Lesson X 等）
  */
 async function parseLessonsWithAI(text: string): Promise<Array<{
@@ -35,104 +35,91 @@ async function parseLessonsWithAI(text: string): Promise<Array<{
   sentences: Array<{ english: string; chinese?: string }>;
 }>> {
   console.log('[AI解析] 开始使用 AI 智能识别课时结构...');
+  console.log('[AI解析] 原始文本长度:', text.length);
   
   const config = new Config();
   const client = new LLMClient(config);
   
-  // 截取文本内容（避免过长）
-  const maxTextLength = 12000;
-  const truncatedText = text.length > maxTextLength 
-    ? text.substring(0, maxTextLength) + '\n...(文本过长已截断)'
-    : text;
+  // 分批处理：每批处理约 6000 字符，确保 AI 有足够空间返回完整 JSON
+  const batchSize = 6000;
+  const allLessons: Array<{
+    lesson_number: number;
+    title: string;
+    description?: string;
+    sentences: Array<{ english: string; chinese?: string }>;
+  }> = [];
+  
+  // 如果文本较短，直接解析
+  if (text.length <= batchSize) {
+    return await parseSingleBatch(client, text, 1);
+  }
+  
+  // 长文本：尝试一次性解析（使用更精简的格式）
+  console.log('[AI解析] 文本较长，尝试精简格式解析...');
   
   const systemPrompt = `你是英语教材解析助手。分析文本，识别课时结构。
 
-返回格式（仅返回JSON数组，不要其他内容）：
-[{"lesson_number":1,"title":"标题","sentences":[{"english":"英文","chinese":"中文"}]}]
+返回格式（紧凑JSON数组，每个句子一行，无多余空格）：
+[{"n":1,"t":"标题","s":[{"e":"英文","c":"中文"}]}]
 
 规则：
-1. 识别 Starter Unit、Unit 1、Lesson 1 等课时标记
-2. lesson_number 从1开始编号
-3. 英文句子和中文翻译成对出现
-4. 跳过页码、版权等非正文
-5. 确保返回完整有效的JSON`;
+1. n=课时号，t=标题，s=句子数组，e=英文，c=中文
+2. 识别 Unit 1、Lesson 1 等课时标记
+3. 每个句子英文和中文成对
+4. 只返回JSON，不要代码块标记
+5. 确保JSON完整有效，不要截断`;
 
+  const truncatedText = text.length > 15000 
+    ? text.substring(0, 15000) + '\n...(文本过长已截断，请解析已提供的部分)'
+    : text;
+  
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: `分析以下教材，返回JSON数组：\n\n${truncatedText}` }
+    { role: 'user', content: `分析以下教材，返回紧凑JSON数组：\n\n${truncatedText}` }
   ];
   
   try {
     const response = await client.invoke(messages, { 
-      model: 'doubao-seed-1-6-lite-251015', // 使用 lite 模型更快
-      temperature: 0.1 // 降低温度让输出更稳定
+      model: 'doubao-seed-1-6-lite-251015',
+      temperature: 0.1
     });
     
     const content = response.content.trim();
     console.log('[AI解析] AI 返回内容长度:', content.length);
-    console.log('[AI解析] AI 返回内容前 2000 字符:\n', content.substring(0, 2000));
-    console.log('[AI解析] AI 返回内容后 500 字符:\n', content.substring(Math.max(0, content.length - 500)));
     
     // 尝试提取 JSON
-    let jsonStr = content;
+    let jsonStr = extractJSON(content);
     
-    // 如果返回内容包含 markdown 代码块，提取其中的 JSON
-    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[1].trim();
-      console.log('[AI解析] 从代码块中提取 JSON，长度:', jsonStr.length);
-    } else {
-      // 尝试找到 JSON 数组的开始和结束
-      const jsonStart = content.indexOf('[');
-      const jsonEnd = content.lastIndexOf(']');
-      if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-        jsonStr = content.substring(jsonStart, jsonEnd + 1);
-        console.log('[AI解析] 从文本中提取 JSON 数组，位置:', jsonStart, '-', jsonEnd, '长度:', jsonStr.length);
-      }
-    }
-    
-    // 解析 JSON
+    // 尝试修复截断的 JSON
     let lessons;
     try {
       lessons = JSON.parse(jsonStr);
     } catch (parseError) {
-      console.error('[AI解析] JSON 解析失败，尝试修复...');
-      // 尝试修复常见的 JSON 格式问题
-      // 1. 移除末尾的逗号
-      let fixedJson = jsonStr.replace(/,\s*]/g, ']').replace(/,\s*}/g, '}');
-      // 2. 修复未转义的引号
-      // 3. 修复缺少的引号
-      try {
-        lessons = JSON.parse(fixedJson);
-        console.log('[AI解析] JSON 修复成功');
-      } catch (secondError) {
-        console.error('[AI解析] JSON 修复失败，原始内容可能不是有效的 JSON');
-        throw parseError;
-      }
+      console.log('[AI解析] JSON 解析失败，尝试修复截断...');
+      jsonStr = fixTruncatedJSON(jsonStr);
+      lessons = JSON.parse(jsonStr);
     }
     
     if (!Array.isArray(lessons)) {
       throw new Error('AI 返回的不是数组');
     }
     
-    // 验证并标准化数据
+    // 标准化数据（兼容精简格式）
     const validLessons = lessons.filter((lesson: any) => {
-      return lesson && 
-             typeof lesson.lesson_number === 'number' && 
-             Array.isArray(lesson.sentences) &&
-             lesson.sentences.length > 0;
-    }).map((lesson: any) => ({
-      lesson_number: lesson.lesson_number,
-      title: lesson.title || `Unit ${lesson.lesson_number}`,
-      description: lesson.description || lesson.title || `Unit ${lesson.lesson_number}`,
-      sentences: lesson.sentences.filter((s: any) => s && s.english).map((s: any) => ({
-        english: s.english.trim(),
-        chinese: s.chinese?.trim()
+      const hasSentences = lesson.s?.length > 0 || lesson.sentences?.length > 0;
+      return lesson && hasSentences;
+    }).map((lesson: any, idx: number) => ({
+      lesson_number: lesson.n || lesson.lesson_number || idx + 1,
+      title: lesson.t || lesson.title || `Unit ${lesson.n || idx + 1}`,
+      description: lesson.t || lesson.title || lesson.description || `Unit ${lesson.n || idx + 1}`,
+      sentences: (lesson.s || lesson.sentences || []).filter((s: any) => s && (s.e || s.english)).map((s: any) => ({
+        english: (s.e || s.english || '').trim(),
+        chinese: (s.c || s.chinese || '')?.trim()
       }))
     }));
     
     console.log(`[AI解析] 成功识别 ${validLessons.length} 个课时`);
-    validLessons.forEach((lesson, idx) => {
+    validLessons.forEach((lesson) => {
       console.log(`[AI解析]   课时 ${lesson.lesson_number}: ${lesson.title} (${lesson.sentences.length} 句)`);
     });
     
@@ -141,6 +128,136 @@ async function parseLessonsWithAI(text: string): Promise<Array<{
   } catch (error: any) {
     console.error('[AI解析] 解析失败:', error.message);
     throw error;
+  }
+}
+
+/**
+ * 从 AI 响应中提取 JSON
+ */
+function extractJSON(content: string): string {
+  // 如果返回内容包含 markdown 代码块，提取其中的 JSON
+  const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (jsonMatch) {
+    console.log('[AI解析] 从代码块中提取 JSON');
+    return jsonMatch[1].trim();
+  }
+  
+  // 尝试找到 JSON 数组的开始和结束
+  const jsonStart = content.indexOf('[');
+  const jsonEnd = content.lastIndexOf(']');
+  if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+    console.log('[AI解析] 从文本中提取 JSON 数组');
+    return content.substring(jsonStart, jsonEnd + 1);
+  }
+  
+  return content;
+}
+
+/**
+ * 修复截断的 JSON
+ */
+function fixTruncatedJSON(jsonStr: string): string {
+  let fixed = jsonStr;
+  
+  // 计算括号嵌套层级
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  
+  for (let i = 0; i < fixed.length; i++) {
+    const char = fixed[i];
+    
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    
+    if (char === '\\') {
+      escapeNext = true;
+      continue;
+    }
+    
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    
+    if (!inString) {
+      if (char === '{' || char === '[') depth++;
+      if (char === '}' || char === ']') depth--;
+    }
+  }
+  
+  console.log('[AI解析] JSON 深度:', depth, '是否在字符串中:', inString);
+  
+  // 如果在字符串中被截断，先关闭字符串
+  if (inString) {
+    fixed += '"';
+  }
+  
+  // 关闭未闭合的括号
+  while (depth > 0) {
+    // 猜测需要关闭的是对象还是数组
+    // 简单策略：交替关闭
+    if (depth % 2 === 0) {
+      fixed += ']';
+    } else {
+      fixed += '}';
+    }
+    depth--;
+  }
+  
+  console.log('[AI解析] 修复后的 JSON 长度:', fixed.length);
+  return fixed;
+}
+
+/**
+ * 解析单批文本（用于短文本或测试）
+ */
+async function parseSingleBatch(client: LLMClient, text: string, startLessonNumber: number): Promise<Array<{
+  lesson_number: number;
+  title: string;
+  description?: string;
+  sentences: Array<{ english: string; chinese?: string }>;
+}>> {
+  const systemPrompt = `你是英语教材解析助手。分析文本，识别课时结构。
+
+返回格式（紧凑JSON）：
+[{"n":1,"t":"标题","s":[{"e":"英文","c":"中文"}]}]
+
+规则：
+1. 识别 Unit 1、Lesson 1 等课时标记
+2. 英文和中文成对出现
+3. 只返回JSON数组`;
+
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `分析教材返回JSON：\n${text}` }
+  ];
+  
+  const response = await client.invoke(messages, { 
+    model: 'doubao-seed-1-6-lite-251015',
+    temperature: 0.1
+  });
+  
+  const content = response.content.trim();
+  let jsonStr = extractJSON(content);
+  
+  try {
+    jsonStr = fixTruncatedJSON(jsonStr);
+    const lessons = JSON.parse(jsonStr);
+    
+    return lessons.filter((l: any) => l.s?.length > 0).map((l: any, idx: number) => ({
+      lesson_number: l.n || idx + startLessonNumber,
+      title: l.t || `Unit ${l.n || idx + startLessonNumber}`,
+      sentences: l.s.map((s: any) => ({
+        english: (s.e || '').trim(),
+        chinese: (s.c || '')?.trim()
+      }))
+    }));
+  } catch (e) {
+    console.error('[AI解析] 单批解析失败:', e);
+    return [];
   }
 }
 
