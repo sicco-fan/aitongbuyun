@@ -1327,6 +1327,8 @@ interface CompletionModalProps {
   duration: number;
   sentenceCount: number;
   countdown: number;
+  hasNextLesson: boolean; // 是否有下一课
+  nextLessonTitle?: string; // 下一课标题
   onClose: () => void;
   theme: any;
 }
@@ -1336,6 +1338,8 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
   duration,
   sentenceCount,
   countdown,
+  hasNextLesson,
+  nextLessonTitle,
   onClose,
   theme,
 }) => {
@@ -1476,9 +1480,17 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
           onPress={onClose}
         >
           <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-            返回 ({countdown}s)
+            {hasNextLesson 
+              ? `继续下一课 (${countdown}s)` 
+              : `返回 (${countdown}s)`
+            }
           </ThemedText>
         </TouchableOpacity>
+        {hasNextLesson && nextLessonTitle && (
+          <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: Spacing.sm }}>
+            下一课：{nextLessonTitle}
+          </ThemedText>
+        )}
       </RNAnimated.View>
     </View>
   );
@@ -1597,6 +1609,11 @@ export default function SentencePracticeScreen() {
   const [errorPriority, setErrorPriority] = useState(params.errorPriority || false); // 错题优先模式
   const [errorSentences, setErrorSentences] = useState<Array<{ sentence_index: number; totalErrors: number }>>([]); // 错题句子列表
   const hasShownProgressAlert = useRef(false); // 是否已经显示过进度弹窗（防止重复弹出）
+  
+  // 课程模式：下一课时信息（用于学完自动跳转）
+  const [nextLessonId, setNextLessonId] = useState<number | null>(null);
+  const [nextLessonTitle, setNextLessonTitle] = useState<string>('');
+  const [nextLessonNumber, setNextLessonNumber] = useState<number>(0);
   
   // 薄弱词汇练习：目标单词追踪
   const targetWord = params.targetWord ? (params.targetWord as string).toLowerCase() : null;
@@ -1936,6 +1953,37 @@ export default function SentencePracticeScreen() {
     }
   }, [fileId, isAuthenticated, user?.id, errorPriority, params.sentenceIndex, sourceType, lessonId, voiceId]);
 
+  // 课程模式：获取下一课时信息（用于学完自动跳转）
+  const fetchNextLesson = useCallback(async () => {
+    if (sourceType !== 'lesson' || !courseId || !lessonNumber) return;
+    
+    try {
+      /**
+       * 服务端文件：server/src/routes/courses.ts
+       * 接口：GET /api/v1/courses/:courseId/lessons
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/${courseId}/lessons`);
+      const data = await response.json();
+      
+      if (data.lessons) {
+        const currentNum = parseInt(lessonNumber, 10);
+        // 找到下一个课时（lesson_number = 当前编号 + 1）
+        const nextLesson = data.lessons.find((l: { lesson_number: number }) => l.lesson_number === currentNum + 1);
+        
+        if (nextLesson) {
+          setNextLessonId(nextLesson.id);
+          setNextLessonTitle(nextLesson.title);
+          setNextLessonNumber(nextLesson.lesson_number);
+          console.log(`[课程学习] 找到下一课: 第${nextLesson.lesson_number}课 - ${nextLesson.title}`);
+        } else {
+          console.log('[课程学习] 没有下一课了');
+        }
+      }
+    } catch (error) {
+      console.error('[课程学习] 获取下一课时失败:', error);
+    }
+  }, [sourceType, courseId, lessonNumber]);
+
   // 获取完美发音列表（当前句子）
   const fetchPerfectRecordings = useCallback(async () => {
     if (!isAuthenticated || !user?.id || !currentSentence?.id) return;
@@ -2016,6 +2064,7 @@ export default function SentencePracticeScreen() {
       })();
       
       fetchSentences();
+      fetchNextLesson(); // 课程模式：获取下一课时信息
       // 注意：fetchPerfectRecordings 在 useEffect 中根据 currentSentence?.id 变化时调用
 
       return () => {
@@ -2077,7 +2126,7 @@ export default function SentencePracticeScreen() {
           console.log('[学习位置] 已保存:', position);
         }
       };
-    }, [fetchSentences, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId, user?.id, calculateEffectiveDuration])
+    }, [fetchSentences, fetchNextLesson, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId, user?.id, calculateEffectiveDuration])
   );
 
   // 处理返回键/退出 - 注意：这个函数在 submitLearningData 之后定义
@@ -3493,8 +3542,22 @@ export default function SentencePracticeScreen() {
     setShowCompletionModal(false);
     // 提交最终学习数据
     submitLearningData(true, completionDuration);
-    router.back();
-  }, [submitLearningData, completionDuration, router]);
+    
+    // 课程模式：如果有下一课，跳转到下一课
+    if (sourceType === 'lesson' && nextLessonId) {
+      console.log(`[课程学习] 跳转到下一课: 第${nextLessonNumber}课 - ${nextLessonTitle}`);
+      router.replace('/lesson-learning', {
+        lessonId: nextLessonId.toString(),
+        title: nextLessonTitle,
+        courseId: courseId,
+        courseTitle: courseTitle,
+        lessonNumber: nextLessonNumber.toString(),
+        voiceId: voiceId,
+      });
+    } else {
+      router.back();
+    }
+  }, [submitLearningData, completionDuration, router, sourceType, nextLessonId, nextLessonNumber, nextLessonTitle, courseId, courseTitle, voiceId]);
 
   // 倒计时自动返回
   useEffect(() => {
@@ -4595,6 +4658,8 @@ export default function SentencePracticeScreen() {
         duration={completionDuration}
         sentenceCount={sentences.length}
         countdown={countdown}
+        hasNextLesson={sourceType === 'lesson' && !!nextLessonId}
+        nextLessonTitle={nextLessonTitle}
         onClose={handleCompletionClose}
         theme={theme}
       />
