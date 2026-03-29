@@ -288,7 +288,20 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* 精品课程入口 */}
+        {/* AI 句库 Section */}
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <FontAwesome6 name="wand-magic-sparkles" size={18} color={theme.primary} />
+            <ThemedText variant="h4" color={theme.textPrimary}>
+              AI 句库
+            </ThemedText>
+          </View>
+          <ThemedText variant="caption" color={theme.textMuted}>
+            {aiSentenceFiles.reduce((sum, f) => sum + f.ready_sentences_count, 0)} 句可学
+          </ThemedText>
+        </View>
+
+        {/* 精品课程入口 - 属于 AI 句库 */}
         <TouchableOpacity
           style={[styles.courseCard, { backgroundColor: theme.primary + '08', borderColor: theme.primary + '20' }]}
           onPress={() => router.push('/courses')}
@@ -308,22 +321,11 @@ export default function HomeScreen() {
           <FontAwesome6 name="chevron-right" size={16} color={theme.primary} />
         </TouchableOpacity>
 
-        {/* AI 句库 Section */}
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleRow}>
-            <FontAwesome6 name="wand-magic-sparkles" size={18} color={theme.primary} />
-            <ThemedText variant="h4" color={theme.textPrimary}>
-              AI 句库
-            </ThemedText>
-          </View>
-          <ThemedText variant="caption" color={theme.textMuted}>
-            {aiSentenceFiles.reduce((sum, f) => sum + f.ready_sentences_count, 0)} 句可学
-          </ThemedText>
-        </View>
+        {/* AI 句库列表 */}
+        {aiSentenceFiles.map((file) => renderSentenceFileCard(file, true))}
 
-        {aiSentenceFiles.length > 0 ? (
-          aiSentenceFiles.map((file) => renderSentenceFileCard(file, true))
-        ) : (
+        {/* AI 句库创建入口 */}
+        {aiSentenceFiles.length === 0 && (
           <TouchableOpacity 
             style={styles.aiEmptyCard}
             onPress={() => router.push('/create-sentence-file')}
