@@ -396,8 +396,10 @@ export default function SentencePracticeScreen() {
   const currentSentencePointsRef = useRef(0);
 
   // 学习时长计时器 - 带空闲超时检测
-  // 逻辑：进入页面开始计时，用户操作更新最后活动时间，超过60秒没操作则停止计时
-  const sessionStartTimeRef = useRef<number | null>(null); // 进入页面的时间
+  // 逻辑：
+  // 1. 音频在循环播放 = 用户在学习 = 持续计时
+  // 2. 音频停止 + 60秒没操作 = 用户发呆 = 停止计时
+  const sessionStartTimeRef = useRef<number | null>(null); // 当前计时周期的开始时间
   const lastActivityTimeRef = useRef<number | null>(null); // 最后一次活动时间
   const accumulatedDurationRef = useRef<number>(0); // 已累计的有效学习时长（秒）
   const INACTIVITY_TIMEOUT = 60 * 1000; // 60秒无操作超时
@@ -406,8 +408,8 @@ export default function SentencePracticeScreen() {
   const recordActivity = useCallback(() => {
     const now = Date.now();
     
-    // 如果之前处于空闲状态（最后活动时间距离现在超过超时阈值），重新开始计时
-    if (lastActivityTimeRef.current && now - lastActivityTimeRef.current > INACTIVITY_TIMEOUT) {
+    // 如果之前处于空闲状态（音频停止 + 超过60秒没操作），重新开始计时
+    if (lastActivityTimeRef.current && now - lastActivityTimeRef.current > INACTIVITY_TIMEOUT && !isLoopingRef.current) {
       // 空闲期间不计时，从现在重新开始
       sessionStartTimeRef.current = now;
       console.log('[学习时长] 检测到用户恢复活动，重新开始计时');
@@ -416,7 +418,8 @@ export default function SentencePracticeScreen() {
     lastActivityTimeRef.current = now;
   }, []);
   
-  // 计算有效学习时长（考虑空闲超时）
+  // 计算有效学习时长
+  // 关键逻辑：音频在循环播放时，持续计时（用户在听）
   const calculateEffectiveDuration = useCallback((): number => {
     if (!sessionStartTimeRef.current) {
       return accumulatedDurationRef.current;
@@ -426,12 +429,19 @@ export default function SentencePracticeScreen() {
     const lastActivity = lastActivityTimeRef.current || sessionStartTimeRef.current;
     const timeSinceLastActivity = now - lastActivity;
     
-    // 如果超过超时阈值，只计算到最后一次活动的时间
+    // 如果音频在循环播放，持续计时（用户在听音频学习）
+    if (isLoopingRef.current) {
+      const currentDuration = (now - sessionStartTimeRef.current) / 1000;
+      return accumulatedDurationRef.current + Math.max(0, currentDuration);
+    }
+    
+    // 音频已停止，检查空闲超时
     if (timeSinceLastActivity > INACTIVITY_TIMEOUT) {
+      // 超时，只计算到最后一次活动的时间
       const effectiveDuration = (lastActivity - sessionStartTimeRef.current) / 1000;
       return accumulatedDurationRef.current + Math.max(0, effectiveDuration);
     } else {
-      // 未超时，计算到现在的时长
+      // 未超时，继续计时
       const currentDuration = (now - sessionStartTimeRef.current) / 1000;
       return accumulatedDurationRef.current + Math.max(0, currentDuration);
     }
