@@ -34,6 +34,7 @@ app.get('/api/v1/health', (req, res) => {
 app.use('/api/v1/upload', uploadRouter);
 app.use('/api/v1/materials/download', videoDownloadRouter);
 app.use('/api/v1/materials', materialsRouter);
+app.use('/api/v1/users', usersRouter);  // 包含头像上传，需要在 body parser 之前
 
 // Body parser - 放在文件上传路由之后
 app.use(express.json({ limit: '50mb' }));
@@ -71,9 +72,6 @@ app.use('/api/v1/courses', coursesRouter);
 
 // 完美发音记录路由
 app.use('/api/v1/perfect-recordings', perfectRecordingsRouter);
-
-// 用户路由
-app.use('/api/v1/users', usersRouter);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
