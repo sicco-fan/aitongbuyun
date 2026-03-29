@@ -395,8 +395,47 @@ export default function SentencePracticeScreen() {
   // 句子积分累积（仅后台记录，不显示弹窗）
   const currentSentencePointsRef = useRef(0);
 
-  // 学习时长计时器 - 简化逻辑：进入页面开始计时，退出页面结束计时
+  // 学习时长计时器 - 带空闲超时检测
+  // 逻辑：进入页面开始计时，用户操作更新最后活动时间，超过60秒没操作则停止计时
   const sessionStartTimeRef = useRef<number | null>(null); // 进入页面的时间
+  const lastActivityTimeRef = useRef<number | null>(null); // 最后一次活动时间
+  const accumulatedDurationRef = useRef<number>(0); // 已累计的有效学习时长（秒）
+  const INACTIVITY_TIMEOUT = 60 * 1000; // 60秒无操作超时
+  
+  // 记录用户活动（在用户有任何操作时调用）
+  const recordActivity = useCallback(() => {
+    const now = Date.now();
+    
+    // 如果之前处于空闲状态（最后活动时间距离现在超过超时阈值），重新开始计时
+    if (lastActivityTimeRef.current && now - lastActivityTimeRef.current > INACTIVITY_TIMEOUT) {
+      // 空闲期间不计时，从现在重新开始
+      sessionStartTimeRef.current = now;
+      console.log('[学习时长] 检测到用户恢复活动，重新开始计时');
+    }
+    
+    lastActivityTimeRef.current = now;
+  }, []);
+  
+  // 计算有效学习时长（考虑空闲超时）
+  const calculateEffectiveDuration = useCallback((): number => {
+    if (!sessionStartTimeRef.current) {
+      return accumulatedDurationRef.current;
+    }
+    
+    const now = Date.now();
+    const lastActivity = lastActivityTimeRef.current || sessionStartTimeRef.current;
+    const timeSinceLastActivity = now - lastActivity;
+    
+    // 如果超过超时阈值，只计算到最后一次活动的时间
+    if (timeSinceLastActivity > INACTIVITY_TIMEOUT) {
+      const effectiveDuration = (lastActivity - sessionStartTimeRef.current) / 1000;
+      return accumulatedDurationRef.current + Math.max(0, effectiveDuration);
+    } else {
+      // 未超时，计算到现在的时长
+      const currentDuration = (now - sessionStartTimeRef.current) / 1000;
+      return accumulatedDurationRef.current + Math.max(0, currentDuration);
+    }
+  }, []);
   
   // 存档状态
   const [hasProgressToSave, setHasProgressToSave] = useState(false); // 是否有进度需要存档
@@ -719,6 +758,8 @@ export default function SentencePracticeScreen() {
       
       // 开始学习计时（进入页面就开始计时）
       sessionStartTimeRef.current = Date.now();
+      lastActivityTimeRef.current = Date.now();
+      accumulatedDurationRef.current = 0;
       console.log('[学习时长] 开始计时');
       
       // 重新加载语音答题模式配置（用户可能在设置页面修改了）
@@ -742,9 +783,9 @@ export default function SentencePracticeScreen() {
         const latestSentences = sentencesRef.current;
         const latestIndex = currentIndexRef.current;
         
-        // 提交学习时长（退出页面时）
+        // 提交学习时长（退出页面时，使用有效时长）
         if (sessionStartTimeRef.current && user?.id) {
-          const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
+          const duration = Math.round(calculateEffectiveDuration());
           if (duration > 0) {
             // 异步提交学习时长，不等待
             fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/daily`, {
@@ -757,7 +798,7 @@ export default function SentencePracticeScreen() {
                 sentences_completed: 0,
               }),
             }).catch(e => console.error('[学习时长] 提交失败:', e));
-            console.log(`[学习时长] 已提交: ${duration}秒`);
+            console.log(`[学习时长] 已提交有效时长: ${duration}秒`);
           }
         }
         
@@ -793,7 +834,7 @@ export default function SentencePracticeScreen() {
           console.log('[学习位置] 已保存:', position);
         }
       };
-    }, [fetchSentences, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId, user?.id])
+    }, [fetchSentences, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId, user?.id, calculateEffectiveDuration])
   );
 
   // 处理返回键/退出 - 注意：这个函数在 submitLearningData 之后定义
@@ -1160,12 +1201,15 @@ export default function SentencePracticeScreen() {
 
   // 切换播放/暂停
   const togglePlayPause = useCallback(() => {
+    // 记录用户活动（播放/暂停音频）
+    recordActivity();
+    
     if (isPlaying) {
       pauseAudio();
     } else {
       playAudio();
     }
-  }, [isPlaying, playAudio, pauseAudio]);
+  }, [isPlaying, playAudio, pauseAudio, recordActivity]);
 
   // 初始化当前句子
   useEffect(() => {
@@ -1750,6 +1794,9 @@ export default function SentencePracticeScreen() {
     // 标记有过打字输入
     sentenceHadTypingRef.current = true;
     
+    // 记录用户活动（用于学习时长统计）
+    recordActivity();
+    
     const currentWordStatuses = wordStatusesRef.current;
 
     // 检测是否输入了空格或回车（用户确认单词）
@@ -2061,6 +2108,9 @@ export default function SentencePracticeScreen() {
   const handleWordPress = useCallback((ws: WordStatus) => {
     if (ws.isPunctuation) return;
     
+    // 记录用户活动（点击单词查看提示/翻译）
+    recordActivity();
+    
     if (ws.revealed) {
       // 已完成的单词：显示中文翻译
       setTranslationWordIndex(ws.index);
@@ -2120,11 +2170,14 @@ export default function SentencePracticeScreen() {
         }).catch(e => console.log('记录错题失败:', e));
       }
     }
-  }, [wordTranslations, isAuthenticated, user?.id, fileId, currentSentence]);
+  }, [wordTranslations, isAuthenticated, user?.id, fileId, currentSentence, recordActivity]);
 
   // 跳转到上一句
   const goToPrevSentence = useCallback(() => {
     if (currentIndex > 0) {
+      // 记录用户活动（切换句子）
+      recordActivity();
+      
       stopPlayback();
       currentSentencePointsRef.current = 0; // 重置句子积分
       // 清除语音识别结果
@@ -2133,11 +2186,14 @@ export default function SentencePracticeScreen() {
       setVoiceResultText('');
       setCurrentIndex(prev => prev - 1);
     }
-  }, [currentIndex, stopPlayback]);
+  }, [currentIndex, stopPlayback, recordActivity]);
 
   // 跳转到下一句
   const goToNextSentence = useCallback(() => {
     if (currentIndex < sentences.length - 1) {
+      // 记录用户活动（切换句子）
+      recordActivity();
+      
       stopPlayback();
       currentSentencePointsRef.current = 0; // 重置句子积分
       // 清除语音识别结果
@@ -2151,7 +2207,7 @@ export default function SentencePracticeScreen() {
         { text: '返回', onPress: () => router.back() }
       ]);
     }
-  }, [currentIndex, sentences.length, stopPlayback, router]);
+  }, [currentIndex, sentences.length, stopPlayback, router, recordActivity]);
 
   // 开始语音输入
   const startRecording = useCallback(async () => {
@@ -2159,6 +2215,9 @@ export default function SentencePracticeScreen() {
       Alert.alert('权限不足', '需要麦克风权限才能使用语音输入');
       return;
     }
+
+    // 记录用户活动（语音输入）
+    recordActivity();
 
     // 方案A（自动匹配）：立即停止音频，让用户专注语音输入
     if (voicePracticeModeRef.current === 'auto-match') {
