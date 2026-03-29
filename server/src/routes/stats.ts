@@ -174,6 +174,96 @@ router.post('/record', async (req, res) => {
 });
 
 /**
+ * POST /api/v1/stats/daily
+ * 直接更新每日学习统计（用于课程模式等场景）
+ * Body: {
+ *   user_id: string,
+ *   score?: number,
+ *   duration_seconds?: number,
+ *   sentences_completed?: number
+ * }
+ */
+router.post('/daily', async (req, res) => {
+  try {
+    const { user_id, score, duration_seconds, sentences_completed } = req.body;
+    
+    if (!user_id) {
+      return res.status(400).json({ error: '缺少用户ID' });
+    }
+    
+    // 至少需要一项数据才更新
+    if ((!score || score <= 0) && (!duration_seconds || duration_seconds <= 0) && (!sentences_completed || sentences_completed <= 0)) {
+      return res.json({ success: true, message: '无数据需要更新' });
+    }
+    
+    const client = getSupabaseClient();
+    const today = getTodayString();
+    const now = new Date().toISOString();
+    
+    // 检查今日是否已有记录
+    const { data: existingDaily, error: dailyFetchError } = await client
+      .from('daily_stats')
+      .select('*')
+      .eq('user_id', user_id)
+      .eq('date', today)
+      .maybeSingle();
+    
+    if (dailyFetchError) {
+      console.error('获取每日统计失败:', dailyFetchError);
+      throw dailyFetchError;
+    }
+    
+    if (existingDaily) {
+      // 更新今日记录
+      const updateData: Record<string, unknown> = {
+        updated_at: now,
+      };
+      
+      if (score !== undefined && score > 0) {
+        updateData.total_score = (existingDaily.total_score || 0) + score;
+      }
+      
+      if (duration_seconds !== undefined && duration_seconds > 0) {
+        updateData.total_duration = (existingDaily.total_duration || 0) + duration_seconds;
+      }
+      
+      if (sentences_completed !== undefined && sentences_completed > 0) {
+        updateData.sentences_completed = (existingDaily.sentences_completed || 0) + sentences_completed;
+      }
+      
+      const { error: updateError } = await client
+        .from('daily_stats')
+        .update(updateData)
+        .eq('id', existingDaily.id);
+      
+      if (updateError) {
+        throw updateError;
+      }
+    } else {
+      // 创建今日记录
+      const { error: insertError } = await client
+        .from('daily_stats')
+        .insert({
+          user_id,
+          date: today,
+          total_score: score || 0,
+          total_duration: duration_seconds || 0,
+          sentences_completed: sentences_completed || 0,
+        });
+      
+      if (insertError) {
+        throw insertError;
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('更新每日统计失败:', error);
+    res.status(500).json({ error: '更新每日统计失败' });
+  }
+});
+
+/**
  * GET /api/v1/stats/overview
  * 获取用户统计概览
  * Query: user_id

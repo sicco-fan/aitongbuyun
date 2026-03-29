@@ -1306,28 +1306,56 @@ export default function SentencePracticeScreen() {
 
   // 提交学习数据（句子完成时调用）
   const submitLearningData = useCallback(async (sentenceCompleted: boolean, durationSeconds?: number) => {
-    if (!isAuthenticated || !user?.id || !fileId) return;
+    if (!isAuthenticated || !user?.id) return;
     
     const score = pendingScoreRef.current;
     const duration = durationSeconds || 0;
     
+    // 课程模式使用 lessonId，句库模式使用 fileId
+    const recordId = sourceType === 'lesson' ? lessonId : fileId;
+    
+    // 如果没有有效的记录ID，仍然需要更新每日统计
+    // 对于课程模式，使用固定的标识符
+    const effectiveId = recordId || (sourceType === 'lesson' ? `lesson_${lessonId}` : undefined);
+    
     try {
+      // 如果有有效的ID，保存到 file_learning_summary 表
+      if (effectiveId) {
+        /**
+         * 服务端文件：server/src/routes/learning.ts
+         * 接口：POST /api/v1/learning-records/progress/:fileId
+         * Body 参数：user_id: string, sentence_index: number, score: number, duration_seconds: number, sentence_completed: boolean
+         */
+        await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${effectiveId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user.id,
+            sentence_index: currentIndex,
+            score: score,
+            duration_seconds: duration,
+            sentence_completed: sentenceCompleted,
+          }),
+        });
+      }
+      
+      // 无论是否有ID，都直接更新每日统计
       /**
-       * 服务端文件：server/src/routes/learning.ts
-       * 接口：POST /api/v1/learning-records/progress/:fileId
-       * Body 参数：user_id: string, sentence_index: number, score: number, duration_seconds: number, sentence_completed: boolean
+       * 服务端文件：server/src/routes/stats.ts
+       * 接口：POST /api/v1/stats/daily
+       * Body 参数：user_id: string, score: number, duration_seconds: number, sentences_completed: number
        */
-      await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${fileId}`, {
+      await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/daily`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: user.id,
-          sentence_index: currentIndex,
           score: score,
           duration_seconds: duration,
-          sentence_completed: sentenceCompleted,
+          sentences_completed: sentenceCompleted ? 1 : 0,
         }),
       });
+      
       console.log(`[学习数据] 已提交: 积分=${score}, 时长=${duration}秒, 句子完成=${sentenceCompleted}`);
       
       // 重置待提交数据
@@ -1335,7 +1363,7 @@ export default function SentencePracticeScreen() {
     } catch (error) {
       console.error('[学习数据] 提交失败:', error);
     }
-  }, [isAuthenticated, user?.id, fileId, currentIndex]);
+  }, [isAuthenticated, user?.id, fileId, lessonId, sourceType, currentIndex]);
 
   // 记录学习时长（用户输入时调用）
   const recordLearningTime = useCallback(() => {
