@@ -171,7 +171,7 @@ export default function HomeScreen() {
           <View style={[styles.materialIconContainer, { backgroundColor: theme.primary + '20' }]}>
             <FontAwesome6 
               name="graduation-cap" 
-              size={20} 
+              size={18} 
               color={theme.primary} 
             />
           </View>
@@ -217,7 +217,7 @@ export default function HomeScreen() {
         ]}>
           <FontAwesome6 
             name={isAI ? "graduation-cap" : "book-open"} 
-            size={20} 
+            size={18} 
             color={isAI ? theme.primary : theme.accent} 
           />
         </View>
@@ -265,13 +265,10 @@ export default function HomeScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.primary} />
         }
       >
-        {/* Header */}
-        <ThemedView level="root" style={styles.header}>
-          <ThemedText variant="caption" color={theme.textMuted} style={styles.greeting}>
+        {/* Header - 只保留应用名 */}
+        <ThemedView level="root" style={[styles.header, { marginBottom: Spacing.md }]}>
+          <ThemedText variant="h3" color={theme.textPrimary}>
             AI听写云
-          </ThemedText>
-          <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
-            开始学习
           </ThemedText>
         </ThemedView>
 
@@ -303,7 +300,7 @@ export default function HomeScreen() {
             activeOpacity={0.7}
           >
             <View style={[styles.continueIconContainer, { backgroundColor: theme.success + '20' }]}>
-              <FontAwesome6 name="play-circle" size={24} color={theme.success} />
+              <FontAwesome6 name="play-circle" size={20} color={theme.success} />
             </View>
             <View style={styles.continueInfo}>
               <ThemedText variant="bodyMedium" color={theme.textPrimary} style={{ marginBottom: 2 }}>
@@ -333,7 +330,7 @@ export default function HomeScreen() {
             activeOpacity={0.7}
           >
             <View style={[styles.errorIconContainer, { backgroundColor: theme.error + '20' }]}>
-              <FontAwesome6 name="exclamation-triangle" size={20} color={theme.error} />
+              <FontAwesome6 name="exclamation-triangle" size={16} color={theme.error} />
             </View>
             <View style={styles.errorInfo}>
               <ThemedText variant="bodyMedium" color={theme.textPrimary} style={{ marginBottom: 2 }}>
