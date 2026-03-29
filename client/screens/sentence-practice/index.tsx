@@ -2197,31 +2197,42 @@ export default function SentencePracticeScreen() {
           // 根据语音答题模式采用不同的处理逻辑
           if (mode === 'auto-match') {
             // ===== 方案A：自动匹配模式 =====
-            // 自由念读，念到哪匹配到哪，发音容错
+            // 极简风格：显示识别结果，匹配到的变绿，不要任何红色提示
             
             const { score, wordMatches } = calculateMatchScore(recognizedText, currentSentence.text);
             const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
             
-            if (matchedWords.length > 0) {
-              handleLongTextInput(matchedWords.join(' '));
-            }
+            // 显示用户念的内容（成就感）
+            setVoiceResultText(recognizedText);
+            setVoiceMatchScore(score);
+            setVoiceWordMatches([]); // 不显示红色块块
+            setVoiceSentenceSuggestion(''); // 不显示任何提示
+            setShowVoiceResult(true);
             
-            // 获取新的剩余未完成单词
-            const newIncompleteIndices = wordStatusesRef.current
-              .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
-              .filter(idx => idx !== -1);
-            
-            if (newIncompleteIndices.length > 0) {
-              sentenceHadVoiceErrorRef.current = true;
-              const unmatchedWords = wordMatches.filter(w => !w.isMatch);
-              setVoiceResultText(recognizedText);
-              setVoiceMatchScore(score);
-              setVoiceWordMatches(unmatchedWords);
-              setVoiceSentenceSuggestion(`还剩 ${newIncompleteIndices.length} 个单词，继续念`);
-              setShowVoiceResult(true);
-            } else {
-              setShowVoiceResult(false);
-            }
+            // 延迟一下再填入匹配结果，让用户先看到识别结果
+            setTimeout(() => {
+              if (matchedWords.length > 0) {
+                handleLongTextInput(matchedWords.join(' '));
+              }
+              
+              // 检查是否全部完成
+              const newIncompleteIndices = wordStatusesRef.current
+                .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
+                .filter(idx => idx !== -1);
+              
+              if (newIncompleteIndices.length === 0) {
+                // 全部完成，短暂显示后隐藏
+                setTimeout(() => setShowVoiceResult(false), 1000);
+              } else {
+                // 还有未完成的，但不在结果卡片里显示
+                // 用户继续念就行
+              }
+              
+              // 记录是否有语音错误（用于完美发音判断）
+              if (score < 100 && newIncompleteIndices.length > 0) {
+                sentenceHadVoiceErrorRef.current = true;
+              }
+            }, 300);
             
           } else if (mode === 'follow-along') {
             // ===== 方案B：分段跟读模式 =====
@@ -2692,38 +2703,23 @@ export default function SentencePracticeScreen() {
             </View>
           )}
 
-          {/* 语音识别结果卡片 - 显示未匹配的单词 */}
-          {showVoiceResult && voiceWordMatches.length > 0 && (
+          {/* 语音识别结果 - 显示用户念的内容 */}
+          {showVoiceResult && voiceResultText && (
             <Animated.View 
               entering={FadeInDown.duration(300)}
               style={styles.voiceResultCard}
             >
               <View style={styles.voiceResultHeader}>
                 <ThemedText variant="small" color={theme.textSecondary}>
-                  还剩 {remainingWordsCount} 个单词，长按继续念：
+                  🎤 你说：{voiceResultText}
                 </ThemedText>
                 <TouchableOpacity onPress={() => setShowVoiceResult(false)}>
                   <FontAwesome6 name="times" size={14} color={theme.textMuted} />
                 </TouchableOpacity>
               </View>
 
-              {/* 未匹配的单词（红色块块，不显示文字） */}
-              <View style={styles.wordMatchContainer}>
-                <View style={styles.wordMatchWords}>
-                  {voiceWordMatches.map((match, idx) => (
-                    <View 
-                      key={idx} 
-                      style={[styles.unmatchedWordBadge, { backgroundColor: theme.error + '30' }]}
-                    >
-                      {/* 红色块块，不显示单词文字 */}
-                      <View style={[styles.unmatchedWordBlock, { backgroundColor: theme.error }]} />
-                    </View>
-                  ))}
-                </View>
-              </View>
-
-              {/* 提示建议 */}
-              {voiceSentenceSuggestion && (
+              {/* 方案B和方案C才显示提示 */}
+              {voiceWordMatches.length > 0 && voiceSentenceSuggestion && (
                 <View style={styles.segmentSuggestionContainer}>
                   <FontAwesome6 name="lightbulb" size={14} color={theme.accent} />
                   <ThemedText variant="small" color={theme.textSecondary} style={{ flex: 1, marginLeft: 6 }}>
@@ -2731,16 +2727,6 @@ export default function SentencePracticeScreen() {
                   </ThemedText>
                 </View>
               )}
-
-              {/* 手动输入按钮 */}
-              <TouchableOpacity 
-                style={[styles.voiceResultBtn, { backgroundColor: theme.backgroundTertiary, marginTop: Spacing.sm }]}
-                onPress={() => setShowVoiceResult(false)}
-              >
-                <ThemedText variant="smallMedium" color={theme.textMuted}>
-                  手动输入
-                </ThemedText>
-              </TouchableOpacity>
             </Animated.View>
           )}
 

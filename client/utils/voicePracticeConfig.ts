@@ -30,12 +30,12 @@ export const VOICE_PRACTICE_MODE_OPTIONS: VoicePracticeModeOption[] = [
   {
     key: 'auto-match',
     name: '自动匹配',
-    description: '自由念读，念到哪匹配到哪',
+    description: '念什么匹配什么，干净利落',
     icon: 'microphone',
     features: [
-      '自由念整句或部分',
-      '自动匹配识别到的单词',
-      '显示剩余单词数量',
+      '显示你念的内容',
+      '匹配到的自动变绿',
+      '不要红色提示，纯靠听力',
     ],
   },
   {
