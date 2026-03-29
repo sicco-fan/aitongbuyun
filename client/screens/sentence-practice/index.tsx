@@ -714,6 +714,22 @@ const generateVariants = (word: string): string[] => {
     results.push(...currencyToWords(w));
   }
   
+  // 11. 连字符单词（cat-like, well-known 等）
+  // 语音识别可能把连字符读成空格，所以生成拆分版本
+  if (/[-–—]/.test(w) && !w.startsWith('-') && !w.endsWith('-')) {
+    const parts = splitHyphenatedWord(w);
+    if (parts.length > 1) {
+      // 添加空格分开的版本
+      results.push(parts.join(' '));
+      // 也添加每个部分的单独单词（语音可能只识别一个词）
+      parts.forEach(part => {
+        if (part.length > 1) {
+          results.push(part);
+        }
+      });
+    }
+  }
+  
   // 去重并返回
   return [...new Set(results.map(r => r.toLowerCase()))];
 };
