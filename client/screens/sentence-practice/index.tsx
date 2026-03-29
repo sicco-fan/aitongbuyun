@@ -2135,6 +2135,10 @@ export default function SentencePracticeScreen() {
     if (currentIndex > 0) {
       stopPlayback();
       currentSentencePointsRef.current = 0; // 重置句子积分
+      // 清除语音识别结果
+      setShowVoiceResult(false);
+      setRecognizedWordMatches([]);
+      setVoiceResultText('');
       setCurrentIndex(prev => prev - 1);
     }
   }, [currentIndex, stopPlayback]);
@@ -2144,6 +2148,10 @@ export default function SentencePracticeScreen() {
     if (currentIndex < sentences.length - 1) {
       stopPlayback();
       currentSentencePointsRef.current = 0; // 重置句子积分
+      // 清除语音识别结果
+      setShowVoiceResult(false);
+      setRecognizedWordMatches([]);
+      setVoiceResultText('');
       setCurrentIndex(prev => prev + 1);
     } else {
       stopPlayback();
@@ -2780,8 +2788,8 @@ export default function SentencePracticeScreen() {
               entering={FadeInDown.duration(300)}
               style={styles.voiceResultCard}
             >
-              <View style={styles.voiceResultHeader}>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginRight: Spacing.sm }}>
                   <ThemedText variant="small" color={theme.textSecondary}>
                     🎤 你说：
                   </ThemedText>
@@ -2798,7 +2806,7 @@ export default function SentencePracticeScreen() {
                     </ThemedText>
                   ))}
                 </View>
-                <TouchableOpacity onPress={() => setShowVoiceResult(false)}>
+                <TouchableOpacity onPress={() => setShowVoiceResult(false)} style={{ paddingTop: 2 }}>
                   <FontAwesome6 name="times" size={14} color={theme.textMuted} />
                 </TouchableOpacity>
               </View>
