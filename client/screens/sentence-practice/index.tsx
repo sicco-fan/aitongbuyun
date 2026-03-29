@@ -547,16 +547,7 @@ export default function SentencePracticeScreen() {
 
   // 获取完美发音列表（当前句子）
   const fetchPerfectRecordings = useCallback(async () => {
-    if (!isAuthenticated || !user?.id) {
-      console.log('[完美发音] 未登录，跳过获取');
-      return;
-    }
-    if (!currentSentence?.id) {
-      console.log('[完美发音] currentSentence.id 不存在，跳过获取');
-      return;
-    }
-
-    console.log('[完美发音] 获取句子 ID:', currentSentence.id, '文本:', currentSentence.text?.substring(0, 30));
+    if (!isAuthenticated || !user?.id || !currentSentence?.id) return;
 
     try {
       /**
@@ -568,8 +559,6 @@ export default function SentencePracticeScreen() {
         `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/perfect-recordings?userId=${user.id}&sentenceId=${currentSentence.id}&limit=10`
       );
       const data = await response.json();
-
-      console.log('[完美发音] API 返回:', data.success, '记录数:', data.data?.length);
 
       if (data.success) {
         setPerfectRecordings(data.data || []);
@@ -1380,24 +1369,18 @@ export default function SentencePracticeScreen() {
 
   // 播放完美发音录音
   const playPerfectRecording = useCallback(async (audioUrl: string) => {
-    console.log('[完美发音] 尝试播放:', audioUrl?.substring(0, 50));
     try {
       // 停止之前的完美发音播放
       if (perfectSoundRef.current) {
-        console.log('[完美发音] 停止之前的播放');
         await perfectSoundRef.current.unloadAsync();
       }
       // 播放新的录音
-      console.log('[完美发音] 创建音频实例');
       const { sound } = await Audio.Sound.createAsync({ uri: audioUrl });
       perfectSoundRef.current = sound;
-      console.log('[完美发音] 开始播放');
       await sound.playAsync();
-      console.log('[完美发音] 播放已启动');
       // 播放完成后自动释放
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
-          console.log('[完美发音] 播放完成');
           sound.unloadAsync();
           perfectSoundRef.current = null;
         }
@@ -2277,18 +2260,14 @@ export default function SentencePracticeScreen() {
             <TouchableOpacity
               style={[styles.smallControlBtn, showPerfectRecordings && styles.smallControlBtnActive]}
               onPress={() => {
-                console.log('[完美发音] 按钮点击, 当前状态:', showPerfectRecordings ? '打开' : '关闭', 'isPlaying:', isPlaying);
                 if (!showPerfectRecordings) {
                   // 打开面板：暂停循环播放
                   wasPlayingBeforePerfectRef.current = isPlaying;
-                  console.log('[完美发音] 记录播放状态:', isPlaying);
                   if (isPlaying) {
-                    console.log('[完美发音] 暂停音频');
                     pauseAudio();
                   }
                 } else {
                   // 关闭面板：恢复播放
-                  console.log('[完美发音] 恢复播放:', wasPlayingBeforePerfectRef.current);
                   if (wasPlayingBeforePerfectRef.current) {
                     playAudio();
                   }

@@ -1,7 +1,17 @@
 import express from 'express';
 import { getSupabaseClient } from '../storage/database/supabase-client';
+import { S3Storage } from 'coze-coding-dev-sdk';
 
 const router = express.Router();
+
+// 初始化对象存储
+const storage = new S3Storage({
+  endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
+  accessKey: '',
+  secretKey: '',
+  bucketName: process.env.COZE_BUCKET_NAME,
+  region: 'cn-beijing',
+});
 
 /**
  * 保存完美发音记录
@@ -85,8 +95,6 @@ router.get('/', async (req, res) => {
     const supabase = getSupabaseClient();
     const { userId, limit = 10, sentenceFileId, sentenceId } = req.query;
 
-    console.log('[完美发音] GET 请求参数:', { userId, sentenceId, sentenceFileId, limit });
-
     if (!userId) {
       return res.status(400).json({ 
         success: false, 
@@ -102,30 +110,32 @@ router.get('/', async (req, res) => {
       .limit(Number(limit));
 
     if (sentenceId) {
-      console.log('[完美发音] 筛选 sentence_id:', Number(sentenceId));
       query = query.eq('sentence_id', Number(sentenceId));
     } else if (sentenceFileId) {
-      console.log('[完美发音] 筛选 sentence_file_id:', Number(sentenceFileId));
       query = query.eq('sentence_file_id', Number(sentenceFileId));
     }
 
     const { data, error } = await query;
-
-    console.log('[完美发音] 查询结果:', data?.length, '条记录');
 
     if (error) {
       console.error('获取完美发音记录失败:', error);
       return res.status(500).json({ success: false, error: error.message });
     }
 
-    // 获取签名URL
+    // 获取签名URL - 使用 S3Storage
     const recordsWithUrls = await Promise.all(
       (data || []).map(async (record) => {
         if (record.audio_key) {
-          const { data: urlData } = await supabase.storage
-            .from('audio')
-            .createSignedUrl(record.audio_key, 3600); // 1小时有效期
-          return { ...record, audio_url: urlData?.signedUrl };
+          try {
+            const audioUrl = await storage.generatePresignedUrl({
+              key: record.audio_key,
+              expireTime: 3600, // 1小时有效期
+            });
+            return { ...record, audio_url: audioUrl };
+          } catch (urlError) {
+            console.error('[完美发音] 生成签名URL失败:', urlError);
+            return record;
+          }
         }
         return record;
       })
@@ -161,14 +171,20 @@ router.get('/sentence/:sentenceId', async (req, res) => {
       return res.status(500).json({ success: false, error: error.message });
     }
 
-    // 获取签名URL
+    // 获取签名URL - 使用 S3Storage
     const recordsWithUrls = await Promise.all(
       (data || []).map(async (record) => {
         if (record.audio_key) {
-          const { data: urlData } = await supabase.storage
-            .from('audio')
-            .createSignedUrl(record.audio_key, 3600);
-          return { ...record, audio_url: urlData?.signedUrl };
+          try {
+            const audioUrl = await storage.generatePresignedUrl({
+              key: record.audio_key,
+              expireTime: 3600,
+            });
+            return { ...record, audio_url: audioUrl };
+          } catch (urlError) {
+            console.error('[完美发音] 生成签名URL失败:', urlError);
+            return record;
+          }
         }
         return record;
       })
@@ -214,10 +230,8 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    // 删除存储的音频文件
-    if (record.audio_key) {
-      await supabase.storage.from('audio').remove([record.audio_key]);
-    }
+    // 注意：S3Storage 暂不支持删除，音频文件保留在存储中
+    // TODO: 后续可添加 S3Storage 的删除方法
 
     // 删除数据库记录
     const { error } = await supabase
