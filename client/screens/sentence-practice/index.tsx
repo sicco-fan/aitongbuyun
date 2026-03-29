@@ -294,7 +294,9 @@ export default function SentencePracticeScreen() {
 
   const [file, setFile] = useState<SentenceFile | null>(null);
   const [sentences, setSentences] = useState<Sentence[]>([]);
+  const sentencesRef = useRef<Sentence[]>([]); // 用于在 cleanup 中获取最新的 sentences
   const [currentIndex, setCurrentIndex] = useState(0);
+  const currentIndexRef = useRef(0); // 用于在 cleanup 中获取最新的 currentIndex
   const [loading, setLoading] = useState(true);
   const [resumingFromProgress, setResumingFromProgress] = useState(false); // 是否从进度恢复
   const [errorPriority, setErrorPriority] = useState(params.errorPriority || false); // 错题优先模式
@@ -556,6 +558,15 @@ export default function SentencePracticeScreen() {
     }
   }, [fileId, isAuthenticated, user?.id]);
 
+  // 同步 ref 值（用于 cleanup 中获取最新值）
+  useEffect(() => {
+    sentencesRef.current = sentences;
+  }, [sentences]);
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
   useFocusEffect(
     useCallback(() => {
       isMountedRef.current = true;
@@ -567,19 +578,23 @@ export default function SentencePracticeScreen() {
         isMountedRef.current = false;
         stopPlayback();
         
+        // 使用 ref 获取最新值（避免闭包陷阱）
+        const latestSentences = sentencesRef.current;
+        const latestIndex = currentIndexRef.current;
+        
         // 如果用户还没有通过 BackHandler 处理退出（比如 Web 端），这里保存进度
         // 注意：这个 cleanup 会在 BackHandler 的回调之后执行
         // 只要有句子数据就保存学习位置（即使只学了第一句也要保存）
-        if (!isExitingRef.current && sentences.length > 0) {
+        if (!isExitingRef.current && latestSentences.length > 0) {
           // 保存进度（不提交学习时长，因为用户可能是意外退出）
-          saveProgress(currentIndex);
-          console.log(`[学习进度] 退出时自动保存: 第 ${currentIndex + 1} 句`);
+          saveProgress(latestIndex);
+          console.log(`[学习进度] 退出时自动保存: 第 ${latestIndex + 1} 句`);
           
           // 保存学习位置（用于首页"继续学习"快捷入口）
           const position: LastLearningPosition = {
             sourceType: sourceType === 'lesson' ? 'lesson' : 'sentence_file',
-            sentenceIndex: currentIndex,
-            totalSentences: sentences.length,
+            sentenceIndex: latestIndex,
+            totalSentences: latestSentences.length,
             updatedAt: Date.now(),
           };
           
@@ -599,7 +614,7 @@ export default function SentencePracticeScreen() {
           console.log('[学习位置] 已保存:', position);
         }
       };
-    }, [fetchSentences, currentIndex, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId, sentences.length])
+    }, [fetchSentences, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId])
   );
 
   // 处理返回键/退出 - 注意：这个函数在 calculateSessionDuration 和 submitLearningData 之后定义
@@ -1227,8 +1242,12 @@ export default function SentencePracticeScreen() {
     // 如果正在退出，不再处理
     if (isExitingRef.current) return true;
     
+    // 使用 ref 获取最新值
+    const latestSentences = sentencesRef.current;
+    const latestIndex = currentIndexRef.current;
+    
     // 如果有句子数据，显示保存确认弹窗
-    if (hasProgressToSave && sentences.length > 0) {
+    if (hasProgressToSave && latestSentences.length > 0) {
       Alert.alert(
         '保存进度',
         '是否保存当前学习进度？',
@@ -1251,13 +1270,13 @@ export default function SentencePracticeScreen() {
                 await submitLearningData(false, Math.round(sessionDuration));
               }
               // 保存进度
-              await saveProgress(currentIndex);
+              await saveProgress(latestIndex);
               
               // 保存学习位置（用于首页"继续学习"快捷入口）
               const position: LastLearningPosition = {
                 sourceType: sourceType === 'lesson' ? 'lesson' : 'sentence_file',
-                sentenceIndex: currentIndex,
-                totalSentences: sentences.length,
+                sentenceIndex: latestIndex,
+                totalSentences: latestSentences.length,
                 updatedAt: Date.now(),
               };
               
@@ -1287,7 +1306,7 @@ export default function SentencePracticeScreen() {
     
     // 没有进度需要保存，直接返回
     return false;
-  }, [hasProgressToSave, currentIndex, calculateSessionDuration, submitLearningData, saveProgress, router, sentences.length, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId]);
+  }, [hasProgressToSave, calculateSessionDuration, submitLearningData, saveProgress, router, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId]);
 
   // 监听返回键
   useEffect(() => {
