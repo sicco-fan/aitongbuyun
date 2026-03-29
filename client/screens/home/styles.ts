@@ -115,6 +115,34 @@ export const createStyles = (theme: Theme) => {
     emptySubtext: {
       textAlign: 'center',
     },
+    // 继续学习卡片样式
+    continueCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.lg,
+      marginBottom: Spacing.lg,
+      borderWidth: 1,
+    },
+    continueIconContainer: {
+      width: 48,
+      height: 48,
+      borderRadius: BorderRadius.lg,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    continueInfo: {
+      flex: 1,
+      marginLeft: Spacing.md,
+    },
+    continueButton: {
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.xs,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.success + '20',
+      marginRight: Spacing.sm,
+    },
+    // 错题本卡片样式
     errorCard: {
       flexDirection: 'row',
       alignItems: 'center',

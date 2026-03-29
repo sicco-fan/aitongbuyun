@@ -82,9 +82,15 @@ export default function CourseLessonsScreen() {
     fetchData();
   }, [fetchData]);
 
-  const handleLessonClick = useCallback((lessonId: number, lessonTitle: string) => {
-    router.push('/lesson-practice', { lessonId: lessonId.toString(), title: lessonTitle });
-  }, [router]);
+  const handleLessonClick = useCallback((lessonId: number, lessonNumber: number, lessonTitle: string) => {
+    router.push('/lesson-practice', { 
+      lessonId: lessonId.toString(), 
+      title: lessonTitle,
+      courseId: course?.id?.toString(),
+      courseTitle: course?.title,
+      lessonNumber: lessonNumber.toString(),
+    });
+  }, [router, course]);
 
   const handleBack = useCallback(() => {
     router.back();
@@ -143,7 +149,7 @@ export default function CourseLessonsScreen() {
             <TouchableOpacity
               key={lesson.id}
               style={styles.lessonCard}
-              onPress={() => handleLessonClick(lesson.id, lesson.title)}
+              onPress={() => handleLessonClick(lesson.id, lesson.lesson_number, lesson.title)}
               activeOpacity={0.7}
             >
               <View style={styles.lessonNumber}>

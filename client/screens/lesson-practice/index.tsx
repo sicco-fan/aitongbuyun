@@ -29,6 +29,7 @@ import {
   checkVoiceCacheStatus,
   DownloadProgress 
 } from '@/utils/lessonAudioCache';
+import { saveLastLearningPosition } from '@/utils/learningStorage';
 
 interface GenerateProgressData {
   type: 'start' | 'progress' | 'complete' | 'error';
@@ -91,11 +92,22 @@ export default function LessonPracticeScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
-  const params = useSafeSearchParams<{ lessonId: string; title: string; editSentenceId?: string; returnTo?: string }>();
+  const params = useSafeSearchParams<{ 
+    lessonId: string; 
+    title: string; 
+    editSentenceId?: string; 
+    returnTo?: string;
+    courseId?: string;
+    courseTitle?: string;
+    lessonNumber?: string;
+  }>();
   const lessonId = params.lessonId;
   const title = params.title || '课时练习';
   const editSentenceId = params.editSentenceId;
   const returnTo = params.returnTo;
+  const courseId = params.courseId;
+  const courseTitle = params.courseTitle;
+  const lessonNumber = params.lessonNumber;
   
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [sentences, setSentences] = useState<Sentence[]>([]);
@@ -208,7 +220,19 @@ export default function LessonPracticeScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchData();
-    }, [fetchData])
+      
+      // 保存学习位置
+      if (courseId && courseTitle && lessonId && lessonNumber) {
+        saveLastLearningPosition({
+          courseId: parseInt(courseId, 10),
+          courseTitle,
+          lessonId: parseInt(lessonId, 10),
+          lessonNumber: parseInt(lessonNumber, 10),
+          lessonTitle: title,
+          updatedAt: Date.now(),
+        });
+      }
+    }, [fetchData, courseId, courseTitle, lessonId, lessonNumber, title])
   );
 
   const handleRefresh = useCallback(() => {

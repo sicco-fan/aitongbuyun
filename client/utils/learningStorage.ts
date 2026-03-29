@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
   ERROR_WORDS: 'error_words',
   CACHED_AUDIO: 'cached_audio',
   SENTENCE_ERRORS: 'sentence_errors', // 记录每个句子的错误次数
+  LAST_LEARNING_POSITION: 'last_learning_position', // 最后学习位置
 };
 
 // 已完成句子记录
@@ -28,6 +29,16 @@ interface SentenceErrorRecord {
   sentenceId: number;
   errorCount: number; // 总错误次数
   attemptCount: number; // 尝试次数
+}
+
+// 最后学习位置记录
+export interface LastLearningPosition {
+  courseId: number;
+  courseTitle: string;
+  lessonId: number;
+  lessonNumber: number;
+  lessonTitle: string;
+  updatedAt: number;
 }
 
 // ============ 进度持久化 ============
@@ -419,5 +430,42 @@ export async function getAudioCacheSize(): Promise<number> {
     return totalSize;
   } catch (e) {
     return 0;
+  }
+}
+
+// ============ 最后学习位置 ============
+
+/**
+ * 保存最后学习位置
+ */
+export async function saveLastLearningPosition(position: LastLearningPosition): Promise<void> {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.LAST_LEARNING_POSITION, JSON.stringify(position));
+  } catch (e) {
+    console.error('保存学习位置失败:', e);
+  }
+}
+
+/**
+ * 获取最后学习位置
+ */
+export async function getLastLearningPosition(): Promise<LastLearningPosition | null> {
+  try {
+    const data = await AsyncStorage.getItem(STORAGE_KEYS.LAST_LEARNING_POSITION);
+    return data ? JSON.parse(data) : null;
+  } catch (e) {
+    console.error('获取学习位置失败:', e);
+    return null;
+  }
+}
+
+/**
+ * 清除最后学习位置
+ */
+export async function clearLastLearningPosition(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(STORAGE_KEYS.LAST_LEARNING_POSITION);
+  } catch (e) {
+    console.error('清除学习位置失败:', e);
   }
 }

@@ -16,6 +16,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { Spacing, BorderRadius } from '@/constants/theme';
+import { getLastLearningPosition, LastLearningPosition } from '@/utils/learningStorage';
 
 interface SentenceFile {
   id: number;
@@ -48,11 +49,16 @@ export default function HomeScreen() {
   const [sentenceFiles, setSentenceFiles] = useState<SentenceFile[]>([]);
   const [errorStats, setErrorStats] = useState<ErrorStats | null>(null);
   const [featuredCourse, setFeaturedCourse] = useState<Course | null>(null);
+  const [lastLearningPosition, setLastLearningPosition] = useState<LastLearningPosition | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
+      // 获取最后学习位置
+      const lastPosition = await getLastLearningPosition();
+      setLastLearningPosition(lastPosition);
+      
       // 获取句库文件
       const sentenceFilesRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`);
       const sentenceFilesData = await sentenceFilesRes.json();
@@ -140,6 +146,39 @@ export default function HomeScreen() {
             开始学习
           </ThemedText>
         </ThemedView>
+
+        {/* 继续学习快捷入口 */}
+        {lastLearningPosition && (
+          <TouchableOpacity
+            style={[styles.continueCard, { backgroundColor: theme.success + '10', borderColor: theme.success + '30' }]}
+            onPress={() => router.push('/lesson-practice', { 
+              lessonId: lastLearningPosition.lessonId.toString(), 
+              title: lastLearningPosition.lessonTitle 
+            })}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.continueIconContainer, { backgroundColor: theme.success + '20' }]}>
+              <FontAwesome6 name="play-circle" size={24} color={theme.success} />
+            </View>
+            <View style={styles.continueInfo}>
+              <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                继续学习
+              </ThemedText>
+              <ThemedText variant="small" color={theme.textSecondary} numberOfLines={1}>
+                {lastLearningPosition.courseTitle} · 第{lastLearningPosition.lessonNumber}课
+              </ThemedText>
+              <ThemedText variant="tiny" color={theme.textMuted} numberOfLines={1}>
+                {lastLearningPosition.lessonTitle}
+              </ThemedText>
+            </View>
+            <View style={styles.continueButton}>
+              <ThemedText variant="smallMedium" color={theme.success}>
+                开始
+              </ThemedText>
+            </View>
+            <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+          </TouchableOpacity>
+        )}
 
         {/* 错题本快捷入口 */}
         {isAuthenticated && errorStats && errorStats.uniqueWords > 0 && (
