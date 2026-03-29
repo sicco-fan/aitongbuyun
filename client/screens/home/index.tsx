@@ -306,19 +306,13 @@ export default function HomeScreen() {
               <FontAwesome6 name="play-circle" size={24} color={theme.success} />
             </View>
             <View style={styles.continueInfo}>
-              <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+              <ThemedText variant="bodyMedium" color={theme.textPrimary} style={{ marginBottom: 2 }}>
                 继续学习
               </ThemedText>
               <ThemedText variant="small" color={theme.textSecondary} numberOfLines={1}>
                 {lastLearningPosition.sourceType === 'lesson' 
                   ? `${lastLearningPosition.courseTitle} · 第${lastLearningPosition.lessonNumber}课`
                   : lastLearningPosition.fileTitle
-                }
-              </ThemedText>
-              <ThemedText variant="tiny" color={theme.textMuted} numberOfLines={1}>
-                {lastLearningPosition.sourceType === 'lesson' 
-                  ? lastLearningPosition.lessonTitle
-                  : `第 ${lastLearningPosition.sentenceIndex + 1} / ${lastLearningPosition.totalSentences} 句`
                 }
               </ThemedText>
             </View>
@@ -342,16 +336,16 @@ export default function HomeScreen() {
               <FontAwesome6 name="exclamation-triangle" size={20} color={theme.error} />
             </View>
             <View style={styles.errorInfo}>
-              <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+              <ThemedText variant="bodyMedium" color={theme.textPrimary} style={{ marginBottom: 2 }}>
                 待攻克词汇
               </ThemedText>
               <ThemedText variant="small" color={theme.textSecondary}>
-                {errorStats.uniqueWords} 个薄弱词汇等你练习
+                {errorStats.uniqueWords} 个薄弱词汇
               </ThemedText>
             </View>
             <View style={styles.errorBadge}>
               <ThemedText variant="smallMedium" color={theme.error}>
-                {errorStats.totalErrors} 次错误
+                {errorStats.totalErrors}
               </ThemedText>
             </View>
             <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
