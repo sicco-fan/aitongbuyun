@@ -25,6 +25,7 @@ interface SentenceFile {
   ready_sentences_count: number;
   status: string;
   original_duration: number;
+  source_type?: string; // 'upload' | 'link' | 'share' | 'ai_tts'
 }
 
 interface ErrorStats {
@@ -52,6 +53,15 @@ export default function HomeScreen() {
   const [lastLearningPosition, setLastLearningPosition] = useState<LastLearningPosition | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // 区分 AI 句库和自制句库
+  const aiSentenceFiles = useMemo(() => {
+    return sentenceFiles.filter(f => f.source_type === 'ai_tts');
+  }, [sentenceFiles]);
+
+  const customSentenceFiles = useMemo(() => {
+    return sentenceFiles.filter(f => f.source_type !== 'ai_tts');
+  }, [sentenceFiles]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -118,6 +128,51 @@ export default function HomeScreen() {
     const seconds = Math.floor((ms % 60000) / 1000);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
+
+  // 渲染句库卡片
+  const renderSentenceFileCard = (file: SentenceFile, isAI: boolean = false) => (
+    <TouchableOpacity
+      key={`sentence-${file.id}`}
+      style={styles.materialCard}
+      onPress={() => handleSentenceFilePress(file)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.materialHeader}>
+        <View style={[
+          styles.materialIconContainer, 
+          { backgroundColor: isAI ? theme.primary + '20' : theme.accent + '20' }
+        ]}>
+          <FontAwesome6 
+            name={isAI ? "wand-magic-sparkles" : "book-open"} 
+            size={20} 
+            color={isAI ? theme.primary : theme.accent} 
+          />
+        </View>
+        <View style={styles.materialInfo}>
+          <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.materialTitle}>
+            {file.title}
+          </ThemedText>
+          <View style={styles.materialMeta}>
+            <View style={styles.metaTag}>
+              <FontAwesome6 name="clock" size={10} color={theme.textMuted} />
+              <ThemedText variant="tiny" color={theme.textMuted}>
+                {formatDuration(file.original_duration)}
+              </ThemedText>
+            </View>
+            <View style={styles.metaTag}>
+              <FontAwesome6 name="circle-check" size={10} color={theme.success} />
+              <ThemedText variant="tiny" color={theme.textMuted}>
+                {file.ready_sentences_count} 句可学
+              </ThemedText>
+            </View>
+          </View>
+        </View>
+        <View style={styles.materialArrow}>
+          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
 
   if (loading) {
     return (
@@ -253,68 +308,67 @@ export default function HomeScreen() {
           <FontAwesome6 name="chevron-right" size={16} color={theme.primary} />
         </TouchableOpacity>
 
-        {/* 句库学习 Section */}
-        {sentenceFiles.length > 0 && (
-          <>
-            <View style={styles.sectionHeader}>
-              <ThemedText variant="h4" color={theme.textPrimary}>
-                句库学习
+        {/* AI 句库 Section */}
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <FontAwesome6 name="wand-magic-sparkles" size={18} color={theme.primary} />
+            <ThemedText variant="h4" color={theme.textPrimary}>
+              AI 句库
+            </ThemedText>
+          </View>
+          <ThemedText variant="caption" color={theme.textMuted}>
+            {aiSentenceFiles.reduce((sum, f) => sum + f.ready_sentences_count, 0)} 句可学
+          </ThemedText>
+        </View>
+
+        {aiSentenceFiles.length > 0 ? (
+          aiSentenceFiles.map((file) => renderSentenceFileCard(file, true))
+        ) : (
+          <TouchableOpacity 
+            style={styles.aiEmptyCard}
+            onPress={() => router.push('/create-sentence-file')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.aiEmptyIcon, { backgroundColor: theme.primary + '15' }]}>
+              <FontAwesome6 name="plus" size={24} color={theme.primary} />
+            </View>
+            <View style={styles.aiEmptyContent}>
+              <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                创建 AI 句库
               </ThemedText>
-              <ThemedText variant="caption" color={theme.textMuted}>
-                {sentenceFiles.reduce((sum, f) => sum + f.ready_sentences_count, 0)} 句可学
+              <ThemedText variant="small" color={theme.textMuted}>
+                上传 PDF 文档，AI 自动配音生成句库
               </ThemedText>
             </View>
-
-            {sentenceFiles.map((file) => (
-              <TouchableOpacity
-                key={`sentence-${file.id}`}
-                style={styles.materialCard}
-                onPress={() => handleSentenceFilePress(file)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.materialHeader}>
-                  <View style={[styles.materialIconContainer, { backgroundColor: theme.accent + '20' }]}>
-                    <FontAwesome6 name="book-open" size={20} color={theme.accent} />
-                  </View>
-                  <View style={styles.materialInfo}>
-                    <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.materialTitle}>
-                      {file.title}
-                    </ThemedText>
-                    <View style={styles.materialMeta}>
-                      <View style={styles.metaTag}>
-                        <FontAwesome6 name="clock" size={10} color={theme.textMuted} />
-                        <ThemedText variant="tiny" color={theme.textMuted}>
-                          {formatDuration(file.original_duration)}
-                        </ThemedText>
-                      </View>
-                      <View style={styles.metaTag}>
-                        <FontAwesome6 name="circle-check" size={10} color={theme.success} />
-                        <ThemedText variant="tiny" color={theme.textMuted}>
-                          {file.ready_sentences_count} 句可学
-                        </ThemedText>
-                      </View>
-                    </View>
-                  </View>
-                  <View style={styles.materialArrow}>
-                    <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </>
+            <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+          </TouchableOpacity>
         )}
 
-        {/* 空状态 */}
-        {sentenceFiles.length === 0 && (
+        {/* 自制句库 Section */}
+        <View style={[styles.sectionHeader, styles.sectionHeaderMargin]}>
+          <View style={styles.sectionTitleRow}>
+            <FontAwesome6 name="folder-open" size={18} color={theme.accent} />
+            <ThemedText variant="h4" color={theme.textPrimary}>
+              自制句库
+            </ThemedText>
+          </View>
+          <ThemedText variant="caption" color={theme.textMuted}>
+            {customSentenceFiles.reduce((sum, f) => sum + f.ready_sentences_count, 0)} 句可学
+          </ThemedText>
+        </View>
+
+        {customSentenceFiles.length > 0 ? (
+          customSentenceFiles.map((file) => renderSentenceFileCard(file, false))
+        ) : (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconContainer}>
-              <FontAwesome6 name="book-open" size={32} color={theme.primary} />
+              <FontAwesome6 name="folder-open" size={32} color={theme.accent} />
             </View>
             <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.emptyText}>
-              暂无句库
+              暂无自制句库
             </ThemedText>
             <ThemedText variant="small" color={theme.textMuted} style={styles.emptySubtext}>
-              请先在「我的」→「句库制作」中创建句库
+              上传视频或音频文件，提取文本制作句库
             </ThemedText>
           </View>
         )}

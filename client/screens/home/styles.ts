@@ -25,6 +25,14 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
       marginBottom: Spacing.lg,
     },
+    sectionTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    sectionHeaderMargin: {
+      marginTop: Spacing['2xl'],
+    },
     materialCard: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.xl,
@@ -98,13 +106,13 @@ export const createStyles = (theme: Theme) => {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      paddingVertical: Spacing['6xl'],
+      paddingVertical: Spacing['3xl'],
     },
     emptyIconContainer: {
       width: 80,
       height: 80,
       borderRadius: BorderRadius.full,
-      backgroundColor: theme.primary + '12',
+      backgroundColor: theme.accent + '12',
       justifyContent: 'center',
       alignItems: 'center',
       marginBottom: Spacing.lg,
@@ -185,6 +193,28 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
     },
     courseInfo: {
+      flex: 1,
+      marginLeft: Spacing.md,
+    },
+    // AI 句库空状态卡片
+    aiEmptyCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.primary + '06',
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.lg,
+      borderWidth: 1,
+      borderColor: theme.primary + '20',
+      borderStyle: 'dashed',
+    },
+    aiEmptyIcon: {
+      width: 52,
+      height: 52,
+      borderRadius: BorderRadius.lg,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    aiEmptyContent: {
       flex: 1,
       marginLeft: Spacing.md,
     },
