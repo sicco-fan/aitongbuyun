@@ -294,17 +294,35 @@ export default function ProfileScreen() {
 
         <TouchableOpacity 
           style={styles.adminCard}
+          onPress={() => router.push('/create-sentence-file')}
+        >
+          <View style={[styles.adminIcon, { backgroundColor: theme.primary + '15' }]}>
+            <FontAwesome6 name="wand-magic-sparkles" size={24} color={theme.primary} />
+          </View>
+          <View style={styles.adminContent}>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+              创建 AI 句库
+            </ThemedText>
+            <ThemedText variant="small" color={theme.textMuted}>
+              上传 PDF 或文本文档，AI 自动配音生成句库
+            </ThemedText>
+          </View>
+          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.adminCard}
           onPress={() => router.push('/sentence-workshop')}
         >
           <View style={[styles.adminIcon, { backgroundColor: theme.accent + '15' }]}>
-            <FontAwesome6 name="wand-magic-sparkles" size={24} color={theme.accent} />
+            <FontAwesome6 name="scissors" size={24} color={theme.accent} />
           </View>
           <View style={styles.adminContent}>
             <ThemedText variant="bodyMedium" color={theme.textPrimary}>
               句库制作
             </ThemedText>
             <ThemedText variant="small" color={theme.textMuted}>
-              上传素材、提取文本、制作语音片段
+              上传视频/音频，提取文本制作句库
             </ThemedText>
           </View>
           <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />

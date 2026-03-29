@@ -196,27 +196,5 @@ export const createStyles = (theme: Theme) => {
       flex: 1,
       marginLeft: Spacing.md,
     },
-    // AI 句库空状态卡片
-    aiEmptyCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: theme.primary + '06',
-      borderRadius: BorderRadius.xl,
-      padding: Spacing.lg,
-      borderWidth: 1,
-      borderColor: theme.primary + '20',
-      borderStyle: 'dashed',
-    },
-    aiEmptyIcon: {
-      width: 52,
-      height: 52,
-      borderRadius: BorderRadius.lg,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    aiEmptyContent: {
-      flex: 1,
-      marginLeft: Spacing.md,
-    },
   });
 };

@@ -324,28 +324,6 @@ export default function HomeScreen() {
         {/* AI 句库列表 */}
         {aiSentenceFiles.map((file) => renderSentenceFileCard(file, true))}
 
-        {/* AI 句库创建入口 */}
-        {aiSentenceFiles.length === 0 && (
-          <TouchableOpacity 
-            style={styles.aiEmptyCard}
-            onPress={() => router.push('/create-sentence-file')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.aiEmptyIcon, { backgroundColor: theme.primary + '15' }]}>
-              <FontAwesome6 name="plus" size={24} color={theme.primary} />
-            </View>
-            <View style={styles.aiEmptyContent}>
-              <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-                创建 AI 句库
-              </ThemedText>
-              <ThemedText variant="small" color={theme.textMuted}>
-                上传 PDF 文档，AI 自动配音生成句库
-              </ThemedText>
-            </View>
-            <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
-          </TouchableOpacity>
-        )}
-
         {/* 自制句库 Section */}
         <View style={[styles.sectionHeader, styles.sectionHeaderMargin]}>
           <View style={styles.sectionTitleRow}>
