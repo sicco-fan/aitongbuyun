@@ -24,7 +24,7 @@ export const createStyles = (theme: Theme) => {
     // 说明卡片
     infoCard: {
       alignItems: 'center',
-      paddingVertical: Spacing['2xl'],
+      paddingVertical: Spacing.xl,
       paddingHorizontal: Spacing.lg,
       marginBottom: Spacing.xl,
     },
@@ -43,6 +43,29 @@ export const createStyles = (theme: Theme) => {
     infoDesc: {
       textAlign: 'center',
       lineHeight: 22,
+    },
+    // 表单区域
+    formSection: {
+      marginBottom: Spacing.xl,
+    },
+    formTitle: {
+      marginBottom: Spacing.md,
+    },
+    inputGroup: {
+      marginBottom: Spacing.md,
+    },
+    textInput: {
+      marginTop: Spacing.xs,
+      paddingHorizontal: Spacing.lg,
+      paddingVertical: Spacing.md,
+      borderRadius: BorderRadius.md,
+      fontSize: 16,
+      borderWidth: 1,
+      borderColor: theme.borderLight,
+    },
+    // 上传区域
+    uploadSection: {
+      marginBottom: Spacing.xl,
     },
     // 上传选项
     importOption: {
@@ -97,7 +120,7 @@ export const createStyles = (theme: Theme) => {
     },
     // 格式说明
     formatSection: {
-      marginTop: Spacing.xl,
+      marginTop: Spacing.md,
     },
     formatTitle: {
       marginBottom: Spacing.md,

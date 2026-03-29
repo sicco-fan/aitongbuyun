@@ -48,8 +48,8 @@ export default function CoursesScreen() {
   const [importProgress, setImportProgress] = useState(''); // 导入进度消息
   const [showImportModal, setShowImportModal] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false); // 显示功能说明弹窗
-  const [importBookTitle, setImportBookTitle] = useState('新概念英语第三册');
-  const [importBookNumber, setImportBookNumber] = useState('3');
+  const [importBookTitle, setImportBookTitle] = useState('');
+  const [importBookNumber, setImportBookNumber] = useState('');
   const [lastLearningPosition, setLastLearningPosition] = useState<LastLearningPosition | null>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null); // 用于取消上传
   const sseRef = useRef<any>(null); // 用于取消 SSE
@@ -87,6 +87,22 @@ export default function CoursesScreen() {
 
   // 选择并上传文件（支持 PDF、Word、TXT）
   const handlePickFile = useCallback(async (fileType: 'pdf' | 'word' | 'txt') => {
+    // 验证课程信息
+    if (!importBookTitle.trim()) {
+      Alert.alert('提示', '请输入课程名称');
+      return;
+    }
+    if (!importBookNumber.trim()) {
+      Alert.alert('提示', '请输入课程编号');
+      return;
+    }
+
+    const bookNum = parseInt(importBookNumber, 10);
+    if (isNaN(bookNum) || bookNum < 1) {
+      Alert.alert('提示', '课程编号必须是大于0的数字');
+      return;
+    }
+
     try {
       // 根据文件类型设置 MIME 类型
       const mimeTypes = {
@@ -456,6 +472,39 @@ export default function CoursesScreen() {
               </View>
             ) : (
               <>
+                {/* 课程信息输入 */}
+                <View style={{ marginBottom: 20 }}>
+                  <ThemedText variant="smallMedium" color={theme.textSecondary} style={{ marginBottom: 8 }}>
+                    课程名称 <ThemedText color={theme.error}>*</ThemedText>
+                  </ThemedText>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.backgroundTertiary, color: theme.textPrimary }]}
+                    value={importBookTitle}
+                    onChangeText={setImportBookTitle}
+                    placeholder="例如：新概念英语第三册"
+                    placeholderTextColor={theme.textMuted}
+                    maxLength={50}
+                  />
+                </View>
+
+                <View style={{ marginBottom: 20 }}>
+                  <ThemedText variant="smallMedium" color={theme.textSecondary} style={{ marginBottom: 8 }}>
+                    课程编号 <ThemedText color={theme.error}>*</ThemedText>
+                  </ThemedText>
+                  <TextInput
+                    style={[styles.modalInput, { backgroundColor: theme.backgroundTertiary, color: theme.textPrimary }]}
+                    value={importBookNumber}
+                    onChangeText={setImportBookNumber}
+                    placeholder="输入唯一编号（如：3）"
+                    placeholderTextColor={theme.textMuted}
+                    keyboardType="number-pad"
+                    maxLength={10}
+                  />
+                  <ThemedText variant="tiny" color={theme.textMuted} style={{ marginTop: 4 }}>
+                    编号用于区分不同课程，相同编号会覆盖已有课程
+                  </ThemedText>
+                </View>
+
                 {/* PDF 导入 */}
                 <TouchableOpacity 
                   style={styles.importOption}

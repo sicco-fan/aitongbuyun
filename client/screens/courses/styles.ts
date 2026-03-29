@@ -268,6 +268,14 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.md,
       backgroundColor: theme.backgroundTertiary,
     },
+    modalInput: {
+      paddingHorizontal: Spacing.lg,
+      paddingVertical: Spacing.md,
+      borderRadius: BorderRadius.md,
+      fontSize: 16,
+      borderWidth: 1,
+      borderColor: theme.borderLight,
+    },
     // 上传进度样式
     progressContainer: {
       backgroundColor: theme.backgroundTertiary,

@@ -6,6 +6,8 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 // @ts-ignore - react-native-sse 类型定义不完整
@@ -26,6 +28,12 @@ export default function CreateAISentenceFileScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
+  
+  // 课程信息
+  const [bookTitle, setBookTitle] = useState('');
+  const [bookNumber, setBookNumber] = useState('');
+  
+  // 上传状态
   const [importing, setImporting] = useState(false);
   const [importPhase, setImportPhase] = useState<'idle' | 'uploading' | 'importing'>('idle');
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -35,6 +43,22 @@ export default function CreateAISentenceFileScreen() {
 
   // 选择并上传文件
   const handlePickFile = useCallback(async (fileType: 'pdf' | 'word' | 'txt') => {
+    // 验证课程信息
+    if (!bookTitle.trim()) {
+      Alert.alert('提示', '请输入课程名称');
+      return;
+    }
+    if (!bookNumber.trim()) {
+      Alert.alert('提示', '请输入课程编号');
+      return;
+    }
+
+    const bookNum = parseInt(bookNumber, 10);
+    if (isNaN(bookNum) || bookNum < 1) {
+      Alert.alert('提示', '课程编号必须是大于0的数字');
+      return;
+    }
+
     try {
       const mimeTypes = {
         pdf: 'application/pdf',
@@ -124,6 +148,8 @@ export default function CreateAISentenceFileScreen() {
           body: JSON.stringify({
             file_url: uploadData.url,
             file_type: fileType,
+            book_title: bookTitle.trim(),
+            book_number: bookNum,
           }),
         });
         
@@ -189,7 +215,7 @@ export default function CreateAISentenceFileScreen() {
       xhrRef.current = null;
       sseRef.current = null;
     }
-  }, [router]);
+  }, [bookTitle, bookNumber, router]);
 
   // 取消上传
   const handleCancelUpload = useCallback(() => {
@@ -204,169 +230,220 @@ export default function CreateAISentenceFileScreen() {
 
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
-        <ThemedView level="root" style={styles.header}>
-          <View style={styles.headerRow}>
-            <TouchableOpacity onPress={() => router.back()}>
-              <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
-            </TouchableOpacity>
-            <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
-              创建 AI 句库
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* Header */}
+          <ThemedView level="root" style={styles.header}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity onPress={() => router.back()}>
+                <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
+              </TouchableOpacity>
+              <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
+                创建 AI 句库
+              </ThemedText>
+              <View style={{ width: 20 }} />
+            </View>
+          </ThemedView>
+
+          {/* 说明卡片 */}
+          <View style={styles.infoCard}>
+            <View style={[styles.infoIcon, { backgroundColor: theme.primary + '15' }]}>
+              <FontAwesome6 name="wand-magic-sparkles" size={32} color={theme.primary} />
+            </View>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoTitle}>
+              AI 自动配音，快速创建句库
             </ThemedText>
-            <View style={{ width: 20 }} />
-          </View>
-        </ThemedView>
-
-        {/* 说明卡片 */}
-        <View style={styles.infoCard}>
-          <View style={[styles.infoIcon, { backgroundColor: theme.primary + '15' }]}>
-            <FontAwesome6 name="wand-magic-sparkles" size={32} color={theme.primary} />
-          </View>
-          <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoTitle}>
-            AI 自动配音，快速创建句库
-          </ThemedText>
-          <ThemedText variant="body" color={theme.textSecondary} style={styles.infoDesc}>
-            上传 PDF、Word 或 TXT 文档，系统将自动提取文本内容，划分句子，并为每个句子生成 AI 语音。您可以直接开始听力练习。
-          </ThemedText>
-        </View>
-
-        {/* 上传进度或上传选项 */}
-        {importing ? (
-          <View style={styles.progressCard}>
-            <View style={styles.progressHeader}>
-              <ActivityIndicator size="small" color={theme.primary} />
-              <ThemedText variant="body" color={theme.textPrimary} style={{ marginLeft: 8 }}>
-                {importPhase === 'uploading' ? `上传中 ${uploadProgress}%` : '正在导入...'}
-              </ThemedText>
-            </View>
-            
-            <View style={styles.progressBarContainer}>
-              <View style={[styles.progressBar, { width: `${uploadProgress}%`, backgroundColor: theme.primary }]} />
-            </View>
-            
-            {importPhase === 'importing' && (
-              <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: 8 }}>
-                {importProgress || '正在解析文件并生成语音...'}
-              </ThemedText>
-            )}
-
-            <TouchableOpacity 
-              style={styles.cancelButton}
-              onPress={handleCancelUpload}
-            >
-              <ThemedText variant="small" color={theme.error}>取消</ThemedText>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <>
-            {/* PDF 导入 */}
-            <TouchableOpacity 
-              style={styles.importOption}
-              onPress={() => handlePickFile('pdf')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.importOptionIcon, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
-                <FontAwesome6 name="file-pdf" size={28} color="#EF4444" />
-              </View>
-              <View style={styles.importOptionContent}>
-                <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-                  PDF 文件
-                </ThemedText>
-                <ThemedText variant="small" color={theme.textMuted}>
-                  自动提取文本，识别句子结构
-                </ThemedText>
-              </View>
-              <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
-            </TouchableOpacity>
-
-            {/* Word 导入 */}
-            <TouchableOpacity 
-              style={styles.importOption}
-              onPress={() => handlePickFile('word')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.importOptionIcon, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
-                <FontAwesome6 name="file-word" size={28} color="#3B82F6" />
-              </View>
-              <View style={styles.importOptionContent}>
-                <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-                  Word 文档 (.docx)
-                </ThemedText>
-                <ThemedText variant="small" color={theme.textMuted}>
-                  自动提取文本内容
-                </ThemedText>
-              </View>
-              <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
-            </TouchableOpacity>
-
-            {/* TXT 导入 */}
-            <TouchableOpacity 
-              style={styles.importOption}
-              onPress={() => handlePickFile('txt')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.importOptionIcon, { backgroundColor: 'rgba(107, 114, 128, 0.1)' }]}>
-                <FontAwesome6 name="file-lines" size={28} color="#6B7280" />
-              </View>
-              <View style={styles.importOptionContent}>
-                <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-                  纯文本文件 (.txt)
-                </ThemedText>
-                <ThemedText variant="small" color={theme.textMuted}>
-                  UTF-8 编码格式
-                </ThemedText>
-              </View>
-              <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
-            </TouchableOpacity>
-          </>
-        )}
-
-        {/* 格式说明 */}
-        <View style={styles.formatSection}>
-          <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.formatTitle}>
-            文本格式要求
-          </ThemedText>
-          
-          <View style={styles.formatExample}>
-            <ThemedText variant="small" color={theme.textMuted} style={{ marginBottom: 4 }}>
-              格式示范：
+            <ThemedText variant="body" color={theme.textSecondary} style={styles.infoDesc}>
+              上传 PDF、Word 或 TXT 文档，系统将自动提取文本内容，划分句子，并为每个句子生成 AI 语音。
             </ThemedText>
-            <View style={[styles.formatExampleCode, { backgroundColor: theme.backgroundTertiary }]}>
-              <ThemedText variant="small" color={theme.textPrimary}>
-                {'Lesson 1\n'}
-                {'A private conversation\n'}
-                {'私人谈话\n'}
-                {'Last week I went to the theatre.\n'}
-                {'上周我去看戏。\n'}
-                {'I had a very good seat.\n'}
-                {'我的座位很好。'}
+          </View>
+
+          {/* 课程信息输入 */}
+          <View style={styles.formSection}>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.formTitle}>
+              课程信息
+            </ThemedText>
+            
+            <View style={styles.inputGroup}>
+              <ThemedText variant="small" color={theme.textSecondary}>
+                课程名称 <ThemedText color={theme.error}>*</ThemedText>
+              </ThemedText>
+              <TextInput
+                style={[styles.textInput, { backgroundColor: theme.backgroundTertiary, color: theme.textPrimary }]}
+                value={bookTitle}
+                onChangeText={setBookTitle}
+                placeholder="例如：典范英语1A"
+                placeholderTextColor={theme.textMuted}
+                maxLength={50}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <ThemedText variant="small" color={theme.textSecondary}>
+                课程编号 <ThemedText color={theme.error}>*</ThemedText>
+              </ThemedText>
+              <TextInput
+                style={[styles.textInput, { backgroundColor: theme.backgroundTertiary, color: theme.textPrimary }]}
+                value={bookNumber}
+                onChangeText={setBookNumber}
+                placeholder="输入唯一编号（如：101）"
+                placeholderTextColor={theme.textMuted}
+                keyboardType="number-pad"
+                maxLength={10}
+              />
+              <ThemedText variant="tiny" color={theme.textMuted} style={{ marginTop: 4 }}>
+                编号用于区分不同课程，请确保唯一性
               </ThemedText>
             </View>
           </View>
 
-          <View style={styles.formatTips}>
-            <View style={styles.formatTipItem}>
-              <FontAwesome6 name="check-circle" size={14} color={theme.success} />
-              <ThemedText variant="small" color={theme.textSecondary} style={{ marginLeft: 6 }}>
-                一行英文，下一行中文翻译
-              </ThemedText>
+          {/* 上传进度或上传选项 */}
+          {importing ? (
+            <View style={styles.progressCard}>
+              <View style={styles.progressHeader}>
+                <ActivityIndicator size="small" color={theme.primary} />
+                <ThemedText variant="body" color={theme.textPrimary} style={{ marginLeft: 8 }}>
+                  {importPhase === 'uploading' ? `上传中 ${uploadProgress}%` : '正在导入...'}
+                </ThemedText>
+              </View>
+              
+              <View style={styles.progressBarContainer}>
+                <View style={[styles.progressBar, { width: `${uploadProgress}%`, backgroundColor: theme.primary }]} />
+              </View>
+              
+              {importPhase === 'importing' && (
+                <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: 8 }}>
+                  {importProgress || '正在解析文件并生成语音...'}
+                </ThemedText>
+              )}
+
+              <TouchableOpacity 
+                style={styles.cancelButton}
+                onPress={handleCancelUpload}
+              >
+                <ThemedText variant="small" color={theme.error}>取消</ThemedText>
+              </TouchableOpacity>
             </View>
-            <View style={styles.formatTipItem}>
-              <FontAwesome6 name="check-circle" size={14} color={theme.success} />
-              <ThemedText variant="small" color={theme.textSecondary} style={{ marginLeft: 6 }}>
-                以 "Lesson X" 开头划分课时
+          ) : (
+            <>
+              {/* 文件上传选项 */}
+              <View style={styles.uploadSection}>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.formTitle}>
+                  选择文件
+                </ThemedText>
+                
+                {/* PDF 导入 */}
+                <TouchableOpacity 
+                  style={styles.importOption}
+                  onPress={() => handlePickFile('pdf')}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.importOptionIcon, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+                    <FontAwesome6 name="file-pdf" size={28} color="#EF4444" />
+                  </View>
+                  <View style={styles.importOptionContent}>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                      PDF 文件
+                    </ThemedText>
+                    <ThemedText variant="small" color={theme.textMuted}>
+                      自动提取文本，识别句子结构
+                    </ThemedText>
+                  </View>
+                  <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+                </TouchableOpacity>
+
+                {/* Word 导入 */}
+                <TouchableOpacity 
+                  style={styles.importOption}
+                  onPress={() => handlePickFile('word')}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.importOptionIcon, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
+                    <FontAwesome6 name="file-word" size={28} color="#3B82F6" />
+                  </View>
+                  <View style={styles.importOptionContent}>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                      Word 文档 (.docx)
+                    </ThemedText>
+                    <ThemedText variant="small" color={theme.textMuted}>
+                      自动提取文本内容
+                    </ThemedText>
+                  </View>
+                  <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+                </TouchableOpacity>
+
+                {/* TXT 导入 */}
+                <TouchableOpacity 
+                  style={styles.importOption}
+                  onPress={() => handlePickFile('txt')}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.importOptionIcon, { backgroundColor: 'rgba(107, 114, 128, 0.1)' }]}>
+                    <FontAwesome6 name="file-lines" size={28} color="#6B7280" />
+                  </View>
+                  <View style={styles.importOptionContent}>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                      纯文本文件 (.txt)
+                    </ThemedText>
+                    <ThemedText variant="small" color={theme.textMuted}>
+                      UTF-8 编码格式
+                    </ThemedText>
+                  </View>
+                  <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {/* 格式说明 */}
+          <View style={styles.formatSection}>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.formatTitle}>
+              文本格式要求
+            </ThemedText>
+            
+            <View style={styles.formatExample}>
+              <ThemedText variant="small" color={theme.textMuted} style={{ marginBottom: 4 }}>
+                格式示范：
               </ThemedText>
+              <View style={[styles.formatExampleCode, { backgroundColor: theme.backgroundTertiary }]}>
+                <ThemedText variant="small" color={theme.textPrimary}>
+                  {'Lesson 1\n'}
+                  {'A private conversation\n'}
+                  {'私人谈话\n'}
+                  {'Last week I went to the theatre.\n'}
+                  {'上周我去看戏。\n'}
+                  {'I had a very good seat.\n'}
+                  {'我的座位很好。'}
+                </ThemedText>
+              </View>
             </View>
-            <View style={styles.formatTipItem}>
-              <FontAwesome6 name="times-circle" size={14} color={theme.error} />
-              <ThemedText variant="small" color={theme.textSecondary} style={{ marginLeft: 6 }}>
-                不支持英文和中文写同一行
-              </ThemedText>
+
+            <View style={styles.formatTips}>
+              <View style={styles.formatTipItem}>
+                <FontAwesome6 name="check-circle" size={14} color={theme.success} />
+                <ThemedText variant="small" color={theme.textSecondary} style={{ marginLeft: 6 }}>
+                  一行英文，下一行中文翻译
+                </ThemedText>
+              </View>
+              <View style={styles.formatTipItem}>
+                <FontAwesome6 name="check-circle" size={14} color={theme.success} />
+                <ThemedText variant="small" color={theme.textSecondary} style={{ marginLeft: 6 }}>
+                  以 "Lesson X" 开头划分课时
+                </ThemedText>
+              </View>
+              <View style={styles.formatTipItem}>
+                <FontAwesome6 name="times-circle" size={14} color={theme.error} />
+                <ThemedText variant="small" color={theme.textSecondary} style={{ marginLeft: 6 }}>
+                  不支持英文和中文写同一行
+                </ThemedText>
+              </View>
             </View>
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
