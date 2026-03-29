@@ -29,7 +29,6 @@ import {
   checkVoiceCacheStatus,
   DownloadProgress 
 } from '@/utils/lessonAudioCache';
-import { saveLastLearningPosition } from '@/utils/learningStorage';
 
 interface GenerateProgressData {
   type: 'start' | 'progress' | 'complete' | 'error';
@@ -220,19 +219,7 @@ export default function LessonPracticeScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchData();
-      
-      // 保存学习位置
-      if (courseId && courseTitle && lessonId && lessonNumber) {
-        saveLastLearningPosition({
-          courseId: parseInt(courseId, 10),
-          courseTitle,
-          lessonId: parseInt(lessonId, 10),
-          lessonNumber: parseInt(lessonNumber, 10),
-          lessonTitle: title,
-          updatedAt: Date.now(),
-        });
-      }
-    }, [fetchData, courseId, courseTitle, lessonId, lessonNumber, title])
+    }, [fetchData])
   );
 
   const handleRefresh = useCallback(() => {
@@ -245,13 +232,16 @@ export default function LessonPracticeScreen() {
   }, [router]);
 
   const handleStartPractice = useCallback(() => {
-    // 跳转到课程学习页面
+    // 跳转到课程学习页面，传递完整的课程信息
     router.push('/lesson-learning', {
       lessonId: lessonId,
       voiceId: selectedVoice,
       title: title,
+      courseId: courseId,
+      courseTitle: courseTitle,
+      lessonNumber: lessonNumber,
     });
-  }, [router, lessonId, selectedVoice, title]);
+  }, [router, lessonId, selectedVoice, title, courseId, courseTitle, lessonNumber]);
 
   // 下载单个音色
   const handleDownloadVoice = useCallback(async (voiceStatus: VoiceCacheStatus) => {

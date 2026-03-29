@@ -21,6 +21,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { createFormDataFile } from '@/utils';
+import { getLastLearningPosition, LastLearningPosition } from '@/utils/learningStorage';
 
 interface Course {
   id: number;
@@ -49,11 +50,16 @@ export default function CoursesScreen() {
   const [showInfoModal, setShowInfoModal] = useState(false); // 显示功能说明弹窗
   const [importBookTitle, setImportBookTitle] = useState('新概念英语第三册');
   const [importBookNumber, setImportBookNumber] = useState('3');
+  const [lastLearningPosition, setLastLearningPosition] = useState<LastLearningPosition | null>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null); // 用于取消上传
   const sseRef = useRef<any>(null); // 用于取消 SSE
 
   const fetchCourses = useCallback(async () => {
     try {
+      // 获取最后学习位置
+      const lastPosition = await getLastLearningPosition();
+      setLastLearningPosition(lastPosition);
+      
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses`);
       const data = await response.json();
       
@@ -331,53 +337,69 @@ export default function CoursesScreen() {
             </ThemedText>
           </View>
         ) : (
-          courses.map((course) => (
-            <TouchableOpacity
-              key={course.id}
-              style={styles.courseCard}
-              onPress={() => handleCoursePress(course.id)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.courseHeader}>
-                <View style={styles.courseIcon}>
-                  <FontAwesome6
-                    name={getBookIcon(course.book_number)}
-                    size={24}
-                    color={theme.primary}
-                  />
+          courses.map((course) => {
+            // 检查是否是上次学习的课程
+            const isLastLearned = lastLearningPosition?.sourceType === 'lesson' && 
+                                  lastLearningPosition.courseId === course.id;
+            
+            return (
+              <TouchableOpacity
+                key={course.id}
+                style={[styles.courseCard, isLastLearned && styles.lastLearnedCard]}
+                onPress={() => handleCoursePress(course.id)}
+                activeOpacity={0.7}
+              >
+                {/* 上次学习提示 */}
+                {isLastLearned && (
+                  <View style={[styles.lastLearnedBadge, { backgroundColor: theme.success + '20' }]}>
+                    <FontAwesome6 name="clock-rotate-left" size={12} color={theme.success} />
+                    <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 4 }}>
+                      上次学到 第{lastLearningPosition.lessonNumber}课
+                    </ThemedText>
+                  </View>
+                )}
+                
+                <View style={styles.courseHeader}>
+                  <View style={styles.courseIcon}>
+                    <FontAwesome6
+                      name={getBookIcon(course.book_number)}
+                      size={24}
+                      color={theme.primary}
+                    />
+                  </View>
+                  <View style={styles.courseInfo}>
+                    <ThemedText variant="h4" color={theme.textPrimary} style={styles.courseTitle}>
+                      {course.title}
+                    </ThemedText>
+                    <ThemedText variant="small" color={theme.textSecondary} style={styles.courseMeta}>
+                      {course.description}
+                    </ThemedText>
+                  </View>
                 </View>
-                <View style={styles.courseInfo}>
-                  <ThemedText variant="h4" color={theme.textPrimary} style={styles.courseTitle}>
-                    {course.title}
-                  </ThemedText>
-                  <ThemedText variant="small" color={theme.textSecondary} style={styles.courseMeta}>
-                    {course.description}
-                  </ThemedText>
+                <View style={styles.courseStats}>
+                  <View style={styles.statItem}>
+                    <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
+                      {course.total_lessons}
+                    </ThemedText>
+                    <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
+                      课程数
+                    </ThemedText>
+                  </View>
+                  <View style={styles.statItem}>
+                    <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
+                      {course.total_sentences || course.total_lessons * 18}
+                    </ThemedText>
+                    <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
+                      句子数
+                    </ThemedText>
+                  </View>
+                  <View style={styles.statItem}>
+                    <FontAwesome6 name="chevron-right" size={20} color={theme.textMuted} />
+                  </View>
                 </View>
-              </View>
-              <View style={styles.courseStats}>
-                <View style={styles.statItem}>
-                  <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
-                    {course.total_lessons}
-                  </ThemedText>
-                  <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
-                    课程数
-                  </ThemedText>
-                </View>
-                <View style={styles.statItem}>
-                  <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
-                    {course.total_sentences || course.total_lessons * 18}
-                  </ThemedText>
-                  <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
-                    句子数
-                  </ThemedText>
-                </View>
-                <View style={styles.statItem}>
-                  <FontAwesome6 name="chevron-right" size={20} color={theme.textMuted} />
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))
+              </TouchableOpacity>
+            );
+          })
         )}
       </ScrollView>
 

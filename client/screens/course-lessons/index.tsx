@@ -13,6 +13,7 @@ import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
+import { getLastLearningPosition, LastLearningPosition } from '@/utils/learningStorage';
 
 interface Lesson {
   id: number;
@@ -42,11 +43,16 @@ export default function CourseLessonsScreen() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastLearningPosition, setLastLearningPosition] = useState<LastLearningPosition | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!courseId) return;
     
     try {
+      // 获取最后学习位置
+      const lastPosition = await getLastLearningPosition();
+      setLastLearningPosition(lastPosition);
+      
       // 获取课程信息
       const courseRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses`);
       const courseData = await courseRes.json();
@@ -145,37 +151,52 @@ export default function CourseLessonsScreen() {
             </ThemedText>
           </View>
         ) : (
-          lessons.map((lesson) => (
-            <TouchableOpacity
-              key={lesson.id}
-              style={styles.lessonCard}
-              onPress={() => handleLessonClick(lesson.id, lesson.lesson_number, lesson.title)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.lessonNumber}>
-                <ThemedText variant="h4" color={theme.primary} style={styles.lessonNumberText}>
-                  {lesson.lesson_number}
-                </ThemedText>
-              </View>
-              <View style={styles.lessonInfo}>
-                <ThemedText variant="h4" color={theme.textPrimary} style={styles.lessonTitle}>
-                  {lesson.title}
-                </ThemedText>
-                <ThemedText variant="small" color={theme.textSecondary} style={styles.lessonSubtitle}>
-                  {lesson.description}
-                </ThemedText>
-                <ThemedText variant="caption" color={theme.textMuted} style={styles.lessonMeta}>
-                  {lesson.sentences_count} 个句子
-                </ThemedText>
-              </View>
-              <FontAwesome6
-                name="chevron-right"
-                size={20}
-                color={theme.textMuted}
-                style={styles.arrowIcon}
-              />
-            </TouchableOpacity>
-          ))
+          lessons.map((lesson) => {
+            // 检查是否是上次学习的课时
+            const isLastLearned = lastLearningPosition?.sourceType === 'lesson' && 
+                                  lastLearningPosition.lessonId === lesson.id;
+            
+            return (
+              <TouchableOpacity
+                key={lesson.id}
+                style={[styles.lessonCard, isLastLearned && styles.lastLearnedCard]}
+                onPress={() => handleLessonClick(lesson.id, lesson.lesson_number, lesson.title)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.lessonNumber}>
+                  <ThemedText variant="h4" color={theme.primary} style={styles.lessonNumberText}>
+                    {lesson.lesson_number}
+                  </ThemedText>
+                </View>
+                <View style={styles.lessonInfo}>
+                  <ThemedText variant="h4" color={theme.textPrimary} style={styles.lessonTitle}>
+                    {lesson.title}
+                  </ThemedText>
+                  <ThemedText variant="small" color={theme.textSecondary} style={styles.lessonSubtitle}>
+                    {lesson.description}
+                  </ThemedText>
+                  <ThemedText variant="caption" color={theme.textMuted} style={styles.lessonMeta}>
+                    {lesson.sentences_count} 个句子
+                  </ThemedText>
+                  {/* 上次学习提示 */}
+                  {isLastLearned && (
+                    <View style={[styles.lastLearnedBadge, { backgroundColor: theme.success + '20' }]}>
+                      <FontAwesome6 name="clock-rotate-left" size={10} color={theme.success} />
+                      <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 4 }}>
+                        上次学到 第 {lastLearningPosition.sentenceIndex + 1}/{lastLearningPosition.totalSentences} 句
+                      </ThemedText>
+                    </View>
+                  )}
+                </View>
+                <FontAwesome6
+                  name="chevron-right"
+                  size={20}
+                  color={theme.textMuted}
+                  style={styles.arrowIcon}
+                />
+              </TouchableOpacity>
+            );
+          })
         )}
       </ScrollView>
     </Screen>

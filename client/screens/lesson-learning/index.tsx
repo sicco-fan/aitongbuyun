@@ -25,10 +25,20 @@ export default function LessonLearningScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
-  const params = useSafeSearchParams<{ lessonId: string; title: string; voiceId?: string }>();
+  const params = useSafeSearchParams<{ 
+    lessonId: string; 
+    title: string; 
+    voiceId?: string;
+    courseId?: string;
+    courseTitle?: string;
+    lessonNumber?: string;
+  }>();
   const lessonId = params.lessonId;
   const title = params.title || '课时练习';
   const voiceId = params.voiceId || 'zh_female_xiaohe_uranus_bigtts';
+  const courseId = params.courseId;
+  const courseTitle = params.courseTitle;
+  const lessonNumber = params.lessonNumber;
   
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,6 +66,9 @@ export default function LessonLearningScreen() {
               lessonId: lessonId,
               voiceId: voiceId,
               title: title,
+              courseId: courseId,
+              courseTitle: courseTitle,
+              lessonNumber: lessonNumber,
             });
           }, 100);
         }
@@ -65,7 +78,7 @@ export default function LessonLearningScreen() {
     } finally {
       setLoading(false);
     }
-  }, [lessonId, voiceId, title, router]);
+  }, [lessonId, voiceId, title, courseId, courseTitle, lessonNumber, router]);
   
   useFocusEffect(
     useCallback(() => {

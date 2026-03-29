@@ -135,7 +135,7 @@ export const createStyles = (theme: Theme) => {
       flex: 1,
       marginLeft: Spacing.md,
     },
-    continueButton: {
+    continueProgress: {
       paddingHorizontal: Spacing.md,
       paddingVertical: Spacing.xs,
       borderRadius: BorderRadius.full,

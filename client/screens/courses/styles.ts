@@ -33,6 +33,19 @@ export const createStyles = (theme: Theme) => {
       shadowRadius: 12,
       elevation: 4,
     },
+    lastLearnedCard: {
+      borderWidth: 2,
+      borderColor: theme.success + '40',
+    },
+    lastLearnedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: Spacing.xs,
+      borderRadius: BorderRadius.full,
+      marginBottom: Spacing.sm,
+    },
     courseHeader: {
       flexDirection: 'row',
       alignItems: 'center',

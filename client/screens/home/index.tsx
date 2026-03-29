@@ -151,10 +151,30 @@ export default function HomeScreen() {
         {lastLearningPosition && (
           <TouchableOpacity
             style={[styles.continueCard, { backgroundColor: theme.success + '10', borderColor: theme.success + '30' }]}
-            onPress={() => router.push('/lesson-practice', { 
-              lessonId: lastLearningPosition.lessonId.toString(), 
-              title: lastLearningPosition.lessonTitle 
-            })}
+            onPress={() => {
+              // 根据 sourceType 跳转到不同的页面
+              if (lastLearningPosition.sourceType === 'lesson' && lastLearningPosition.lessonId) {
+                // 课程模式：跳转到 sentence-practice，带上所有课程参数
+                router.push('/sentence-practice', {
+                  sourceType: 'lesson',
+                  lessonId: lastLearningPosition.lessonId.toString(),
+                  courseId: lastLearningPosition.courseId?.toString(),
+                  courseTitle: lastLearningPosition.courseTitle,
+                  lessonNumber: lastLearningPosition.lessonNumber?.toString(),
+                  voiceId: lastLearningPosition.voiceId,
+                  title: lastLearningPosition.lessonTitle || lastLearningPosition.fileTitle || '',
+                  sentenceIndex: lastLearningPosition.sentenceIndex,
+                });
+              } else if (lastLearningPosition.sourceType === 'sentence_file' && lastLearningPosition.fileId) {
+                // 句库模式：跳转到 sentence-practice，带上文件参数
+                router.push('/sentence-practice', {
+                  sourceType: 'file',
+                  fileId: lastLearningPosition.fileId,
+                  title: lastLearningPosition.fileTitle || '',
+                  sentenceIndex: lastLearningPosition.sentenceIndex,
+                });
+              }
+            }}
             activeOpacity={0.7}
           >
             <View style={[styles.continueIconContainer, { backgroundColor: theme.success + '20' }]}>
@@ -165,15 +185,21 @@ export default function HomeScreen() {
                 继续学习
               </ThemedText>
               <ThemedText variant="small" color={theme.textSecondary} numberOfLines={1}>
-                {lastLearningPosition.courseTitle} · 第{lastLearningPosition.lessonNumber}课
+                {lastLearningPosition.sourceType === 'lesson' 
+                  ? `${lastLearningPosition.courseTitle} · 第${lastLearningPosition.lessonNumber}课`
+                  : lastLearningPosition.fileTitle
+                }
               </ThemedText>
               <ThemedText variant="tiny" color={theme.textMuted} numberOfLines={1}>
-                {lastLearningPosition.lessonTitle}
+                {lastLearningPosition.sourceType === 'lesson' 
+                  ? lastLearningPosition.lessonTitle
+                  : `第 ${lastLearningPosition.sentenceIndex + 1} / ${lastLearningPosition.totalSentences} 句`
+                }
               </ThemedText>
             </View>
-            <View style={styles.continueButton}>
+            <View style={styles.continueProgress}>
               <ThemedText variant="smallMedium" color={theme.success}>
-                开始
+                {Math.round(((lastLearningPosition.sentenceIndex + 1) / lastLearningPosition.totalSentences) * 100)}%
               </ThemedText>
             </View>
             <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />

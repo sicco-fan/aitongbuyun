@@ -35,6 +35,10 @@ export const createStyles = (theme: Theme) => {
       shadowRadius: 8,
       elevation: 2,
     },
+    lastLearnedCard: {
+      borderWidth: 2,
+      borderColor: theme.success + '40',
+    },
     lessonNumber: {
       width: 48,
       height: 48,
@@ -66,6 +70,15 @@ export const createStyles = (theme: Theme) => {
     lessonMeta: {
       fontSize: 12,
       color: theme.textMuted,
+    },
+    lastLearnedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: Spacing.xs,
+      borderRadius: BorderRadius.full,
+      marginTop: Spacing.xs,
     },
     arrowIcon: {
       marginLeft: Spacing.sm,

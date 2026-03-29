@@ -24,6 +24,7 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { Spacing, BorderRadius } from '@/constants/theme';
 import { createFormDataFile } from '@/utils';
+import { saveLastLearningPosition, LastLearningPosition } from '@/utils/learningStorage';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
@@ -276,6 +277,9 @@ export default function SentencePracticeScreen() {
     sourceType?: 'file' | 'lesson';
     lessonId?: string;
     voiceId?: string;
+    courseId?: string;
+    courseTitle?: string;
+    lessonNumber?: string;
   }>();
   const { user, isAuthenticated } = useAuth();
 
@@ -283,6 +287,10 @@ export default function SentencePracticeScreen() {
   const sourceType = params.sourceType || 'file';
   const lessonId = params.lessonId;
   const voiceId = params.voiceId;
+  const courseId = params.courseId;
+  const courseTitle = params.courseTitle;
+  const lessonNumber = params.lessonNumber;
+  const practiceTitle = params.title;
 
   const [file, setFile] = useState<SentenceFile | null>(null);
   const [sentences, setSentences] = useState<Sentence[]>([]);
@@ -565,9 +573,32 @@ export default function SentencePracticeScreen() {
           // 保存进度（不提交学习时长，因为用户可能是意外退出）
           saveProgress(currentIndex);
           console.log(`[学习进度] 退出时自动保存: 第 ${currentIndex + 1} 句`);
+          
+          // 保存学习位置（用于首页"继续学习"快捷入口）
+          const position: LastLearningPosition = {
+            sourceType: sourceType === 'lesson' ? 'lesson' : 'sentence_file',
+            sentenceIndex: currentIndex,
+            totalSentences: sentences.length,
+            updatedAt: Date.now(),
+          };
+          
+          if (sourceType === 'lesson' && lessonId && courseId) {
+            position.courseId = parseInt(courseId, 10);
+            position.courseTitle = courseTitle || '';
+            position.lessonId = parseInt(lessonId, 10);
+            position.lessonNumber = lessonNumber ? parseInt(lessonNumber, 10) : 1;
+            position.lessonTitle = practiceTitle;
+            position.voiceId = voiceId;
+          } else if (fileId) {
+            position.fileId = fileId;
+            position.fileTitle = practiceTitle;
+          }
+          
+          saveLastLearningPosition(position);
+          console.log('[学习位置] 已保存:', position);
         }
       };
-    }, [fetchSentences, currentIndex, saveProgress])
+    }, [fetchSentences, currentIndex, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId, sentences.length])
   );
 
   // 处理返回键/退出 - 注意：这个函数在 calculateSessionDuration 和 submitLearningData 之后定义

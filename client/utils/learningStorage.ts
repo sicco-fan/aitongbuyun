@@ -33,11 +33,24 @@ interface SentenceErrorRecord {
 
 // 最后学习位置记录
 export interface LastLearningPosition {
-  courseId: number;
-  courseTitle: string;
-  lessonId: number;
-  lessonNumber: number;
-  lessonTitle: string;
+  // 学习来源类型
+  sourceType: 'lesson' | 'sentence_file';
+  
+  // 课程学习相关字段
+  courseId?: number;
+  courseTitle?: string;
+  lessonId?: number;
+  lessonNumber?: number;
+  lessonTitle?: string;
+  voiceId?: string;
+  
+  // 句库学习相关字段
+  fileId?: number;
+  fileTitle?: string;
+  
+  // 通用字段
+  sentenceIndex: number;      // 当前句子索引（0-based）
+  totalSentences: number;     // 总句子数
   updatedAt: number;
 }
 
