@@ -40,48 +40,38 @@ async function parseLessonsWithAI(text: string): Promise<Array<{
   const client = new LLMClient(config);
   
   // 截取文本内容（避免过长）
-  const maxTextLength = 15000;
+  const maxTextLength = 12000;
   const truncatedText = text.length > maxTextLength 
     ? text.substring(0, maxTextLength) + '\n...(文本过长已截断)'
     : text;
   
-  const systemPrompt = `你是一个专业的英语教材解析助手。你的任务是分析英语教材文本，识别出其中的章节/单元/课时结构。
+  const systemPrompt = `你是英语教材解析助手。分析文本，识别课时结构。
 
-你需要返回一个 JSON 数组，每个元素代表一个课时/单元，格式如下：
-[
-  {
-    "lesson_number": 1,
-    "title": "课时标题",
-    "sentences": [
-      {"english": "英文句子", "chinese": "中文翻译（如果有）"}
-    ]
-  }
-]
+返回格式（仅返回JSON数组，不要其他内容）：
+[{"lesson_number":1,"title":"标题","sentences":[{"english":"英文","chinese":"中文"}]}]
 
-注意事项：
-1. 识别各种格式：Lesson 1、Unit 1、Starter Unit、Part 1、Chapter 1 等都是课时标记
-2. lesson_number 应该是数字序号（从 1 开始）
-3. 如果没有明确的标题，可以用 "Unit 1"、"Lesson 1" 等作为标题
-4. 英文句子和中文翻译通常成对出现
-5. 如果没有中文翻译，chinese 字段可以省略
-6. 跳过标题行、页码、版权信息等非正文内容
-7. 每个句子应该是完整的一句话
-
-只返回 JSON 数组，不要返回其他内容。`;
+规则：
+1. 识别 Starter Unit、Unit 1、Lesson 1 等课时标记
+2. lesson_number 从1开始编号
+3. 英文句子和中文翻译成对出现
+4. 跳过页码、版权等非正文
+5. 确保返回完整有效的JSON`;
 
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: `请分析以下英语教材文本，识别出所有的课时/单元结构：\n\n${truncatedText}` }
+    { role: 'user', content: `分析以下教材，返回JSON数组：\n\n${truncatedText}` }
   ];
   
   try {
     const response = await client.invoke(messages, { 
-      model: 'doubao-seed-1-6-251015',
-      temperature: 0.3 
+      model: 'doubao-seed-1-6-lite-251015', // 使用 lite 模型更快
+      temperature: 0.1 // 降低温度让输出更稳定
     });
     
     const content = response.content.trim();
     console.log('[AI解析] AI 返回内容长度:', content.length);
+    console.log('[AI解析] AI 返回内容前 2000 字符:\n', content.substring(0, 2000));
+    console.log('[AI解析] AI 返回内容后 500 字符:\n', content.substring(Math.max(0, content.length - 500)));
     
     // 尝试提取 JSON
     let jsonStr = content;
@@ -90,10 +80,36 @@ async function parseLessonsWithAI(text: string): Promise<Array<{
     const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) {
       jsonStr = jsonMatch[1].trim();
+      console.log('[AI解析] 从代码块中提取 JSON，长度:', jsonStr.length);
+    } else {
+      // 尝试找到 JSON 数组的开始和结束
+      const jsonStart = content.indexOf('[');
+      const jsonEnd = content.lastIndexOf(']');
+      if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+        jsonStr = content.substring(jsonStart, jsonEnd + 1);
+        console.log('[AI解析] 从文本中提取 JSON 数组，位置:', jsonStart, '-', jsonEnd, '长度:', jsonStr.length);
+      }
     }
     
     // 解析 JSON
-    const lessons = JSON.parse(jsonStr);
+    let lessons;
+    try {
+      lessons = JSON.parse(jsonStr);
+    } catch (parseError) {
+      console.error('[AI解析] JSON 解析失败，尝试修复...');
+      // 尝试修复常见的 JSON 格式问题
+      // 1. 移除末尾的逗号
+      let fixedJson = jsonStr.replace(/,\s*]/g, ']').replace(/,\s*}/g, '}');
+      // 2. 修复未转义的引号
+      // 3. 修复缺少的引号
+      try {
+        lessons = JSON.parse(fixedJson);
+        console.log('[AI解析] JSON 修复成功');
+      } catch (secondError) {
+        console.error('[AI解析] JSON 修复失败，原始内容可能不是有效的 JSON');
+        throw parseError;
+      }
+    }
     
     if (!Array.isArray(lessons)) {
       throw new Error('AI 返回的不是数组');
