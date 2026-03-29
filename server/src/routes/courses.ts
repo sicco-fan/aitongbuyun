@@ -236,7 +236,8 @@ function normalizeLessons(lessons: any[], startLessonNumber: number = 1): Array<
     const hasSentences = lesson.s?.length > 0 || lesson.sentences?.length > 0;
     return lesson && hasSentences;
   }).map((lesson: any, idx: number) => ({
-    lesson_number: lesson.n || lesson.lesson_number || startLessonNumber + idx,
+    // 始终使用 startLessonNumber + idx，确保分批解析时编号连续且不重复
+    lesson_number: startLessonNumber + idx,
     title: lesson.t || lesson.title || `Lesson ${startLessonNumber + idx}`,
     description: lesson.t || lesson.title || lesson.description || `Lesson ${startLessonNumber + idx}`,
     sentences: (lesson.s || lesson.sentences || []).filter((s: any) => s && (s.e || s.english)).map((s: any) => ({
