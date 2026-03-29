@@ -395,12 +395,8 @@ export default function SentencePracticeScreen() {
   // 句子积分累积（仅后台记录，不显示弹窗）
   const currentSentencePointsRef = useRef(0);
 
-  // 学习时长计时器
-  const sessionStartTimeRef = useRef<number | null>(null); // 本次学习开始时间
-  const lastInputTimeRef = useRef<number>(Date.now()); // 最后一次输入时间
-  const accumulatedDurationRef = useRef<number>(0); // 已累计的学习时长（秒）
-  const idleCheckIntervalRef = useRef<NodeJS.Timeout | null>(null); // 空闲检查定时器
-  const IDLE_THRESHOLD = 60 * 1000; // 60秒空闲阈值
+  // 学习时长计时器 - 简化逻辑：进入页面开始计时，退出页面结束计时
+  const sessionStartTimeRef = useRef<number | null>(null); // 进入页面的时间
   
   // 存档状态
   const [hasProgressToSave, setHasProgressToSave] = useState(false); // 是否有进度需要存档
@@ -721,6 +717,10 @@ export default function SentencePracticeScreen() {
       isExitingRef.current = false; // 重置退出标记
       hasShownProgressAlert.current = false; // 重置进度弹窗标记，允许每次进入时检查进度
       
+      // 开始学习计时（进入页面就开始计时）
+      sessionStartTimeRef.current = Date.now();
+      console.log('[学习时长] 开始计时');
+      
       // 重新加载语音答题模式配置（用户可能在设置页面修改了）
       (async () => {
         const mode = await getVoicePracticeMode();
@@ -741,6 +741,25 @@ export default function SentencePracticeScreen() {
         // 使用 ref 获取最新值（避免闭包陷阱）
         const latestSentences = sentencesRef.current;
         const latestIndex = currentIndexRef.current;
+        
+        // 提交学习时长（退出页面时）
+        if (sessionStartTimeRef.current && user?.id) {
+          const duration = Math.round((Date.now() - sessionStartTimeRef.current) / 1000);
+          if (duration > 0) {
+            // 异步提交学习时长，不等待
+            fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/daily`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: user.id,
+                score: 0,
+                duration_seconds: duration,
+                sentences_completed: 0,
+              }),
+            }).catch(e => console.error('[学习时长] 提交失败:', e));
+            console.log(`[学习时长] 已提交: ${duration}秒`);
+          }
+        }
         
         // 如果用户还没有通过 BackHandler 处理退出（比如 Web 端），这里保存进度
         // 注意：这个 cleanup 会在 BackHandler 的回调之后执行
@@ -774,10 +793,10 @@ export default function SentencePracticeScreen() {
           console.log('[学习位置] 已保存:', position);
         }
       };
-    }, [fetchSentences, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId])
+    }, [fetchSentences, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId, user?.id])
   );
 
-  // 处理返回键/退出 - 注意：这个函数在 calculateSessionDuration 和 submitLearningData 之后定义
+  // 处理返回键/退出 - 注意：这个函数在 submitLearningData 之后定义
   // 所以 BackHandler 的 useEffect 需要在那些函数定义之后
 
   // 提取单词和标点
@@ -1365,46 +1384,6 @@ export default function SentencePracticeScreen() {
     }
   }, [isAuthenticated, user?.id, fileId, lessonId, sourceType, currentIndex]);
 
-  // 记录学习时长（用户输入时调用）
-  const recordLearningTime = useCallback(() => {
-    const now = Date.now();
-    
-    // 如果是第一次输入，开始计时
-    if (sessionStartTimeRef.current === null) {
-      sessionStartTimeRef.current = now;
-      setHasProgressToSave(true); // 标记有进度需要存档
-      console.log('[学习时长] 开始计时');
-    }
-    
-    // 更新最后输入时间
-    lastInputTimeRef.current = now;
-  }, []);
-
-  // 计算当前会话的有效学习时长
-  const calculateSessionDuration = useCallback(() => {
-    const now = Date.now();
-    
-    // 如果还没有开始计时，返回0
-    if (sessionStartTimeRef.current === null) {
-      return accumulatedDurationRef.current;
-    }
-    
-    // 计算从最后输入到现在的时长
-    const timeSinceLastInput = now - lastInputTimeRef.current;
-    
-    // 如果超过空闲阈值，只计算到最后一次输入的时间
-    if (timeSinceLastInput > IDLE_THRESHOLD) {
-      // 累计时长 = 已累计时长 + 最后输入时间 - 开始时间
-      const sessionDuration = (lastInputTimeRef.current - sessionStartTimeRef.current) / 1000;
-      console.log(`[学习时长] 空闲超时，本次会话时长: ${sessionDuration}秒`);
-      return accumulatedDurationRef.current + sessionDuration;
-    } else {
-      // 未超时，继续累计
-      const sessionDuration = (now - sessionStartTimeRef.current) / 1000;
-      return accumulatedDurationRef.current + sessionDuration;
-    }
-  }, []);
-
   // 处理单词正确输入（统一处理减少错题次数和记录积分）
   const handleWordCorrect = useCallback((word: string) => {
     // 错题练习模式：减少错题次数 + 记录1.5积分
@@ -1570,11 +1549,6 @@ export default function SentencePracticeScreen() {
             text: '保存并退出',
             onPress: async () => {
               isExitingRef.current = true;
-              // 计算并提交剩余的学习时长
-              const sessionDuration = calculateSessionDuration();
-              if (sessionDuration > 0) {
-                await submitLearningData(false, Math.round(sessionDuration));
-              }
               // 保存进度
               await saveProgress(latestIndex);
               
@@ -1612,7 +1586,7 @@ export default function SentencePracticeScreen() {
     
     // 没有进度需要保存，直接返回
     return false;
-  }, [hasProgressToSave, calculateSessionDuration, submitLearningData, saveProgress, router, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId]);
+  }, [hasProgressToSave, saveProgress, router, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId]);
 
   // 监听返回键
   useEffect(() => {
@@ -1775,9 +1749,6 @@ export default function SentencePracticeScreen() {
   const handleInputChange = useCallback((text: string) => {
     // 标记有过打字输入
     sentenceHadTypingRef.current = true;
-    
-    // 记录学习时间（用户有输入）
-    recordLearningTime();
     
     const currentWordStatuses = wordStatusesRef.current;
 
@@ -2030,15 +2001,8 @@ export default function SentencePracticeScreen() {
     setIsLooping(false);
     pauseAudio();
     
-    // 计算本次会话的学习时长
-    const sessionDuration = calculateSessionDuration();
-    
-    // 提交学习数据（积分和时长），标记句子完成
-    await submitLearningData(true, Math.round(sessionDuration));
-    
-    // 重置会话计时器（新句子重新计时）
-    sessionStartTimeRef.current = null;
-    accumulatedDurationRef.current = 0;
+    // 提交学习数据（积分和句子完成标记，时长在退出页面时统一提交）
+    await submitLearningData(true, 0);
     
     // 保存学习进度（当前句子已完成，准备进入下一句）
     saveProgress(currentIndex);
