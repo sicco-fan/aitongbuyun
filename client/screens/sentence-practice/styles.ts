@@ -229,6 +229,35 @@ export const createStyles = (theme: Theme) => {
       includeFontPadding: false, // Android
       textAlignVertical: 'center', // Android
     },
+    // Web端专用麦克风按钮
+    webMicButton: {
+      position: 'absolute',
+      right: Spacing.md,
+      width: 44,
+      height: 44,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.backgroundTertiary,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: theme.border,
+    },
+    webMicButtonActive: {
+      backgroundColor: theme.error,
+      borderColor: theme.error,
+    },
+    // 自建键盘模式的麦克风按钮（稍小）
+    webMicButtonCustom: {
+      width: 40,
+      height: 40,
+      borderRadius: BorderRadius.full,
+      backgroundColor: theme.backgroundTertiary,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: theme.border,
+      marginLeft: Spacing.sm,
+    },
     
     // Navigation Buttons - 紧跟输入框
     navButtons: {

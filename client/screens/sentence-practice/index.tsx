@@ -2655,13 +2655,35 @@ export default function SentencePracticeScreen() {
                 textContentType="none"
                 autoComplete="off"
               />
+              {/* Web端专用麦克风按钮：点击切换录音状态 */}
+              {Platform.OS === 'web' && hasRecordingPermission && (
+                <TouchableOpacity
+                  style={[
+                    styles.webMicButton,
+                    isRecording && styles.webMicButtonActive,
+                  ]}
+                  onPress={() => {
+                    if (isRecording) {
+                      stopRecordingAndRecognize();
+                    } else {
+                      startRecording();
+                    }
+                  }}
+                >
+                  <FontAwesome6 
+                    name={isRecording ? "stop" : "microphone"} 
+                    size={20} 
+                    color={isRecording ? theme.buttonPrimaryText : theme.textMuted} 
+                  />
+                </TouchableOpacity>
+              )}
             </View>
           )}
           
           {/* 自建键盘模式 */}
           {keyboardType === 'custom' && (
             <View style={styles.customKeyboardContainer}>
-              {/* 当前输入显示 */}
+              {/* 当前输入显示 + Web端麦克风按钮 */}
               <View style={styles.customInputRow}>
                 <View style={styles.customInputDisplay}>
                   {currentInput ? (
@@ -2670,6 +2692,28 @@ export default function SentencePracticeScreen() {
                     </ThemedText>
                   ) : null}
                 </View>
+                {/* Web端专用麦克风按钮：点击切换录音状态 */}
+                {Platform.OS === 'web' && hasRecordingPermission && (
+                  <TouchableOpacity
+                    style={[
+                      styles.webMicButtonCustom,
+                      isRecording && styles.webMicButtonActive,
+                    ]}
+                    onPress={() => {
+                      if (isRecording) {
+                        stopRecordingAndRecognize();
+                      } else {
+                        startRecording();
+                      }
+                    }}
+                  >
+                    <FontAwesome6 
+                      name={isRecording ? "stop" : "microphone"} 
+                      size={18} 
+                      color={isRecording ? theme.buttonPrimaryText : theme.textMuted} 
+                    />
+                  </TouchableOpacity>
+                )}
               </View>
               
               {/* 自建键盘 */}
