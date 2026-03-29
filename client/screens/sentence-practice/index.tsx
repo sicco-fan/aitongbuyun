@@ -1702,18 +1702,18 @@ export default function SentencePracticeScreen() {
     // 记录匹配成功的单词索引
     const matchedIndices: number[] = [];
     
-    // 从第一个未完成的单词开始匹配
-    let wordIndex = 0;
+    // 无序匹配：对于每个输入单词，尝试匹配所有未完成的单词
+    // 这样可以处理用户念的单词顺序和句子顺序不一致的情况
     for (const inputWord of inputWords) {
-      // 从当前位置开始查找匹配
-      while (wordIndex < incompleteWords.length) {
-        const targetWord = incompleteWords[wordIndex];
+      for (const targetWord of incompleteWords) {
+        // 如果这个目标单词已经被匹配过，跳过
+        if (matchedIndices.includes(targetWord.index)) continue;
+        
+        // 如果匹配成功
         if (wordsMatch(targetWord.word, inputWord)) {
           matchedIndices.push(targetWord.index);
-          wordIndex++;
-          break;
+          break; // 匹配成功后跳出内层循环，处理下一个输入单词
         }
-        wordIndex++;
       }
     }
     
