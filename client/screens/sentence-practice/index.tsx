@@ -2168,8 +2168,16 @@ export default function SentencePracticeScreen() {
       return;
     }
 
-    // 方案B（跟随朗读）：显示友好的引导提示
-    if (voicePracticeModeRef.current === 'follow-along') {
+    // 方案A（自动匹配）：立即停止音频，让用户专注语音输入
+    if (voicePracticeModeRef.current === 'auto-match') {
+      // 先同步设置状态，阻止循环回调继续播放
+      setIsPlaying(false);
+      // 然后异步暂停音频
+      if (soundRef.current) {
+        soundRef.current.pauseAsync().catch(() => {});
+      }
+    } else if (voicePracticeModeRef.current === 'follow-along') {
+      // 方案B（跟随朗读）：显示友好的引导提示
       const remainingWords = wordStatusesRef.current
         .filter(ws => !ws.isPunctuation && !ws.revealed)
         .map(ws => ws.word);
@@ -2180,9 +2188,11 @@ export default function SentencePracticeScreen() {
         setVoiceSentenceSuggestion(`🎧 跟着念: ${displayWords}${moreCount}`);
         setShowVoiceResult(true);
       }
-    }
-
-    if (isPlaying) {
+      
+      if (isPlaying) {
+        await pauseAudio();
+      }
+    } else if (isPlaying) {
       await pauseAudio();
     }
 
@@ -2296,8 +2306,12 @@ export default function SentencePracticeScreen() {
                 // 全部完成，短暂显示后隐藏
                 setTimeout(() => setShowVoiceResult(false), 1000);
               } else {
-                // 还有未完成的，但不在结果卡片里显示
-                // 用户继续念就行
+                // 还有未完成的，恢复音频播放
+                setTimeout(() => {
+                  if (isLoopingRef.current && isMountedRef.current) {
+                    playAudio();
+                  }
+                }, 500);
               }
               
               // 记录是否有语音错误（用于完美发音判断）
