@@ -1406,20 +1406,7 @@ router.post('/import-text', async (req: Request, res: Response) => {
     
     if (existingCourse) {
       courseId = existingCourse.id;
-      sendProgress({ type: 'progress', phase: 'importing', message: '正在清除旧数据...', percent: 30 });
-      
-      const { data: existingLessons } = await supabase.from('lessons').select('id').eq('course_id', courseId);
-      if (existingLessons && existingLessons.length > 0) {
-        const lessonIds = existingLessons.map(l => l.id);
-        const { data: existingSentences } = await supabase.from('lesson_sentences').select('id').in('lesson_id', lessonIds);
-        if (existingSentences && existingSentences.length > 0) {
-          const sentenceIds = existingSentences.map(s => s.id);
-          await supabase.from('lesson_sentence_audio').delete().in('sentence_id', sentenceIds);
-        }
-        await supabase.from('lesson_sentences').delete().in('lesson_id', lessonIds);
-        await supabase.from('lessons').delete().in('id', lessonIds);
-      }
-      sendProgress({ type: 'progress', phase: 'importing', message: '旧数据已清除', percent: 35 });
+      console.log(`[导入课程] 找到已存在课程: ${book_title} (ID: ${courseId}, book_number: ${book_number})`);
     } else {
       const { data: newCourse, error: courseError } = await supabase
         .from('courses')
@@ -1428,8 +1415,26 @@ router.post('/import-text', async (req: Request, res: Response) => {
       
       if (courseError) throw new Error(courseError.message);
       courseId = newCourse.id;
-      console.log(`[导入课程] 创建新课程: ${book_title} (ID: ${courseId})`);
+      console.log(`[导入课程] 创建新课程: ${book_title} (ID: ${courseId}, book_number: ${book_number})`);
     }
+    
+    // 无论新旧课程，都清除该课程下的所有旧数据（确保不会冲突）
+    sendProgress({ type: 'progress', phase: 'importing', message: '正在清除旧数据...', percent: 30 });
+    
+    const { data: existingLessons } = await supabase.from('lessons').select('id').eq('course_id', courseId);
+    if (existingLessons && existingLessons.length > 0) {
+      console.log(`[导入课程] 清除 ${existingLessons.length} 个旧课时...`);
+      const lessonIds = existingLessons.map(l => l.id);
+      const { data: existingSentences } = await supabase.from('lesson_sentences').select('id').in('lesson_id', lessonIds);
+      if (existingSentences && existingSentences.length > 0) {
+        const sentenceIds = existingSentences.map(s => s.id);
+        await supabase.from('lesson_sentence_audio').delete().in('sentence_id', sentenceIds);
+      }
+      await supabase.from('lesson_sentences').delete().in('lesson_id', lessonIds);
+      await supabase.from('lessons').delete().eq('course_id', courseId);
+      console.log(`[导入课程] 旧数据已清除`);
+    }
+    sendProgress({ type: 'progress', phase: 'importing', message: '旧数据已清除，开始导入课时...', percent: 35 });
     
     // 导入课时和句子
     let totalSentences = 0;
@@ -1566,45 +1571,7 @@ router.post('/import-pdf', async (req: Request, res: Response) => {
     
     if (existingCourse) {
       courseId = existingCourse.id;
-      console.log(`[导入课程] 使用现有课程: ${existingCourse.title} (ID: ${courseId})`);
-      sendProgress({ type: 'progress', phase: 'importing', message: '正在清除旧数据...', percent: 30 });
-      
-      // 删除现有的课时和句子
-      const { data: existingLessons } = await supabase
-        .from('lessons')
-        .select('id')
-        .eq('course_id', courseId);
-      
-      if (existingLessons && existingLessons.length > 0) {
-        const lessonIds = existingLessons.map(l => l.id);
-        
-        // 删除句子音频
-        const { data: existingSentences } = await supabase
-          .from('lesson_sentences')
-          .select('id')
-          .in('lesson_id', lessonIds);
-        
-        if (existingSentences && existingSentences.length > 0) {
-          const sentenceIds = existingSentences.map(s => s.id);
-          await supabase
-            .from('lesson_sentence_audio')
-            .delete()
-            .in('sentence_id', sentenceIds);
-        }
-        
-        // 删除句子
-        await supabase
-          .from('lesson_sentences')
-          .delete()
-          .in('lesson_id', lessonIds);
-        
-        // 删除课时
-        await supabase
-          .from('lessons')
-          .delete()
-          .in('id', lessonIds);
-      }
-      sendProgress({ type: 'progress', phase: 'importing', message: '旧数据已清除', percent: 35 });
+      console.log(`[导入课程] 使用现有课程: ${existingCourse.title} (ID: ${courseId}, book_number: ${book_number})`);
     } else {
       // 创建新课程
       const { data: newCourse, error: courseError } = await supabase
@@ -1622,8 +1589,50 @@ router.post('/import-pdf', async (req: Request, res: Response) => {
         throw new Error(courseError.message);
       }
       courseId = newCourse.id;
-      console.log(`[导入课程] 创建新课程: ${book_title} (ID: ${courseId})`);
+      console.log(`[导入课程] 创建新课程: ${book_title} (ID: ${courseId}, book_number: ${book_number})`);
     }
+    
+    // 无论新旧课程，都清除该课程下的所有旧数据（确保不会冲突）
+    sendProgress({ type: 'progress', phase: 'importing', message: '正在清除旧数据...', percent: 30 });
+    
+    const { data: existingLessons } = await supabase
+      .from('lessons')
+      .select('id')
+      .eq('course_id', courseId);
+    
+    if (existingLessons && existingLessons.length > 0) {
+      console.log(`[导入课程] 清除 ${existingLessons.length} 个旧课时...`);
+      const lessonIds = existingLessons.map(l => l.id);
+      
+      // 删除句子音频
+      const { data: existingSentences } = await supabase
+        .from('lesson_sentences')
+        .select('id')
+        .in('lesson_id', lessonIds);
+      
+      if (existingSentences && existingSentences.length > 0) {
+        const sentenceIds = existingSentences.map(s => s.id);
+        await supabase
+          .from('lesson_sentence_audio')
+          .delete()
+          .in('sentence_id', sentenceIds);
+      }
+      
+      // 删除句子
+      await supabase
+        .from('lesson_sentences')
+        .delete()
+        .in('lesson_id', lessonIds);
+      
+      // 删除课时
+      await supabase
+        .from('lessons')
+        .delete()
+        .eq('course_id', courseId);
+      
+      console.log(`[导入课程] 旧数据已清除`);
+    }
+    sendProgress({ type: 'progress', phase: 'importing', message: '旧数据已清除，开始导入课时...', percent: 35 });
     
     // 导入课时和句子
     let totalSentences = 0;
