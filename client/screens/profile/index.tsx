@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { ScrollView, View, TouchableOpacity, Text, Alert, Modal, TextInput, ActivityIndicator } from 'react-native';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { ScrollView, View, TouchableOpacity, Text, Alert, Modal, TextInput, ActivityIndicator, Image } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -22,6 +22,11 @@ interface Stats {
   errorWordsCount: number;
 }
 
+interface UserProfile {
+  avatar_url?: string;
+  username?: string;
+}
+
 export default function ProfileScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -34,6 +39,7 @@ export default function ProfileScreen() {
     totalAttempts: 0,
     errorWordsCount: 0,
   });
+  const [userProfile, setUserProfile] = useState<UserProfile>({});
   
   // 修改昵称相关状态
   const [nicknameModalVisible, setNicknameModalVisible] = useState(false);
@@ -42,6 +48,22 @@ export default function ProfileScreen() {
 
   const fetchStats = useCallback(async () => {
     try {
+      // 获取用户详细信息
+      if (isAuthenticated && user?.id) {
+        try {
+          const userRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/users/me?user_id=${user.id}`);
+          const userData = await userRes.json();
+          if (userData.success && userData.user) {
+            setUserProfile({
+              avatar_url: userData.user.avatar_url,
+              username: userData.user.username,
+            });
+          }
+        } catch (e) {
+          console.log('获取用户信息失败:', e);
+        }
+      }
+
       // 从新的句库系统获取统计数据
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`);
       const data = await response.json();
@@ -153,17 +175,25 @@ export default function ProfileScreen() {
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* 用户信息 */}
+        {/* 用户信息 - 点击进入个人设置 */}
         <ThemedView level="root" style={styles.header}>
           {isAuthenticated && user ? (
-            <View style={styles.userInfo}>
+            <TouchableOpacity 
+              style={styles.userInfo}
+              onPress={() => router.push('/profile-settings')}
+              activeOpacity={0.7}
+            >
               <View style={styles.avatar}>
-                <FontAwesome6 name="user" size={24} color={theme.primary} />
+                {userProfile.avatar_url ? (
+                  <Image source={{ uri: userProfile.avatar_url }} style={{ width: 48, height: 48, borderRadius: 24 }} />
+                ) : (
+                  <FontAwesome6 name="user" size={24} color={theme.primary} />
+                )}
               </View>
               <View style={styles.userDetails}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <ThemedText variant="h3" color={theme.textPrimary}>
-                    {user.nickname || '用户'}
+                    {userProfile.username || user.nickname || '用户'}
                   </ThemedText>
                   {user.role === 'admin' && (
                     <View style={{ 
@@ -175,18 +205,16 @@ export default function ProfileScreen() {
                       <ThemedText variant="tiny" color={theme.accent}>管理员</ThemedText>
                     </View>
                   )}
-                  <TouchableOpacity onPress={handleOpenNicknameModal} style={{ marginLeft: 4 }}>
-                    <FontAwesome6 name="pen" size={12} color={theme.textMuted} />
-                  </TouchableOpacity>
                 </View>
                 <ThemedText variant="small" color={theme.textMuted}>
                   {user.is_guest ? '游客模式' : user.phone}
                 </ThemedText>
+                <ThemedText variant="tiny" color={theme.textMuted} style={{ marginTop: 2 }}>
+                  点击编辑个人资料和界面设置
+                </ThemedText>
               </View>
-              <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-                <FontAwesome6 name="right-from-bracket" size={18} color={theme.textMuted} />
-              </TouchableOpacity>
-            </View>
+              <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+            </TouchableOpacity>
           ) : (
             <TouchableOpacity 
               style={styles.loginPrompt}
@@ -204,6 +232,21 @@ export default function ProfileScreen() {
                 </ThemedText>
               </View>
               <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+            </TouchableOpacity>
+          )}
+          
+          {/* 退出登录按钮（独立） */}
+          {isAuthenticated && user && (
+            <TouchableOpacity 
+              onPress={handleLogout} 
+              style={{ 
+                position: 'absolute', 
+                right: Spacing.lg, 
+                top: Spacing.lg,
+                padding: Spacing.sm,
+              }}
+            >
+              <FontAwesome6 name="right-from-bracket" size={18} color={theme.textMuted} />
             </TouchableOpacity>
           )}
         </ThemedView>
