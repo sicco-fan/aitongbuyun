@@ -155,6 +155,613 @@ const wordsStartWith = (prefix: string, word: string): boolean => {
   return true;
 };
 
+// ============================================================
+// 数字/货币/符号变体生成器
+// 用于语音识别时处理多种表达方式
+// ============================================================
+
+// 基础数字单词
+const ONES = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+const TEENS = ['ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+const ORDINAL_ONES = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth'];
+const ORDINAL_TEENS = ['tenth', 'eleventh', 'twelfth', 'thirteenth', 'fourteenth', 'fifteenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth'];
+const ORDINAL_TENS = ['', '', 'twentieth', 'thirtieth', 'fortieth', 'fiftieth', 'sixtieth', 'seventieth', 'eightieth', 'ninetieth'];
+
+// 货币符号映射
+const CURRENCY_SYMBOLS: Record<string, { name: string; plural: string; symbol: string }> = {
+  '$': { name: 'dollar', plural: 'dollars', symbol: '$' },
+  '£': { name: 'pound', plural: 'pounds', symbol: '£' },
+  '€': { name: 'euro', plural: 'euros', symbol: '€' },
+  '¥': { name: 'yen', plural: 'yen', symbol: '¥' },  // 日元/人民币
+  '₹': { name: 'rupee', plural: 'rupees', symbol: '₹' },  // 印度卢比
+  '₽': { name: 'ruble', plural: 'rubles', symbol: '₽' },  // 俄罗斯卢布
+  '₩': { name: 'won', plural: 'won', symbol: '₩' },  // 韩元
+  '₺': { name: 'lira', plural: 'liras', symbol: '₺' },  // 土耳其里拉
+  '₴': { name: 'hryvnia', plural: 'hryvnias', symbol: '₴' },  // 乌克兰格里夫纳
+  '₸': { name: 'tenge', plural: 'tenge', symbol: '₸' },  // 哈萨克斯坦坚戈
+  '₫': { name: 'dong', plural: 'dong', symbol: '₫' },  // 越南盾
+  '฿': { name: 'baht', plural: 'baht', symbol: '฿' },  // 泰铢
+  '₱': { name: 'peso', plural: 'pesos', symbol: '₱' },  // 比索
+  '₳': { name: 'austral', plural: 'australs', symbol: '₳' },
+  '₵': { name: 'cedi', plural: 'cedis', symbol: '₵' },  // 加纳塞地
+  '₡': { name: 'colon', plural: 'colons', symbol: '₡' },  // 哥斯达黎加科朗
+  '₭': { name: 'kip', plural: 'kips', symbol: '₭' },  // 老挝基普
+  '₮': { name: 'tugrik', plural: 'tugriks', symbol: '₮' },  // 蒙古图格里克
+  '₥': { name: 'mill', plural: 'mills', symbol: '₥' },  // 千分之一美元
+  '¢': { name: 'cent', plural: 'cents', symbol: '¢' },  // 美分
+};
+
+// 分数单词映射
+const FRACTION_WORDS: Record<string, string> = {
+  '1/2': 'half',
+  '1/3': 'third',
+  '1/4': 'quarter',
+  '1/5': 'fifth',
+  '1/8': 'eighth',
+  '1/10': 'tenth',
+  '2/3': 'two thirds',
+  '3/4': 'three quarters',
+  '2/5': 'two fifths',
+  '3/5': 'three fifths',
+  '4/5': 'four fifths',
+};
+
+/**
+ * 将数字转换为英文单词
+ * 支持整数和小数
+ */
+const numberToWords = (num: number | string): string[] => {
+  const results: string[] = [];
+  
+  // 转为数字
+  const numStr = typeof num === 'string' ? num : String(num);
+  
+  // 处理小数
+  if (numStr.includes('.')) {
+    const [intPart, decPart] = numStr.split('.');
+    const intWords = numberToWords(intPart)[0] || '';
+    const decWords = decPart.split('').map(d => ONES[parseInt(d)]).filter(w => w).join(' ');
+    if (intWords) {
+      results.push(`${intWords} point ${decWords}`);
+      // 也添加不带 point 的版本（有些识别器会省略）
+      results.push(`${intWords} ${decWords}`);
+    }
+    return results;
+  }
+  
+  const n = parseInt(numStr);
+  if (isNaN(n) || n < 0) return [numStr];
+  
+  // 保留原始数字字符串
+  results.push(numStr);
+  
+  if (n === 0) {
+    results.push('zero', 'oh');  // oh 常用于电话号码等
+    return results;
+  }
+  
+  // 转换为单词
+  const parts: string[] = [];
+  
+  if (n >= 1000000000) {
+    const billions = Math.floor(n / 1000000000);
+    parts.push(billions === 1 ? 'one billion' : `${numberToWords(billions)[1]} billion`);
+    const remainder = n % 1000000000;
+    if (remainder > 0) {
+      parts.push(numberToWords(remainder)[1]);
+    }
+  } else if (n >= 1000000) {
+    const millions = Math.floor(n / 1000000);
+    parts.push(millions === 1 ? 'one million' : `${numberToWords(millions)[1]} million`);
+    const remainder = n % 1000000;
+    if (remainder > 0) {
+      parts.push(numberToWords(remainder)[1]);
+    }
+  } else if (n >= 1000) {
+    const thousands = Math.floor(n / 1000);
+    parts.push(thousands === 1 ? 'one thousand' : `${numberToWords(thousands)[1]} thousand`);
+    const remainder = n % 1000;
+    if (remainder > 0) {
+      parts.push(numberToWords(remainder)[1]);
+    }
+  } else if (n >= 100) {
+    const hundreds = Math.floor(n / 100);
+    parts.push(`${ONES[hundreds]} hundred`);
+    const remainder = n % 100;
+    if (remainder > 0) {
+      parts.push(numberToWords(remainder)[1]);
+    }
+  } else if (n >= 20) {
+    const tens = Math.floor(n / 10);
+    const ones = n % 10;
+    if (ones === 0) {
+      parts.push(TENS[tens]);
+    } else {
+      parts.push(`${TENS[tens]} ${ONES[ones]}`);
+    }
+  } else if (n >= 10) {
+    parts.push(TEENS[n - 10]);
+  } else {
+    parts.push(ONES[n]);
+  }
+  
+  const wordForm = parts.join(' ').trim();
+  if (wordForm) {
+    results.push(wordForm);
+    // 添加带连字符的版本（如 forty-five）
+    if (wordForm.includes(' ')) {
+      results.push(wordForm.replace(/(\w+) (\w+)/g, '$1-$2'));
+    }
+    // 添加 "a" 开头的版本（如 a hundred）
+    if (wordForm.startsWith('one hundred') || wordForm.startsWith('one thousand') || 
+        wordForm.startsWith('one million') || wordForm.startsWith('one billion')) {
+      results.push(wordForm.replace(/^one /, 'a '));
+    }
+  }
+  
+  return results;
+};
+
+/**
+ * 将序数转换为英文单词
+ * 例如：1st -> first, 21st -> twenty-first
+ */
+const ordinalToWords = (ordinal: string): string[] => {
+  const results: string[] = [ordinal.toLowerCase()];
+  
+  // 提取数字部分
+  const match = ordinal.match(/^(\d+)(st|nd|rd|th)$/i);
+  if (!match) return results;
+  
+  const num = parseInt(match[1]);
+  const suffix = match[2].toLowerCase();
+  
+  // 1-19 的序数
+  if (num >= 1 && num <= 19) {
+    if (num <= 9) {
+      results.push(ORDINAL_ONES[num]);
+    } else {
+      results.push(ORDINAL_TEENS[num - 10]);
+    }
+    return results;
+  }
+  
+  // 20+ 的序数
+  const tens = Math.floor(num / 10);
+  const ones = num % 10;
+  
+  if (ones === 0) {
+    results.push(ORDINAL_TENS[tens]);
+  } else {
+    const tenWord = TENS[tens];
+    const oneWord = ORDINAL_ONES[ones];
+    results.push(`${tenWord}-${oneWord}`);
+    results.push(`${tenWord} ${oneWord}`);
+  }
+  
+  return results;
+};
+
+/**
+ * 将年份转换为可能的读法
+ * 例如：2023 -> "twenty twenty-three" 或 "two thousand twenty-three"
+ */
+const yearToWords = (year: string): string[] => {
+  const results: string[] = [year];
+  const y = parseInt(year);
+  
+  if (isNaN(y) || year.length !== 4) return results;
+  
+  const firstTwo = Math.floor(y / 100);
+  const lastTwo = y % 100;
+  
+  // 方式1: 分成两部分读 (如 20-23)
+  if (firstTwo >= 10 && firstTwo <= 99) {
+    const firstPart = numberToWords(firstTwo)[1];
+    const lastPart = lastTwo === 0 ? 'hundred' : numberToWords(lastTwo)[1];
+    results.push(`${firstPart} ${lastPart}`);
+    if (lastTwo > 0 && lastTwo < 20) {
+      // 带连字符的版本
+      const lastPartHyphen = numberToWords(lastTwo).find(w => w.includes('-')) || lastPart;
+      results.push(`${firstPart} ${lastPartHyphen}`);
+    }
+  }
+  
+  // 方式2: 作为完整数字读 (如 two thousand twenty-three)
+  results.push(numberToWords(y)[1]);
+  
+  // 方式3: "two thousand and twenty-three" (英式英语)
+  if (lastTwo > 0) {
+    results.push(`${numberToWords(firstTwo * 100)[1]} and ${numberToWords(lastTwo)[1]}`);
+  }
+  
+  return results;
+};
+
+/**
+ * 将时间转换为可能的读法
+ * 例如：9:30 -> "nine thirty", "half past nine"
+ */
+const timeToWords = (time: string): string[] => {
+  const results: string[] = [time];
+  
+  const match = time.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return results;
+  
+  const hour = parseInt(match[1]);
+  const minute = parseInt(match[2]);
+  
+  const hourWord = numberToWords(hour)[1];
+  
+  // 整点
+  if (minute === 0) {
+    results.push(`${hourWord} o'clock`);
+    results.push(`${hourWord}`);
+    results.push(`${hour} o'clock`);
+    return results;
+  }
+  
+  // 常见的分钟读法
+  const minuteWord = numberToWords(minute)[1];
+  results.push(`${hourWord} ${minuteWord}`);
+  results.push(`${hour} ${minuteWord}`);
+  
+  // 半小时
+  if (minute === 30) {
+    results.push(`half past ${hourWord}`);
+  }
+  
+  // 一刻钟
+  if (minute === 15) {
+    results.push(`quarter past ${hourWord}`);
+    results.push(`${hourWord} fifteen`);
+  }
+  
+  // 三刻钟
+  if (minute === 45) {
+    const nextHour = hour === 12 ? 1 : hour + 1;
+    const nextHourWord = numberToWords(nextHour)[1];
+    results.push(`quarter to ${nextHourWord}`);
+    results.push(`${hourWord} forty-five`);
+  }
+  
+  return results;
+};
+
+/**
+ * 将分数转换为可能的读法
+ * 例如：1/2 -> "one half", "a half"
+ */
+const fractionToWords = (fraction: string): string[] => {
+  const results: string[] = [fraction];
+  
+  // 预定义的常见分数
+  if (FRACTION_WORDS[fraction]) {
+    results.push(FRACTION_WORDS[fraction]);
+  }
+  
+  const match = fraction.match(/^(\d+)\/(\d+)$/);
+  if (!match) return results;
+  
+  const numerator = parseInt(match[1]);
+  const denominator = parseInt(match[2]);
+  
+  const numWords = numberToWords(numerator)[1];
+  
+  // 分母转序数
+  const getOrdinal = (n: number): string => {
+    if (n === 1) return 'whole';
+    if (n === 2) return 'half';
+    if (n === 3) return 'third';
+    if (n === 4) return 'quarter';
+    
+    // 用序数词规则
+    if (n >= 1 && n <= 19) {
+      if (n <= 9) return ORDINAL_ONES[n];
+      return ORDINAL_TEENS[n - 10];
+    }
+    
+    // 更大的分母
+    const tens = Math.floor(n / 10);
+    const ones = n % 10;
+    if (ones === 0) {
+      return ORDINAL_TENS[tens];
+    }
+    return `${TENS[tens]}-${ORDINAL_ONES[ones]}`;
+  };
+  
+  const denomWord = getOrdinal(denominator);
+  
+  // 单数形式
+  if (numerator === 1) {
+    results.push(`one ${denomWord}`);
+    results.push(`a ${denomWord}`);
+  } else {
+    // 复数形式
+    const pluralDenom = denomWord.endsWith('s') ? denomWord : `${denomWord}s`;
+    results.push(`${numWords} ${pluralDenom}`);
+    // 特殊处理 quarter
+    if (denomWord === 'quarter') {
+      results.push(`${numWords} quarters`);
+    }
+  }
+  
+  return results;
+};
+
+/**
+ * 将货币转换为可能的读法
+ * 例如：$100 -> "one hundred dollars", "a hundred bucks"
+ */
+const currencyToWords = (currency: string): string[] => {
+  const results: string[] = [currency];
+  
+  // 匹配货币符号 + 数字
+  const symbolMatch = currency.match(/^([¢$£€¥₹₽₩₺₴₸₫฿₱₳₵₡₭₮₥]+)(\d+\.?\d*)$/);
+  if (symbolMatch) {
+    const symbol = symbolMatch[1];
+    const amount = parseFloat(symbolMatch[2]);
+    const currencyInfo = CURRENCY_SYMBOLS[symbol];
+    
+    if (currencyInfo && !isNaN(amount)) {
+      const amountWords = numberToWords(amount);
+      
+      for (const word of amountWords) {
+        // 数字形式
+        if (/^\d/.test(word)) {
+          results.push(`${word} ${currencyInfo.plural}`);
+        } else {
+          // 单词形式
+          results.push(`${word} ${currencyInfo.plural}`);
+          // "a" 开头的版本
+          if (word.startsWith('a ') || word.startsWith('one ')) {
+            results.push(`${word.replace(/^(a|one) /, '')} ${currencyInfo.name}`);
+          }
+        }
+      }
+      
+      // 特殊：美元口语 "bucks"
+      if (symbol === '$') {
+        for (const word of amountWords) {
+          if (!/^\d/.test(word) && !word.includes('dollar')) {
+            results.push(`${word} bucks`);
+          }
+        }
+      }
+      
+      // 特殊：英镑口语 "quid"
+      if (symbol === '£') {
+        for (const word of amountWords) {
+          if (!/^\d/.test(word) && !word.includes('pound')) {
+            results.push(`${word} quid`);
+          }
+        }
+      }
+    }
+  }
+  
+  // 匹配数字 + 货币名称（如 "100 dollars"）
+  const nameMatch = currency.match(/^(\d+\.?\d*)\s*(dollars?|pounds?|euros?|yen|won|rupees?|rubles?|cents?|bucks|quid)$/i);
+  if (nameMatch) {
+    const amount = parseFloat(nameMatch[1]);
+    const currencyName = nameMatch[2].toLowerCase();
+    
+    if (!isNaN(amount)) {
+      const amountWords = numberToWords(amount);
+      for (const word of amountWords) {
+        results.push(`${word} ${currencyName}`);
+      }
+    }
+  }
+  
+  return results;
+};
+
+/**
+ * 将百分比转换为可能的读法
+ * 例如：50% -> "fifty percent"
+ */
+const percentToWords = (percent: string): string[] => {
+  const results: string[] = [percent];
+  
+  const match = percent.match(/^(\d+\.?\d*)%$/);
+  if (!match) return results;
+  
+  const num = parseFloat(match[1]);
+  if (isNaN(num)) return results;
+  
+  const numWords = numberToWords(num);
+  for (const word of numWords) {
+    results.push(`${word} percent`);
+  }
+  
+  return results;
+};
+
+/**
+ * 特殊符号转换
+ */
+const symbolToWords = (symbol: string): string[] => {
+  const symbolMap: Record<string, string[]> = {
+    '&': ['and', 'ampersand'],
+    '+': ['plus', 'and', 'with'],
+    '@': ['at'],
+    '#': ['number', 'hash', 'pound'],
+    '*': ['star', 'asterisk'],
+    '/': ['slash', 'per', 'over'],
+    '\\': ['backslash'],
+    '=': ['equals', 'equal to'],
+    '<': ['less than'],
+    '>': ['greater than'],
+    '~': ['approximately', 'about', 'tilde'],
+    '≈': ['approximately', 'about'],
+    '≠': ['not equal to'],
+    '≤': ['less than or equal to'],
+    '≥': ['greater than or equal to'],
+    '×': ['times', 'multiplied by'],
+    '÷': ['divided by', 'over'],
+    '±': ['plus or minus'],
+    '°': ['degrees', 'degree'],
+    '°C': ['degrees celsius', 'celsius'],
+    '°F': ['degrees fahrenheit', 'fahrenheit'],
+    '℃': ['degrees celsius', 'celsius'],
+    '℉': ['degrees fahrenheit', 'fahrenheit'],
+    'km/h': ['kilometers per hour', 'kilometers an hour', 'km per hour'],
+    'mph': ['miles per hour', 'miles an hour'],
+    'kg': ['kilograms', 'kilogram', 'kilo', 'kilos'],
+    'g': ['grams', 'gram'],
+    'mg': ['milligrams', 'milligram'],
+    'lb': ['pounds', 'pound'],
+    'oz': ['ounces', 'ounce'],
+    'ft': ['feet', 'foot'],
+    'in': ['inches', 'inch'],
+    'm': ['meters', 'meter'],
+    'cm': ['centimeters', 'centimeter'],
+    'mm': ['millimeters', 'millimeter'],
+    'km': ['kilometers', 'kilometer'],
+    'mL': ['milliliters', 'milliliter', 'ml'],
+    'L': ['liters', 'liter'],
+    'kWh': ['kilowatt hours', 'kilowatt hour'],
+    'W': ['watts', 'watt'],
+    'kW': ['kilowatts', 'kilowatt'],
+    'V': ['volts', 'volt'],
+    'A': ['amperes', 'ampere', 'amps', 'amp'],
+  };
+  
+  const lower = symbol.toLowerCase();
+  if (symbolMap[symbol] || symbolMap[lower]) {
+    return [symbol, ...(symbolMap[symbol] || symbolMap[lower] || [])];
+  }
+  
+  return [symbol];
+};
+
+/**
+ * 为目标词生成所有可能的语音识别变体
+ * 这是最核心的函数，整合所有变体生成逻辑
+ */
+const generateVariants = (word: string): string[] => {
+  const results: string[] = [word.toLowerCase()];
+  const w = word.trim();
+  
+  // 1. 货币符号开头（$100, £50 等）
+  if (/^[¢$£€¥₹₽₩₺₴₸₫฿₱₳₵₡₭₮₥]/.test(w)) {
+    results.push(...currencyToWords(w));
+    // 也处理不带符号的数字部分
+    const numPart = w.replace(/^[¢$£€¥₹₽₩₺₴₸₫฿₱₳₵₡₭₮₥]+/, '');
+    if (numPart && /^\d/.test(numPart)) {
+      results.push(...numberToWords(numPart));
+    }
+  }
+  
+  // 2. 百分比（50%）
+  if (/^\d+\.?\d*%$/.test(w)) {
+    results.push(...percentToWords(w));
+  }
+  
+  // 3. 序数词（1st, 2nd, 21st）
+  if (/^\d+(st|nd|rd|th)$/i.test(w)) {
+    results.push(...ordinalToWords(w));
+    // 也生成数字部分的变体
+    const numPart = w.replace(/(st|nd|rd|th)$/i, '');
+    results.push(...numberToWords(numPart));
+  }
+  
+  // 4. 分数（1/2, 3/4）
+  if (/^\d+\/\d+$/.test(w)) {
+    results.push(...fractionToWords(w));
+  }
+  
+  // 5. 时间（9:30）
+  if (/^\d{1,2}:\d{2}$/.test(w)) {
+    results.push(...timeToWords(w));
+  }
+  
+  // 6. 年份（1900-2099）
+  if (/^(19|20)\d{2}$/.test(w)) {
+    results.push(...yearToWords(w));
+  }
+  
+  // 7. 纯数字（整数或小数）
+  if (/^\d+\.?\d*$/.test(w) && !results.some(r => r !== w.toLowerCase())) {
+    results.push(...numberToWords(w));
+  }
+  
+  // 8. 特殊符号和单位
+  if (/^[&+@#*/\\=<>~≈≠≤≥×÷±°℃℉]+$/.test(w) || 
+      /^(km\/h|mph|kg|g|mg|lb|oz|ft|in|m|cm|mm|mL|L|kWh|W|kW|V|A)$/i.test(w) ||
+      /^°[CF]$/.test(w)) {
+    results.push(...symbolToWords(w));
+  }
+  
+  // 9. 数字+单位组合（如 5kg, 10km）
+  const unitMatch = w.match(/^(\d+\.?\d*)(kg|g|mg|lb|oz|ft|in|m|cm|mm|km|mL|L|kWh|W|kW|V|A)$/i);
+  if (unitMatch) {
+    const num = unitMatch[1];
+    const unit = unitMatch[2];
+    const numWords = numberToWords(num);
+    const unitWords = symbolToWords(unit);
+    for (const nw of numWords) {
+      for (const uw of unitWords) {
+        results.push(`${nw} ${uw}`);
+      }
+    }
+  }
+  
+  // 10. 货币名称形式（100 dollars）
+  if (/^\d+\.?\d*\s*(dollars?|pounds?|euros?|yen|won|rupees?|rubles?|cents?|bucks|quid)$/i.test(w)) {
+    results.push(...currencyToWords(w));
+  }
+  
+  // 去重并返回
+  return [...new Set(results.map(r => r.toLowerCase()))];
+};
+
+/**
+ * 检查两个单词是否匹配（支持变体匹配）
+ */
+const wordsMatchWithVariants = (targetWord: string, recognizedWord: string): boolean => {
+  const targetLower = targetWord.toLowerCase();
+  const recognizedLower = recognizedWord.toLowerCase();
+  
+  // 1. 直接匹配（使用原有的精确匹配逻辑）
+  if (wordsMatch(targetLower, recognizedLower)) {
+    return true;
+  }
+  
+  // 2. 生成目标词的所有变体
+  const targetVariants = generateVariants(targetWord);
+  
+  // 3. 生成识别词的所有变体（反向匹配）
+  const recognizedVariants = generateVariants(recognizedWord);
+  
+  // 4. 检查是否有任何变体匹配
+  for (const tv of targetVariants) {
+    for (const rv of recognizedVariants) {
+      if (wordsMatch(tv, rv)) {
+        return true;
+      }
+    }
+  }
+  
+  // 5. 检查交叉匹配：目标词变体是否直接等于识别词
+  for (const tv of targetVariants) {
+    if (tv === recognizedLower || wordsMatch(tv, recognizedLower)) {
+      return true;
+    }
+  }
+  
+  // 6. 检查识别词变体是否直接等于目标词
+  for (const rv of recognizedVariants) {
+    if (rv === targetLower || wordsMatch(rv, targetLower)) {
+      return true;
+    }
+  }
+  
+  return false;
+};
+
 /**
  * 将连字符单词拆分成多个部分
  * 例如：cat-like -> ['cat', 'like']
@@ -164,8 +771,9 @@ const splitHyphenatedWord = (word: string): string[] => {
 };
 
 /**
- * 智能匹配：检查目标单词是否被识别（支持连字符拆分匹配）
+ * 智能匹配：检查目标单词是否被识别（支持连字符拆分匹配和变体匹配）
  * 例如：targetWord="cat-like" 可以匹配 recognizedWords 中的 "cat" 和 "like"
+ * 例如：targetWord="45" 可以匹配 recognizedWords 中的 "forty-five"
  */
 const smartWordMatch = (
   targetWord: string,
@@ -174,10 +782,10 @@ const smartWordMatch = (
 ): { matched: boolean; usedIndices: number[] } => {
   const targetLower = targetWord.toLowerCase();
   
-  // 先尝试直接匹配
+  // 先尝试直接匹配（支持变体）
   for (let i = 0; i < recognizedWords.length; i++) {
     if (usedIndices.has(i)) continue;
-    if (wordsMatch(targetLower, recognizedWords[i].toLowerCase())) {
+    if (wordsMatchWithVariants(targetLower, recognizedWords[i])) {
       return { matched: true, usedIndices: [i] };
     }
   }
@@ -192,7 +800,7 @@ const smartWordMatch = (
       let partFound = false;
       for (let i = 0; i < recognizedWords.length; i++) {
         if (usedIndices.has(i) || foundIndices.includes(i)) continue;
-        if (wordsMatch(part, recognizedWords[i].toLowerCase())) {
+        if (wordsMatchWithVariants(part, recognizedWords[i])) {
           foundIndices.push(i);
           partFound = true;
           break;
@@ -1745,11 +2353,7 @@ export default function SentencePracticeScreen() {
     
     // 获取未完成的单词列表
     const incompleteWords = currentWordStatuses.filter(w => !w.isPunctuation && !w.revealed);
-    console.log('[handleLongTextInput] 未完成单词:', incompleteWords.map(w => ({ word: w.word, index: w.index, revealed: w.revealed })));
-    if (incompleteWords.length === 0) {
-      console.log('[handleLongTextInput] 没有未完成的单词，跳过');
-      return;
-    }
+    if (incompleteWords.length === 0) return;
     
     // 按位置排序
     incompleteWords.sort((a, b) => a.index - b.index);
@@ -1765,8 +2369,6 @@ export default function SentencePracticeScreen() {
       .split(/\s+/)
       .filter(w => w.length > 0);
     
-    console.log('[handleLongTextInput] 输入单词:', inputWords);
-    
     if (inputWords.length === 0) return;
     
     // 记录匹配成功的单词索引
@@ -1774,17 +2376,15 @@ export default function SentencePracticeScreen() {
     
     // 无序匹配：对于每个输入单词，尝试匹配所有未完成的单词
     // 这样可以处理用户念的单词顺序和句子顺序不一致的情况
+    // 支持数字/货币/符号等变体匹配
     for (const inputWord of inputWords) {
       for (const targetWord of incompleteWords) {
         // 如果这个目标单词已经被匹配过，跳过
         if (matchedIndices.includes(targetWord.index)) continue;
         
-        // 如果匹配成功
-        const matched = wordsMatch(targetWord.word, inputWord);
-        console.log(`[handleLongTextInput] 比较: inputWord="${inputWord}" vs targetWord="${targetWord.word}" => ${matched}`);
-        if (matched) {
+        // 如果匹配成功（支持变体匹配）
+        if (wordsMatchWithVariants(targetWord.word, inputWord)) {
           matchedIndices.push(targetWord.index);
-          console.log(`[handleLongTextInput] 匹配成功! matchedIndices: ${matchedIndices.join(',')}`);
           break; // 匹配成功后跳出内层循环，处理下一个输入单词
         }
       }
@@ -1866,7 +2466,7 @@ export default function SentencePracticeScreen() {
         confirmTimerRef.current = null;
       }
       
-      const matchedWord = incompleteWords.find(w => wordsMatch(w.word, actualInput));
+      const matchedWord = incompleteWords.find(w => wordsMatchWithVariants(w.word, actualInput));
       
       if (matchedWord) {
         // 匹配成功，显示单词
@@ -1895,7 +2495,7 @@ export default function SentencePracticeScreen() {
     // 位置优先：找到第一个匹配的单词
     const matchedWord = incompleteWords
       .sort((a, b) => a.index - b.index)
-      .find(w => wordsMatch(w.word, actualInput));
+      .find(w => wordsMatchWithVariants(w.word, actualInput));
 
     if (matchedWord) {
       // 检查是否有更长的可能匹配
@@ -2351,12 +2951,8 @@ export default function SentencePracticeScreen() {
             // ===== 方案A：自动匹配模式 =====
             // 极简风格：显示识别结果，匹配到的变绿，不要任何红色提示
             
-            console.log('[方案A] 原始句子:', currentSentence.text);
-            console.log('[方案A] 识别结果:', recognizedText);
             const { score, wordMatches, recognizedWordMatches: recMatches } = calculateMatchScore(recognizedText, currentSentence.text);
             const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
-            console.log('[方案A] wordMatches:', wordMatches);
-            console.log('[方案A] matchedWords:', matchedWords);
             
             // 显示用户念的内容，并把匹配到的单词标绿
             setVoiceResultText(recognizedText);
