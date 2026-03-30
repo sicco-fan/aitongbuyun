@@ -6,7 +6,6 @@
 import { Router, type Request, type Response } from 'express';
 import { Pool } from 'pg';
 import multer from 'multer';
-import { S3Storage, Config } from 'coze-coding-dev-sdk';
 import { getUserMiddleware, requireAdmin, requireAuth } from '../middleware/auth';
 
 const router = Router();
@@ -18,15 +17,6 @@ const pool = new Pool({
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-});
-
-// 初始化对象存储
-const storage = new S3Storage({
-  endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-  accessKey: '',
-  secretKey: '',
-  bucketName: process.env.COZE_BUCKET_NAME,
-  region: 'cn-beijing',
 });
 
 // 应用中间件
@@ -110,16 +100,10 @@ router.get('/me', requireAuth, async (req: Request, res: Response) => {
     
     const user = result.rows[0];
     
-    // 如果有头像 key，生成签名 URL
-    if (user.avatar_url && !user.avatar_url.startsWith('http')) {
-      try {
-        user.avatar_url = await storage.generatePresignedUrl({ 
-          key: user.avatar_url, 
-          expireTime: 7 * 24 * 60 * 60 
-        });
-      } catch (e) {
-        console.error('[用户管理] 生成头像URL失败:', e);
-      }
+    // 头像已经是 Base64 格式（data:image/...;base64,...），直接返回
+    // 如果是旧的对象存储 key，返回 null（前端可以显示默认头像）
+    if (user.avatar_url && !user.avatar_url.startsWith('data:') && !user.avatar_url.startsWith('http')) {
+      user.avatar_url = null;
     }
     
     res.json({ success: true, user });
@@ -175,24 +159,16 @@ router.post('/avatar', upload.single('file'), async (req: Request, res: Response
       return res.status(400).json({ error: '请选择图片' });
     }
     
-    // 上传到对象存储
-    const key = `avatars/${userId}/${Date.now()}-${req.file.originalname}`;
-    await storage.putObject({
-      key,
-      body: req.file.buffer,
-      contentType: req.file.mimetype,
-    });
+    // 将头像转为 Base64 Data URL 存储到数据库
+    const base64Avatar = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
     
     // 更新数据库
     await pool.query(
       'UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2',
-      [key, userId]
+      [base64Avatar, userId]
     );
     
-    // 生成签名 URL（有效期 7 天）
-    const avatarUrl = await storage.generatePresignedUrl({ key, expireTime: 7 * 24 * 60 * 60 });
-    
-    res.json({ success: true, avatar_url: avatarUrl });
+    res.json({ success: true, avatar_url: base64Avatar });
   } catch (error: any) {
     console.error('[用户管理] 上传头像失败:', error);
     res.status(500).json({ error: error.message || '上传头像失败' });

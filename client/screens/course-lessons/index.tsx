@@ -1,22 +1,23 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   ScrollView,
   TouchableOpacity,
   View,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTask } from '@/contexts/TaskContext';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
-import { TaskProgressBar } from '@/components/TaskProgressBar';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { getLastLearningPosition, LastLearningPosition } from '@/utils/learningStorage';
+import { saveAudioToLocal, generateCourseAudioKey } from '@/utils/audioStorage';
+import RNSSE from 'react-native-sse';
 
 interface Lesson {
   id: number;
@@ -43,18 +44,15 @@ export default function CourseLessonsScreen() {
   const params = useSafeSearchParams<{ courseId: string }>();
   const courseId = params.courseId ? parseInt(params.courseId, 10) : null;
   const { user } = useAuth();
-  const { createTask, activeTasks, startPolling, stopPolling } = useTask();
+  const scrollViewRef = useRef<ScrollView>(null);
   
   const [course, setCourse] = useState<Course | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastLearningPosition, setLastLearningPosition] = useState<LastLearningPosition | null>(null);
-
-  // 检查当前课程是否有进行中的任务
-  const hasActiveTask = activeTasks.some(
-    t => t.resource_id === courseId && t.task_type === 'generate_course_audio'
-  );
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState({ current: 0, total: 0, lessonTitle: '' });
 
   const fetchData = useCallback(async () => {
     if (!courseId) return;
@@ -119,17 +117,7 @@ export default function CourseLessonsScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchData();
-      
-      // 开始轮询任务状态
-      if (user?.id) {
-        startPolling(user.id);
-      }
-      
-      return () => {
-        // 页面离开时停止轮询（但任务继续在后台执行）
-        stopPolling();
-      };
-    }, [fetchData, user?.id, startPolling, stopPolling])
+    }, [fetchData])
   );
 
   const handleRefresh = useCallback(() => {
@@ -152,18 +140,68 @@ export default function CourseLessonsScreen() {
   }, [router]);
 
   /**
-   * 生成全部音频
+   * 生成全部音频（实时流式生成，保存到本地）
    */
   const handleGenerateAllAudio = useCallback(async () => {
-    if (!user?.id || !courseId || !course) return;
+    if (!courseId || !course) return;
     
-    await createTask(
-      user.id,
-      'generate_course_audio',
-      courseId,
-      course.title
+    // 保存已确认的 courseId，用于 SSE 回调
+    const currentCourseId = courseId;
+    
+    setIsGenerating(true);
+    setGenerateProgress({ current: 0, total: 0, lessonTitle: '' });
+    
+    // 使用 SSE 实时生成音频
+    const sse = new RNSSE(
+      `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/${currentCourseId}/generate-audio`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      }
     );
-  }, [user?.id, courseId, course, createTask]);
+    
+    sse.addEventListener('message', async (event) => {
+      try {
+        if (!event.data || event.data === '[DONE]') {
+          sse.close();
+          setIsGenerating(false);
+          setGenerateProgress({ current: 0, total: 0, lessonTitle: '' });
+          Alert.alert('完成', '音频生成完成');
+          return;
+        }
+        
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'progress') {
+          setGenerateProgress({
+            current: data.current,
+            total: data.total,
+            lessonTitle: data.lessonTitle || '',
+          });
+        } else if (data.type === 'audio') {
+          // 保存音频到本地
+          const audioKey = generateCourseAudioKey(currentCourseId, data.lessonId, data.sentenceIndex);
+          await saveAudioToLocal(audioKey, data.audioBase64);
+          console.log(`[音频生成] 已保存: ${audioKey}`);
+        } else if (data.type === 'error') {
+          Alert.alert('错误', data.message);
+          sse.close();
+          setIsGenerating(false);
+        }
+      } catch (err) {
+        console.error('解析SSE消息失败:', err);
+      }
+    });
+    
+    sse.addEventListener('error', (event) => {
+      console.error('SSE连接错误:', event);
+      setIsGenerating(false);
+      Alert.alert('错误', '连接失败，请重试');
+    });
+  }, [courseId, course]);
 
   if (loading) {
     return (
@@ -181,6 +219,7 @@ export default function CourseLessonsScreen() {
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
       <ScrollView
+        ref={scrollViewRef}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
@@ -207,7 +246,7 @@ export default function CourseLessonsScreen() {
                 {course?.description || '选择一课开始学习'}
               </ThemedText>
             </View>
-            {!hasActiveTask && (
+            {!isGenerating && (
               <TouchableOpacity 
                 style={styles.generateButton} 
                 onPress={handleGenerateAllAudio}
@@ -217,10 +256,24 @@ export default function CourseLessonsScreen() {
               </TouchableOpacity>
             )}
           </View>
+          
+          {/* 生成进度 */}
+          {isGenerating && generateProgress.total > 0 && (
+            <View style={styles.progressContainer}>
+              <View style={styles.progressBar}>
+                <View 
+                  style={[
+                    styles.progressFill, 
+                    { width: `${(generateProgress.current / generateProgress.total) * 100}%` }
+                  ]} 
+                />
+              </View>
+              <ThemedText variant="caption" color={theme.textMuted}>
+                {generateProgress.current}/{generateProgress.total} - {generateProgress.lessonTitle}
+              </ThemedText>
+            </View>
+          )}
         </View>
-
-        {/* 任务进度条 */}
-        {courseId && <TaskProgressBar courseId={courseId} />}
 
         {lessons.length === 0 ? (
           <View style={styles.emptyContainer}>

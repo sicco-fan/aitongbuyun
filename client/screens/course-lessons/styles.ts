@@ -44,6 +44,21 @@ export const createStyles = (theme: Theme) => {
       fontWeight: '600',
       color: theme.primary,
     },
+    progressContainer: {
+      marginTop: Spacing.md,
+    },
+    progressBar: {
+      height: 4,
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: 2,
+      overflow: 'hidden',
+      marginBottom: Spacing.xs,
+    },
+    progressFill: {
+      height: '100%',
+      backgroundColor: theme.primary,
+      borderRadius: 2,
+    },
     lessonCard: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.md,

@@ -732,8 +732,8 @@ router.get('/learners', async (req, res) => {
         phone: userInfo.phone,
         total_score: Math.round(learner.total_score * 100) / 100,
         total_duration_minutes: Math.round(learner.total_duration / 60),
-        progress_percent: (totalSentences || 0) > 0 
-          ? Math.min(Math.round((learner.sentences_completed / totalSentences) * 100), 100) 
+        progress_percent: (totalSentences ?? 0) > 0 
+          ? Math.min(Math.round((learner.sentences_completed / (totalSentences ?? 1)) * 100), 100) 
           : 0,
       };
     });
