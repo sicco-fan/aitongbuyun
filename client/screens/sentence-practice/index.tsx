@@ -880,6 +880,7 @@ const generateVariants = (word: string): string[] => {
 
 /**
  * 检查两个单词是否匹配（支持变体匹配）
+ * 支持缩写词、数字、时间、货币等多种变体匹配
  */
 const wordsMatchWithVariants = (targetWord: string, recognizedWord: string): boolean => {
   const targetLower = targetWord.toLowerCase();
@@ -890,31 +891,39 @@ const wordsMatchWithVariants = (targetWord: string, recognizedWord: string): boo
     return true;
   }
   
-  // 2. 生成目标词的所有变体
+  // 2. 精确相等匹配（忽略引号格式差异）
+  // 处理 "im" vs "i'm" 等情况：移除所有引号后比较
+  const normalizeForCompare = (s: string) => s.replace(/['\u2018\u2019\u201A\u201B\u2032\u2035\u02B9\u02BB\u02BC\u02BD\uFF07\u0060\u00B4]/g, '').toLowerCase();
+  if (normalizeForCompare(targetLower) === normalizeForCompare(recognizedLower)) {
+    return true;
+  }
+  
+  // 3. 生成目标词的所有变体
   const targetVariants = generateVariants(targetWord);
   
-  // 3. 生成识别词的所有变体（反向匹配）
+  // 4. 生成识别词的所有变体（反向匹配）
   const recognizedVariants = generateVariants(recognizedWord);
   
-  // 4. 检查是否有任何变体匹配
+  // 5. 检查是否有任何变体匹配（使用精确相等或标准化比较）
   for (const tv of targetVariants) {
     for (const rv of recognizedVariants) {
-      if (wordsMatch(tv, rv)) {
+      // 变体匹配时，尝试两种方式：精确相等 或 标准化后相等
+      if (tv === rv || normalizeForCompare(tv) === normalizeForCompare(rv)) {
         return true;
       }
     }
   }
   
-  // 5. 检查交叉匹配：目标词变体是否直接等于识别词
+  // 6. 检查交叉匹配：目标词变体是否直接等于识别词（标准化后）
   for (const tv of targetVariants) {
-    if (tv === recognizedLower || wordsMatch(tv, recognizedLower)) {
+    if (tv === recognizedLower || normalizeForCompare(tv) === normalizeForCompare(recognizedLower)) {
       return true;
     }
   }
   
-  // 6. 检查识别词变体是否直接等于目标词
+  // 7. 检查识别词变体是否直接等于目标词（标准化后）
   for (const rv of recognizedVariants) {
-    if (rv === targetLower || wordsMatch(rv, targetLower)) {
+    if (rv === targetLower || normalizeForCompare(rv) === normalizeForCompare(targetLower)) {
       return true;
     }
   }
@@ -953,67 +962,67 @@ const expandContraction = (word: string): string[] => {
   const contractionMap: Record<string, string[]> = {
     // 's = is (主谓一致)
     "it's": ["it is", "its", "it s"],
-    "he's": ["he is", "he s"],
-    "she's": ["she is", "she s"],
-    "that's": ["that is", "that s"],
-    "what's": ["what is", "what s"],
-    "who's": ["who is", "who s"],
-    "where's": ["where is", "where s"],
-    "when's": ["when is", "when s"],
-    "why's": ["why is", "why s"],
-    "how's": ["how is", "how s"],
-    "there's": ["there is", "there s"],
-    "here's": ["here is", "here s"],
+    "he's": ["he is", "hes", "he s"],
+    "she's": ["she is", "shes", "she s"],
+    "that's": ["that is", "thats", "that s"],
+    "what's": ["what is", "whats", "what s"],
+    "who's": ["who is", "whos", "who s"],
+    "where's": ["where is", "wheres", "where s"],
+    "when's": ["when is", "whens", "when s"],
+    "why's": ["why is", "whys", "why s"],
+    "how's": ["how is", "hows", "how s"],
+    "there's": ["there is", "theres", "there s"],
+    "here's": ["here is", "heres", "here s"],
     
     // 'm = am
-    "i'm": ["i am", "im"],
+    "i'm": ["i am", "im", "i m"],
     
     // 're = are
-    "you're": ["you are", "youre"],
-    "we're": ["we are", "were"],
-    "they're": ["they are", "theyre"],
+    "you're": ["you are", "youre", "you re"],
+    "we're": ["we are", "were", "we re"],
+    "they're": ["they are", "theyre", "they re"],
     
     // 've = have
-    "i've": ["i have", "ive"],
-    "you've": ["you have", "youve"],
-    "we've": ["we have", "weve"],
-    "they've": ["they have", "theyve"],
+    "i've": ["i have", "ive", "i ve"],
+    "you've": ["you have", "youve", "you ve"],
+    "we've": ["we have", "weve", "we ve"],
+    "they've": ["they have", "theyve", "they ve"],
     
     // 'd = would/had
-    "i'd": ["i would", "i had", "id"],
-    "you'd": ["you would", "you had", "youd"],
-    "he'd": ["he would", "he had", "hed"],
-    "she'd": ["she would", "she had", "shed"],
-    "we'd": ["we would", "we had", "wed"],
-    "they'd": ["they would", "they had", "theyd"],
+    "i'd": ["i would", "i had", "id", "i d"],
+    "you'd": ["you would", "you had", "youd", "you d"],
+    "he'd": ["he would", "he had", "hed", "he d"],
+    "she'd": ["she would", "she had", "shed", "she d"],
+    "we'd": ["we would", "we had", "wed", "we d"],
+    "they'd": ["they would", "they had", "theyd", "they d"],
     
     // 'll = will
-    "i'll": ["i will", "ill"],
-    "you'll": ["you will", "youll"],
-    "he'll": ["he will", "hell"],
-    "she'll": ["she will", "shell"],
-    "we'll": ["we will", "well"],
-    "they'll": ["they will", "theyll"],
+    "i'll": ["i will", "ill", "i ll"],
+    "you'll": ["you will", "youll", "you ll"],
+    "he'll": ["he will", "hell", "he ll"],
+    "she'll": ["she will", "shell", "she ll"],
+    "we'll": ["we will", "well", "we ll"],
+    "they'll": ["they will", "theyll", "they ll"],
     
     // n't = not
-    "don't": ["do not", "dont"],
-    "doesn't": ["does not", "doesnt"],
-    "didn't": ["did not", "didnt"],
-    "won't": ["will not", "wont"],
-    "wouldn't": ["would not", "wouldnt"],
-    "shouldn't": ["should not", "shouldnt"],
-    "couldn't": ["could not", "couldnt"],
-    "can't": ["cannot", "can not", "cant"],
-    "isn't": ["is not", "isnt"],
-    "aren't": ["are not", "arent"],
-    "wasn't": ["was not", "wasnt"],
-    "weren't": ["were not", "werent"],
-    "hasn't": ["has not", "hasnt"],
-    "haven't": ["have not", "havent"],
-    "hadn't": ["had not", "hadnt"],
+    "don't": ["do not", "dont", "don t"],
+    "doesn't": ["does not", "doesnt", "doesn t"],
+    "didn't": ["did not", "didnt", "didn t"],
+    "won't": ["will not", "wont", "won t"],
+    "wouldn't": ["would not", "wouldnt", "wouldn t"],
+    "shouldn't": ["should not", "shouldnt", "shouldn t"],
+    "couldn't": ["could not", "couldnt", "couldn t"],
+    "can't": ["cannot", "can not", "cant", "can t"],
+    "isn't": ["is not", "isnt", "isn t"],
+    "aren't": ["are not", "arent", "aren t"],
+    "wasn't": ["was not", "wasnt", "wasn t"],
+    "weren't": ["were not", "werent", "weren t"],
+    "hasn't": ["has not", "hasnt", "hasn t"],
+    "haven't": ["have not", "havent", "haven t"],
+    "hadn't": ["had not", "hadnt", "hadn t"],
     
     // let's = let us
-    "let's": ["let us", "lets"],
+    "let's": ["let us", "lets", "let s"],
   };
   
   // 检查是否是已知的缩写词
@@ -1114,6 +1123,9 @@ const calculateMatchScore = (
   // 【重要】与 extractWords 保持一致，保留单词内部的单引号（如 don't, what's）
   const cleanText = (text: string) => 
     text.toLowerCase()
+      // 【新增】处理 extractWords 中使用的 Unicode 引号占位符
+      // \u2774(❴)=左单引号, \u2775(❵)=右单引号, \u2772(❲)=左双引号, \u2773(❳)=右双引号
+      .replace(/[\u2774\u2775\u2772\u2773]/g, ' ')
       // 统一所有类型的单引号为标准单引号（与 extractWords 一致）
       .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035\u02B9\u02BB\u02BC\u02BD\uFF07\u0060\u00B4]/g, "'")
       // 移除独立引号（单词外部的引号，如 'hello' 中的引号）
@@ -1130,6 +1142,14 @@ const calculateMatchScore = (
   const targetWords = target.split(' ').filter(w => w.length > 0);
   const recognizedWords = recognized.split(' ').filter(w => w.length > 0);
   
+  // 【调试日志】输出匹配详情
+  console.log('[匹配调试] 目标文本:', targetText);
+  console.log('[匹配调试] 清理后目标:', target);
+  console.log('[匹配调试] 目标单词:', targetWords);
+  console.log('[匹配调试] 识别文本:', recognizedText);
+  console.log('[匹配调试] 清理后识别:', recognized);
+  console.log('[匹配调试] 识别单词:', recognizedWords);
+  
   if (targetWords.length === 0) {
     return { score: 0, wordMatches: [], recognizedWordMatches: [] };
   }
@@ -1144,6 +1164,8 @@ const calculateMatchScore = (
     if (result.matched) {
       result.usedIndices.forEach(idx => usedIndices.add(idx));
     }
+    // 【调试日志】输出每个单词的匹配结果
+    console.log(`[匹配调试] 目标词 "${targetWord}" -> ${result.matched ? '✓匹配' : '✗未匹配'}`);
   }
   
   // 计算识别结果中每个词的匹配状态
@@ -1162,6 +1184,9 @@ const calculateMatchScore = (
   
   const matchedCount = wordMatches.filter(w => w.isMatch).length;
   const score = Math.round((matchedCount / targetWords.length) * 100);
+  
+  // 【调试日志】输出最终匹配度
+  console.log(`[匹配调试] 匹配度: ${matchedCount}/${targetWords.length} = ${score}%`);
   
   return { score, wordMatches, recognizedWordMatches };
 };
@@ -3157,10 +3182,17 @@ export default function SentencePracticeScreen() {
     // 按位置排序
     incompleteWords.sort((a, b) => a.index - b.index);
     
+    // 【调试日志】输出未完成单词
+    console.log('[长文本匹配] 输入文本:', text);
+    console.log('[长文本匹配] 未完成单词:', incompleteWords.map(w => w.word));
+    
     // 提取输入中的单词（去除标点，转小写）
     // 【重要】与 extractWords 和 cleanText 保持一致，保留单词内部的单引号
     const inputWords = text
       .toLowerCase()
+      // 【新增】处理 extractWords 中使用的 Unicode 引号占位符
+      // \u2774(❴)=左单引号, \u2775(❵)=右单引号, \u2772(❲)=左双引号, \u2773(❳)=右双引号
+      .replace(/[\u2774\u2775\u2772\u2773]/g, ' ')
       // 统一所有类型的单引号为标准单引号
       .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035\u02B9\u02BB\u02BC\u02BD\uFF07\u0060\u00B4]/g, "'")
       // 移除独立引号（单词外部的引号）
@@ -3170,6 +3202,9 @@ export default function SentencePracticeScreen() {
       .replace(/[^\w\s']/g, '') // 移除标点符号（保留字母、数字、空格、单引号）
       .split(/\s+/)
       .filter(w => w.length > 0);
+    
+    // 【调试日志】输出输入单词
+    console.log('[长文本匹配] 输入单词:', inputWords);
     
     if (inputWords.length === 0) return;
     
@@ -3187,10 +3222,14 @@ export default function SentencePracticeScreen() {
         // 如果匹配成功（支持变体匹配）
         if (wordsMatchWithVariants(targetWord.word, inputWord)) {
           matchedIndices.push(targetWord.index);
+          console.log(`[长文本匹配] ✓ "${inputWord}" 匹配 "${targetWord.word}"`);
           break; // 匹配成功后跳出内层循环，处理下一个输入单词
         }
       }
     }
+    
+    // 【调试日志】输出匹配结果
+    console.log('[长文本匹配] 匹配的索引:', matchedIndices);
     
     // 标记所有匹配成功的单词
     if (matchedIndices.length > 0) {
