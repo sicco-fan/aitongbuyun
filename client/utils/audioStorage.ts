@@ -1,6 +1,8 @@
 /**
  * 本地音频存储工具
  * 用于将生成的音频保存到用户设备本地，不占用云端空间
+ * 
+ * 注意：Web 端不支持本地文件存储，相关功能会返回默认值
  */
 
 import * as FileSystem from 'expo-file-system/legacy';
@@ -8,14 +10,28 @@ import { Platform } from 'react-native';
 
 // 使用 as any 绕过 legacy 版本的类型限制
 const FS = FileSystem as any;
-const AUDIO_DIR = `${FS.documentDirectory || ''}audio_cache/`;
+
+/**
+ * 检查是否在支持本地存储的平台
+ */
+function isLocalStorageSupported(): boolean {
+  return Platform.OS !== 'web' && !!FS.documentDirectory;
+}
+
+/**
+ * 获取音频目录路径
+ */
+function getAudioDir(): string {
+  return `${FS.documentDirectory || ''}audio_cache/`;
+}
 
 /**
  * 确保音频目录存在
  */
 async function ensureAudioDir(): Promise<void> {
-  if (!FS.documentDirectory) return;
+  if (!isLocalStorageSupported()) return;
   
+  const AUDIO_DIR = getAudioDir();
   const dirInfo = await FS.getInfoAsync(AUDIO_DIR);
   if (!dirInfo.exists) {
     await FS.makeDirectoryAsync(AUDIO_DIR, { intermediates: true });
@@ -29,8 +45,14 @@ async function ensureAudioDir(): Promise<void> {
  * @returns 本地文件URI
  */
 export async function saveAudioToLocal(key: string, base64Data: string): Promise<string> {
+  if (!isLocalStorageSupported()) {
+    console.log('[本地存储] Web端不支持本地存储');
+    return '';
+  }
+  
   await ensureAudioDir();
   
+  const AUDIO_DIR = getAudioDir();
   const fileName = `${key}.mp3`;
   const filePath = `${AUDIO_DIR}${fileName}`;
   
@@ -48,12 +70,21 @@ export async function saveAudioToLocal(key: string, base64Data: string): Promise
  * @returns 本地文件URI，如果不存在返回null
  */
 export async function getAudioFromLocal(key: string): Promise<string | null> {
+  if (!isLocalStorageSupported()) {
+    return null;
+  }
+  
+  const AUDIO_DIR = getAudioDir();
   const fileName = `${key}.mp3`;
   const filePath = `${AUDIO_DIR}${fileName}`;
   
-  const fileInfo = await FileSystem.getInfoAsync(filePath);
-  if (fileInfo.exists) {
-    return filePath;
+  try {
+    const fileInfo = await FS.getInfoAsync(filePath);
+    if (fileInfo.exists) {
+      return filePath;
+    }
+  } catch (e) {
+    // 忽略错误
   }
   
   return null;
@@ -64,11 +95,20 @@ export async function getAudioFromLocal(key: string): Promise<string | null> {
  * @param key 音频唯一标识
  */
 export async function hasAudioLocal(key: string): Promise<boolean> {
+  if (!isLocalStorageSupported()) {
+    return false;
+  }
+  
+  const AUDIO_DIR = getAudioDir();
   const fileName = `${key}.mp3`;
   const filePath = `${AUDIO_DIR}${fileName}`;
   
-  const fileInfo = await FileSystem.getInfoAsync(filePath);
-  return fileInfo.exists;
+  try {
+    const fileInfo = await FS.getInfoAsync(filePath);
+    return fileInfo.exists;
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
@@ -76,12 +116,21 @@ export async function hasAudioLocal(key: string): Promise<boolean> {
  * @param key 音频唯一标识
  */
 export async function deleteAudioFromLocal(key: string): Promise<void> {
+  if (!isLocalStorageSupported()) {
+    return;
+  }
+  
+  const AUDIO_DIR = getAudioDir();
   const fileName = `${key}.mp3`;
   const filePath = `${AUDIO_DIR}${fileName}`;
   
-  const fileInfo = await FileSystem.getInfoAsync(filePath);
-  if (fileInfo.exists) {
-    await FileSystem.deleteAsync(filePath);
+  try {
+    const fileInfo = await FS.getInfoAsync(filePath);
+    if (fileInfo.exists) {
+      await FS.deleteAsync(filePath);
+    }
+  } catch (e) {
+    // 忽略错误
   }
 }
 
@@ -89,29 +138,49 @@ export async function deleteAudioFromLocal(key: string): Promise<void> {
  * 获取本地音频缓存大小
  */
 export async function getAudioCacheSize(): Promise<number> {
-  await ensureAudioDir();
-  
-  const files = await FileSystem.readDirectoryAsync(AUDIO_DIR);
-  let totalSize = 0;
-  
-  for (const file of files) {
-    const filePath = `${AUDIO_DIR}${file}`;
-    const fileInfo = await FileSystem.getInfoAsync(filePath);
-    if (fileInfo.exists && 'size' in fileInfo) {
-      totalSize += fileInfo.size || 0;
-    }
+  if (!isLocalStorageSupported()) {
+    return 0;
   }
   
-  return totalSize;
+  await ensureAudioDir();
+  
+  const AUDIO_DIR = getAudioDir();
+  
+  try {
+    const files = await FS.readDirectoryAsync(AUDIO_DIR);
+    let totalSize = 0;
+    
+    for (const file of files) {
+      const filePath = `${AUDIO_DIR}${file}`;
+      const fileInfo = await FS.getInfoAsync(filePath);
+      if (fileInfo.exists && 'size' in fileInfo) {
+        totalSize += fileInfo.size || 0;
+      }
+    }
+    
+    return totalSize;
+  } catch (e) {
+    return 0;
+  }
 }
 
 /**
  * 清除所有本地音频缓存
  */
 export async function clearAudioCache(): Promise<void> {
-  const dirInfo = await FileSystem.getInfoAsync(AUDIO_DIR);
-  if (dirInfo.exists) {
-    await FileSystem.deleteAsync(AUDIO_DIR);
+  if (!isLocalStorageSupported()) {
+    return;
+  }
+  
+  const AUDIO_DIR = getAudioDir();
+  
+  try {
+    const dirInfo = await FS.getInfoAsync(AUDIO_DIR);
+    if (dirInfo.exists) {
+      await FS.deleteAsync(AUDIO_DIR);
+    }
+  } catch (e) {
+    // 忽略错误
   }
 }
 
@@ -135,6 +204,10 @@ export function generateFileAudioKey(fileId: number, sentenceIndex: number): str
  * @returns 已存在的数量
  */
 export async function checkAudiosExist(keys: string[]): Promise<{ cached: number; total: number }> {
+  if (!isLocalStorageSupported()) {
+    return { cached: 0, total: keys.length };
+  }
+  
   let cached = 0;
   for (const key of keys) {
     if (await hasAudioLocal(key)) {
@@ -173,6 +246,11 @@ export async function checkCourseAudioStatus(
   courseId: number,
   lessons: Array<{ id: number; sentence_count?: number; sentences_count?: number }>
 ): Promise<{ cached: number; total: number }> {
+  if (!isLocalStorageSupported()) {
+    // Web 端返回 0，不显示缓存状态
+    return { cached: 0, total: 0 };
+  }
+  
   let totalCached = 0;
   let totalCount = 0;
   

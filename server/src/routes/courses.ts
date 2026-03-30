@@ -1522,6 +1522,7 @@ router.get('/voices', (req: Request, res: Response) => {
 /**
  * GET /api/v1/courses/lessons/:lessonId/learnable
  * 获取可学习的课时数据
+ * 注意：音频已改为本地存储，此接口返回句子数据，音频由前端使用 TTS 生成
  */
 router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) => {
   try {
@@ -1549,52 +1550,27 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
       throw new Error(sentencesError.message);
     }
     
-    const sentenceIds = (sentences || []).map(s => s.id);
+    // 音频已改为本地存储，直接返回句子数据
+    // 前端会使用 TTS 在本地生成音频
     const targetVoiceId = voiceId || 'zh_female_xiaohe_uranus_bigtts';
     
-    const { data: allAudios } = await supabase
-      .from('lesson_sentence_audio')
-      .select('*')
-      .in('sentence_id', sentenceIds)
-      .eq('voice_id', targetVoiceId);
-    
-    const audiosBySentence: Record<number, any> = {};
-    (allAudios || []).forEach(audio => {
-      audiosBySentence[audio.sentence_id] = audio;
-    });
-    
-    const learnableSentences = [];
-    let totalDuration = 0;
-    
-    for (const sentence of (sentences || [])) {
-      const audio = audiosBySentence[sentence.id];
-      if (audio) {
-        const audioUrl = await storage.generatePresignedUrl({ 
-          key: audio.audio_url, 
-          expireTime: 86400 
-        });
-        
-        totalDuration += audio.duration || 0;
-        
-        learnableSentences.push({
-          id: sentence.id,
-          text: sentence.english_text,
-          chinese_text: sentence.chinese_text,
-          sentence_index: sentence.sentence_index,
-          start_time: 0,
-          end_time: (audio.duration || 3000) / 1000,
-          audio_url: audioUrl,
-          audio_duration: audio.duration,
-        });
-      }
-    }
+    const learnableSentences = (sentences || []).map((sentence: any) => ({
+      id: sentence.id,
+      text: sentence.english_text,
+      chinese_text: sentence.chinese_text,
+      sentence_index: sentence.sentence_index,
+      start_time: 0,
+      end_time: 3, // 默认时长，实际由 TTS 决定
+      audio_url: null, // 音频由前端本地生成
+      audio_duration: null,
+    }));
     
     res.json({
       file: {
         id: parseInt(lessonId as string) * 10000,
         title: `${lesson.title} - ${lesson.description}`,
         original_audio_signed_url: null,
-        original_duration: totalDuration,
+        original_duration: 0,
         is_lesson: true,
         lesson_id: parseInt(lessonId as string),
         voice_id: targetVoiceId,
