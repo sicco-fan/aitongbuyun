@@ -147,7 +147,7 @@ export const createStyles = (theme: Theme) => {
       marginBottom: Spacing.md,
     },
     existingCoursesList: {
-      maxHeight: 150,
+      maxHeight: 220, // 足够显示5个课程（每个约40px）
       borderWidth: 1,
       borderColor: theme.borderLight,
       borderRadius: BorderRadius.md,
