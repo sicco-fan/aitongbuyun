@@ -374,24 +374,28 @@ export const createStyles = (theme: Theme) => {
       gap: Spacing.sm,
     },
     headerTitleArea: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      position: 'relative',
       flex: 1,
+      alignItems: 'center',
       minWidth: 0, // 允许收缩
     },
     title: {
       textAlign: 'center',
       marginBottom: 8,
       flexShrink: 1, // 允许文字收缩
+      fontSize: Math.min(24, width * 0.06), // 字体适配屏幕宽度
+      fontWeight: '600',
     },
     infoButton: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      backgroundColor: 'transparent', // 透明背景，更淡化
+      position: 'absolute',
+      right: 0,
+      top: 0,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: 'transparent',
       justifyContent: 'center',
       alignItems: 'center',
-      marginLeft: Spacing.xs,
     },
     quickStartButton: {
       flexDirection: 'row',
