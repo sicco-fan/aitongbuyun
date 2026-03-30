@@ -42,12 +42,13 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* 社区图标选项：fire/globe/people-group/heart/share-nodes/trophy/message */}
       <Tabs.Screen
         name="community"
         options={{
           title: '社区',
           tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="comments" size={20} color={color} />
+            <FontAwesome6 name="globe" size={20} color={color} />
           ),
         }}
       />
