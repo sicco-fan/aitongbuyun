@@ -874,6 +874,25 @@ const generateVariants = (word: string): string[] => {
     results.push('alright', 'all-right');
   }
   
+  // 17. 常见缩写词变体（B.C., A.D., U.S., U.K., U.S.S.R. 等）
+  // 语音识别经常把这些拆开：B.C. -> b c, A.D. -> a d
+  const abbrVariants = expandAbbreviation(w);
+  results.push(...abbrVariants);
+  
+  // 18. 连字符单词的部分匹配
+  // 目标是 "modern-looking"，用户可能只说 "modern" 或 "looking"
+  if (/[-–—]/.test(w) && !w.startsWith('-') && !w.endsWith('-')) {
+    const parts = splitHyphenatedWord(w);
+    if (parts.length > 1) {
+      // 添加每个部分作为独立变体（支持部分匹配）
+      parts.forEach(part => {
+        if (part.length > 1) {
+          results.push(part);
+        }
+      });
+    }
+  }
+  
   // 去重并返回
   return [...new Set(results.map(r => r.toLowerCase()))];
 };
@@ -1055,8 +1074,154 @@ const expandContraction = (word: string): string[] => {
 };
 
 /**
- * 智能匹配：检查目标单词是否被识别（支持连字符拆分匹配和变体匹配）
+ * 展开常见缩写词（abbreviations）
+ * 语音识别经常把这些拆开：B.C. -> b c, A.D. -> a d, U.S. -> u s
+ * 
+ * 支持的缩写词类型：
+ * - 时间相关：B.C. (Before Christ), A.D. (Anno Domini)
+ * - 国家/组织：U.S. (United States), U.K. (United Kingdom), U.S.S.R., E.U., U.N.
+ * - 其他常见：e.g., i.e., etc., vs., Mr., Mrs., Dr., Prof., St. (Street/Saint)
+ */
+const expandAbbreviation = (word: string): string[] => {
+  const results: string[] = [];
+  const w = word.toLowerCase().trim();
+  
+  // 缩写词映射表：标准形式 -> 可能的语音识别结果
+  const abbrMap: Record<string, string[]> = {
+    // 时间相关
+    'b.c.': ['bc', 'b c', 'before christ', 'bce'],
+    'bc': ['b.c.', 'b c', 'before christ', 'bce'],
+    'bce': ['bc', 'b c', 'before common era', 'b.c.e.'],
+    'a.d.': ['ad', 'a d', 'anno domini'],
+    'ad': ['a.d.', 'a d', 'anno domini'],
+    'c.e.': ['ce', 'c e', 'common era'],
+    'ce': ['c.e.', 'c e', 'common era'],
+    
+    // 国家/地区
+    'u.s.': ['us', 'u s', 'usa', 'u s a', 'united states'],
+    'us': ['u.s.', 'u s', 'usa', 'u s a', 'united states'],
+    'usa': ['u.s.', 'u s a', 'us', 'united states of america'],
+    'u.k.': ['uk', 'u k', 'united kingdom'],
+    'uk': ['u.k.', 'u k', 'united kingdom'],
+    'u.s.s.r.': ['ussr', 'u s s r', 'soviet union'],
+    'ussr': ['u.s.s.r.', 'u s s r', 'soviet union'],
+    'e.u.': ['eu', 'e u', 'european union'],
+    'eu': ['e.u.', 'e u', 'european union'],
+    
+    // 国际组织
+    'u.n.': ['un', 'u n', 'united nations'],
+    'un': ['u.n.', 'u n', 'united nations'],
+    'n.a.t.o.': ['nato', 'n a t o', 'north atlantic treaty organization'],
+    'nato': ['n.a.t.o.', 'n a t o'],
+    'w.h.o.': ['who', 'w h o', 'world health organization'],
+    'nasa': ['n.a.s.a.', 'n a s a', 'national aeronautics and space administration'],
+    
+    // 拉丁语缩写
+    'e.g.': ['eg', 'e g', 'for example', 'example'],
+    'i.e.': ['ie', 'i e', 'that is'],
+    'etc.': ['etc', 'e t c', 'et cetera'],
+    'vs.': ['vs', 'v s', 'versus'],
+    'vs': ['vs.', 'v s', 'versus'],
+    'cf.': ['cf', 'c f', 'compare'],
+    'al.': ['al', 'a l'],
+    'et al.': ['et al', 'et a l', 'and others'],
+    
+    // 称谓
+    'mr.': ['mr', 'm r', 'mister'],
+    'mr': ['mr.', 'm r', 'mister'],
+    'mrs.': ['mrs', 'm r s', 'missus'],
+    'mrs': ['mrs.', 'm r s', 'missus'],
+    'ms.': ['ms', 'm s', 'miss'],
+    'ms': ['ms.', 'm s', 'miss'],
+    'dr.': ['dr', 'd r', 'doctor'],
+    'dr': ['dr.', 'd r', 'doctor'],
+    'prof.': ['prof', 'p r o f', 'professor'],
+    'prof': ['prof.', 'p r o f', 'professor'],
+    'sr.': ['sr', 's r', 'senior', 'sister'],
+    'jr.': ['jr', 'j r', 'junior'],
+    
+    // 其他
+    'st.': ['st', 's t', 'street', 'saint'],
+    'st': ['st.', 's t', 'street', 'saint'],
+    'ave.': ['ave', 'a v e', 'avenue'],
+    'rd.': ['rd', 'r d', 'road'],
+    'blvd.': ['blvd', 'b l v d', 'boulevard'],
+    'apt.': ['apt', 'a p t', 'apartment'],
+    'no.': ['no', 'n o', 'number'],
+    'vol.': ['vol', 'v o l', 'volume'],
+    'p.': ['p', 'page'],
+    'pp.': ['pp', 'p p', 'pages'],
+    'ch.': ['ch', 'c h', 'chapter'],
+    'sec.': ['sec', 's e c', 'section'],
+    'fig.': ['fig', 'f i g', 'figure'],
+    'ref.': ['ref', 'r e f', 'reference'],
+    'tel.': ['tel', 't e l', 'telephone'],
+    'approx.': ['approx', 'a p p r o x', 'approximately'],
+    'max.': ['max', 'm a x', 'maximum'],
+    'min.': ['min', 'm i n', 'minimum'],
+    'dept.': ['dept', 'd e p t', 'department'],
+    'govt.': ['govt', 'g o v t', 'government'],
+    'inc.': ['inc', 'i n c', 'incorporated'],
+    'ltd.': ['ltd', 'l t d', 'limited'],
+    'corp.': ['corp', 'c o r p', 'corporation'],
+    'co.': ['co', 'c o', 'company'],
+    'bro.': ['bro', 'b r o', 'brothers'],
+    
+    // 学术学位
+    'b.a.': ['ba', 'b a', 'bachelor of arts'],
+    'b.s.': ['bs', 'b s', 'bachelor of science'],
+    'm.a.': ['ma', 'm a', 'master of arts'],
+    'm.s.': ['ms', 'm s', 'master of science'],
+    'ph.d.': ['phd', 'p h d', 'doctor of philosophy'],
+    'mba': ['m.b.a.', 'm b a', 'master of business administration'],
+    
+    // 技术相关
+    'i.d.': ['id', 'i d', 'identification'],
+    'id': ['i.d.', 'i d', 'identification'],
+    'url': ['u.r.l.', 'u r l', 'uniform resource locator'],
+    'html': ['h.t.m.l.', 'h t m l'],
+    'api': ['a.p.i.', 'a p i'],
+    'cpu': ['c.p.u.', 'c p u', 'central processing unit'],
+    'gpu': ['g.p.u.', 'g p u', 'graphics processing unit'],
+    'ram': ['r.a.m.', 'r a m', 'random access memory'],
+    'rom': ['r.o.m.', 'r o m', 'read only memory'],
+    'usb': ['u.s.b.', 'u s b', 'universal serial bus'],
+    'wifi': ['wi-fi', 'wi fi', 'wireless fidelity'],
+    'wi-fi': ['wifi', 'wi fi'],
+  };
+  
+  // 检查是否是已知的缩写词
+  const lowerW = w.toLowerCase();
+  if (abbrMap[lowerW]) {
+    results.push(...abbrMap[lowerW]);
+  }
+  
+  // 通用模式匹配：处理形如 "x.y." 或 "x.y.z." 的缩写词
+  // 语音识别可能把 "U.S." 识别成 "u s" 或 "us"
+  const dotPattern = w.replace(/\./g, ''); // 移除所有点
+  if (dotPattern !== w && /^[a-z]+$/i.test(dotPattern)) {
+    // 原词有点，移除点后的版本
+    results.push(dotPattern);
+    // 空格分开的版本
+    results.push(dotPattern.split('').join(' '));
+  }
+  
+  // 反向：原词没有点，但可能是缩写
+  // 例如 "bc" -> "b.c.", "b c"
+  if (!/\./.test(w) && /^[a-z]{2,}$/i.test(w)) {
+    // 添加点分隔版本
+    results.push(w.split('').join('.') + '.');
+    // 添加空格分开版本
+    results.push(w.split('').join(' '));
+  }
+  
+  return results;
+};
+
+/**
+ * 智能匹配：检查目标单词是否被识别（支持连字符拆分匹配、部分匹配和变体匹配）
  * 例如：targetWord="cat-like" 可以匹配 recognizedWords 中的 "cat" 和 "like"
+ * 例如：targetWord="modern-looking" 可以匹配 recognizedWords 中的 "modern"（部分匹配）
  * 例如：targetWord="45" 可以匹配 recognizedWords 中的 "forty-five"
  */
 const smartWordMatch = (
@@ -1074,7 +1239,23 @@ const smartWordMatch = (
     }
   }
   
-  // 如果目标单词包含连字符，尝试拆分匹配
+  // 【新增】部分匹配：如果目标是连字符单词，识别词可能是其中一部分
+  // 例如：目标是 "modern-looking"，用户说 "modern"
+  if (/[-–—]/.test(targetLower)) {
+    const parts = splitHyphenatedWord(targetLower);
+    for (const part of parts) {
+      for (let i = 0; i < recognizedWords.length; i++) {
+        if (usedIndices.has(i)) continue;
+        // 识别词与连字符单词的某一部分匹配
+        if (wordsMatchWithVariants(part, recognizedWords[i])) {
+          console.log(`[部分匹配] 目标 "${targetLower}" 的部分 "${part}" 匹配识别词 "${recognizedWords[i]}"`);
+          return { matched: true, usedIndices: [i] };
+        }
+      }
+    }
+  }
+  
+  // 如果目标单词包含连字符，尝试拆分匹配（用户说了所有部分）
   const targetParts = splitHyphenatedWord(targetLower);
   if (targetParts.length > 1) {
     const foundIndices: number[] = [];
@@ -3213,10 +3394,67 @@ export default function SentencePracticeScreen() {
     // 记录匹配成功的单词索引
     const matchedIndices: number[] = [];
     
+    // 【新增】预处理：合并连续的单字母形成可能的缩写词
+    // 例如：["b", "c"] -> ["bc", "b c"] 用于匹配 "B.C."
+    const expandedInputWords: string[] = [];
+    const singleLetterSeq: string[] = [];
+    
+    for (const word of inputWords) {
+      if (/^[a-z]$/i.test(word)) {
+        // 单个字母，加入序列
+        singleLetterSeq.push(word);
+      } else {
+        // 不是单字母，先处理之前积累的序列
+        if (singleLetterSeq.length >= 2) {
+          // 合并成缩写词
+          expandedInputWords.push(singleLetterSeq.join(''));
+          expandedInputWords.push(singleLetterSeq.join(' '));
+        } else if (singleLetterSeq.length === 1) {
+          expandedInputWords.push(singleLetterSeq[0]);
+        }
+        singleLetterSeq.length = 0;
+        // 再添加当前单词
+        expandedInputWords.push(word);
+      }
+    }
+    // 处理末尾的序列
+    if (singleLetterSeq.length >= 2) {
+      expandedInputWords.push(singleLetterSeq.join(''));
+      expandedInputWords.push(singleLetterSeq.join(' '));
+    } else if (singleLetterSeq.length === 1) {
+      expandedInputWords.push(singleLetterSeq[0]);
+    }
+    
+    // 去重
+    const finalInputWords = [...new Set([...inputWords, ...expandedInputWords])];
+    
+    // 【新增】合并相邻单词形成连字符组合
+    // 例如：["full", "length"] -> ["full-length", "full length"] 用于匹配 "full-length"
+    for (let i = 0; i < inputWords.length - 1; i++) {
+      const combined = `${inputWords[i]}-${inputWords[i + 1]}`;
+      const combinedSpace = `${inputWords[i]} ${inputWords[i + 1]}`;
+      if (!finalInputWords.includes(combined)) {
+        finalInputWords.push(combined);
+      }
+      if (!finalInputWords.includes(combinedSpace)) {
+        finalInputWords.push(combinedSpace);
+      }
+    }
+    
+    // 【新增】三词连字符组合（如 "middle-aged man"）
+    for (let i = 0; i < inputWords.length - 2; i++) {
+      const combined = `${inputWords[i]}-${inputWords[i + 1]}-${inputWords[i + 2]}`;
+      if (!finalInputWords.includes(combined)) {
+        finalInputWords.push(combined);
+      }
+    }
+    
+    console.log('[长文本匹配] 扩展后的输入单词:', finalInputWords);
+    
     // 无序匹配：对于每个输入单词，尝试匹配所有未完成的单词
     // 这样可以处理用户念的单词顺序和句子顺序不一致的情况
     // 支持数字/货币/符号等变体匹配
-    for (const inputWord of inputWords) {
+    for (const inputWord of finalInputWords) {
       for (const targetWord of incompleteWords) {
         // 如果这个目标单词已经被匹配过，跳过
         if (matchedIndices.includes(targetWord.index)) continue;
