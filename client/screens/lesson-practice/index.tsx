@@ -29,23 +29,28 @@ import {
   checkVoiceCacheStatus,
   DownloadProgress 
 } from '@/utils/lessonAudioCache';
-import { hasAudioLocal, generateCourseAudioKey } from '@/utils/audioStorage';
+import { hasAudioLocal, generateCourseAudioKey, saveAudioToLocal } from '@/utils/audioStorage';
 
 interface GenerateProgressData {
-  type: 'start' | 'progress' | 'complete' | 'error';
+  type: 'start' | 'progress' | 'complete' | 'error' | 'audio';
   total?: number;
   sentences?: number;
   voices?: number;
   current?: number;
   percent?: number;
   sentence_index?: number;
+  sentence_id?: number;
   voice_name?: string;
+  voice_id?: string;
   status?: string;
   error?: string;
   generated?: number;
   already_exists?: number;
   failed?: number;
   message?: string;
+  audio_base64?: string;
+  audioBase64?: string;
+  duration?: number;
 }
 
 interface Sentence {
@@ -412,12 +417,39 @@ export default function LessonPracticeScreen() {
             setGenerateCurrentTask(`句子 ${data.sentence_index} · ${data.voice_name} - ${statusText}`);
             break;
             
+          case 'audio':
+            // 收到音频数据，保存到本地
+            if ((data.audio_base64 || data.audioBase64) && data.sentence_index && data.voice_id) {
+              const audioBase64 = data.audio_base64 || data.audioBase64;
+              if (courseId && audioBase64) {
+                // 生成音频存储 key
+                const audioKey = generateCourseAudioKey(
+                  parseInt(courseId, 10),
+                  parseInt(lessonId, 10),
+                  data.sentence_index
+                );
+                
+                // 保存到本地
+                saveAudioToLocal(audioKey, audioBase64).then(() => {
+                  console.log(`[音频生成] 已保存: ${audioKey}`);
+                }).catch((e) => {
+                  console.error(`[音频生成] 保存失败: ${audioKey}`, e);
+                });
+                
+                // 更新进度显示
+                const voiceName = data.voice_name || data.voice_id;
+                setGenerateCurrentTask(`句子 ${data.sentence_index} · ${voiceName} - ✓ 已生成`);
+                setGenerateCurrent(prev => prev + 1);
+              }
+            }
+            break;
+            
           case 'complete':
             setGeneratePercent(100);
             setGenerateProgress(
               `生成完成！\n` +
               `新生成: ${data.generated} 个\n` +
-              `已存在: ${data.already_exists} 个\n` +
+              `已存在: ${data.already_exists || 0} 个\n` +
               `失败: ${data.failed} 个`
             );
             setGenerateCurrentTask('完成！');
@@ -453,7 +485,7 @@ export default function LessonPracticeScreen() {
       sseRef.current = null;
       setGenerating(false);
     });
-  }, [generating, selectedVoicesToGenerate, lessonId, fetchData]);
+  }, [generating, selectedVoicesToGenerate, lessonId, courseId, fetchData]);
 
   // 切换音色选择
   const toggleVoiceSelection = useCallback((voiceId: string) => {

@@ -9,6 +9,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
+import { hasAudioLocal, generateCourseAudioKey } from '@/utils/audioStorage';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
@@ -54,7 +55,30 @@ export default function LessonLearningScreen() {
       const data = await response.json();
       
       if (data.sentences) {
-        const sentencesWithAudio = data.sentences.filter((s: Sentence) => s.audio_url);
+        // 检查每个句子是否有音频（后端 audio_url 或 本地缓存）
+        const sentencesWithAudio: Sentence[] = [];
+        
+        for (const sentence of data.sentences) {
+          // 后端有 audio_url
+          if (sentence.audio_url) {
+            sentencesWithAudio.push(sentence);
+            continue;
+          }
+          
+          // 检查本地缓存
+          if (courseId) {
+            const audioKey = generateCourseAudioKey(
+              parseInt(courseId, 10),
+              parseInt(lessonId, 10),
+              sentence.sentence_index
+            );
+            const hasLocal = await hasAudioLocal(audioKey);
+            if (hasLocal) {
+              sentencesWithAudio.push(sentence);
+            }
+          }
+        }
+        
         setSentences(sentencesWithAudio);
         
         // 如果有可学习的句子，直接跳转到sentence-practice

@@ -1155,8 +1155,21 @@ router.post('/:courseId/generate-audio', async (req: Request, res: Response) => 
  */
 router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Response) => {
   const { lessonId } = req.params;
-  const { voiceId } = req.body; // 只使用单一音色
+  const { voiceId, voiceIds } = req.body; // 支持单音色或多音色
   const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+  
+  // 确定要生成的音色列表
+  const targetVoiceIds: string[] = voiceIds || (voiceId ? [voiceId] : ['zh_female_xiaohe_uranus_bigtts']);
+  
+  // 音色名称映射
+  const voiceNameMap: Record<string, string> = {
+    'zh_female_xiaohe_uranus_bigtts': '小何',
+    'zh_male_chunhoudahui_uranus_bigtts': '淳厚',
+    'zh_male_zhiboshuangkuai_uranus_bigtts': '主播',
+    'zh_female_tianmei_uranus_bigtts': '甜美',
+    'zh_female_wanwan_uranus_bigtts': '婉婉',
+    'zh_male_qingxinnansheng_uranus_bigtts': '清新',
+  };
   
   // 设置SSE响应头
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -1190,79 +1203,82 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
       return;
     }
     
-    // 使用指定音色或默认音色
-    const targetVoiceId = voiceId || 'zh_female_xiaohe_uranus_bigtts';
-    const targetVoiceName = '小何';
-    
     // 发送开始事件
     sendProgress({
       type: 'start',
-      total: sentences.length,
-      voice_id: targetVoiceId,
-      voice_name: targetVoiceName,
+      total: sentences.length * targetVoiceIds.length,
+      sentences: sentences.length,
+      voices: targetVoiceIds.length,
     });
     
     let generatedCount = 0;
     let failedCount = 0;
     
-    // 为每个句子生成音频
-    for (const sentence of sentences) {
-      try {
-        // 调用TTS生成音频
-        const ttsResponse = await ttsClient.synthesize({
-          uid: `lesson_${lessonId}_sentence_${sentence.id}`,
-          text: sentence.english_text,
-          speaker: targetVoiceId,
-          audioFormat: 'mp3',
-          sampleRate: 24000,
-        });
-        
-        // 下载音频数据
-        const audioResponse = await axios.get(ttsResponse.audioUri, { 
-          responseType: 'arraybuffer' 
-        });
-        const audioBuffer = Buffer.from(audioResponse.data);
-        
-        // 转换为Base64
-        const audioBase64 = audioBuffer.toString('base64');
-        
-        // 计算音频时长
-        const duration = Math.round((audioBuffer.length * 8) / (128 * 1000) * 1000);
-        
-        // 标记为已生成（不存储URL，由前端管理本地缓存）
-        await supabase
-          .from('lesson_sentence_audio')
-          .upsert({
-            sentence_id: sentence.id,
-            voice_id: targetVoiceId,
-            voice_name: targetVoiceName,
-            audio_url: 'local', // 标记为本地存储
-            duration: duration,
-          }, {
-            onConflict: 'sentence_id,voice_id'
+    // 为每个音色、每个句子生成音频
+    for (const voiceId of targetVoiceIds) {
+      const voiceName = voiceNameMap[voiceId] || voiceId;
+      
+      for (const sentence of sentences) {
+        try {
+          // 调用TTS生成音频
+          const ttsResponse = await ttsClient.synthesize({
+            uid: `lesson_${lessonId}_sentence_${sentence.id}_${voiceId}`,
+            text: sentence.english_text,
+            speaker: voiceId,
+            audioFormat: 'mp3',
+            sampleRate: 24000,
           });
-        
-        generatedCount++;
-        
-        // 发送音频数据给前端
-        sendProgress({
-          type: 'audio',
-          sentence_id: sentence.id,
-          sentence_index: sentence.sentence_index,
-          audio_base64: audioBase64,
-          duration: duration,
-        });
-        
-        console.log(`生成音频: 课时${lessonId}, 句子${sentence.sentence_index}`);
-        
-      } catch (err: any) {
-        failedCount++;
-        sendProgress({
-          type: 'error',
-          sentence_index: sentence.sentence_index,
-          error: err.message,
-        });
-        console.error(`生成失败: 句子${sentence.sentence_index}`, err);
+          
+          // 下载音频数据
+          const audioResponse = await axios.get(ttsResponse.audioUri, { 
+            responseType: 'arraybuffer' 
+          });
+          const audioBuffer = Buffer.from(audioResponse.data);
+          
+          // 转换为Base64
+          const audioBase64 = audioBuffer.toString('base64');
+          
+          // 计算音频时长
+          const duration = Math.round((audioBuffer.length * 8) / (128 * 1000) * 1000);
+          
+          // 标记为已生成（不存储URL，由前端管理本地缓存）
+          await supabase
+            .from('lesson_sentence_audio')
+            .upsert({
+              sentence_id: sentence.id,
+              voice_id: voiceId,
+              voice_name: voiceName,
+              audio_url: 'local', // 标记为本地存储
+              duration: duration,
+            }, {
+              onConflict: 'sentence_id,voice_id'
+            });
+          
+          generatedCount++;
+          
+          // 发送音频数据给前端
+          sendProgress({
+            type: 'audio',
+            sentence_id: sentence.id,
+            sentence_index: sentence.sentence_index,
+            voice_id: voiceId,
+            voice_name: voiceName,
+            audio_base64: audioBase64,
+            duration: duration,
+          });
+          
+          console.log(`生成音频: 课时${lessonId}, 句子${sentence.sentence_index}, 音色${voiceName}`);
+          
+        } catch (err: any) {
+          failedCount++;
+          sendProgress({
+            type: 'error',
+            sentence_index: sentence.sentence_index,
+            voice_name: voiceName,
+            error: err.message,
+          });
+          console.error(`生成失败: 句子${sentence.sentence_index}, 音色${voiceName}`, err);
+        }
       }
     }
     
