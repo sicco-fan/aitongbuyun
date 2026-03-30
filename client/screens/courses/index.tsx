@@ -237,6 +237,7 @@ export default function CoursesScreen() {
             book_title: importBookTitle,
             book_number: parseInt(importBookNumber, 10),
           }),
+          lineEndingCharacter: '\n', // 显式指定换行符，避免自动检测失败
         });
         
         sseRef.current = sse;

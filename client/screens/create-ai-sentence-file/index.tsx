@@ -250,6 +250,7 @@ export default function CreateAISentenceFileScreen() {
             book_title: bookTitle.trim(),
             book_number: bookNum,
           }),
+          lineEndingCharacter: '\n', // 显式指定换行符，避免自动检测失败
         });
         
         sseRef.current = sse;

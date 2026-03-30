@@ -114,7 +114,16 @@ export const createStyles = (theme: Theme) => {
       paddingHorizontal: Spacing.xs,
       paddingVertical: 2,
       borderRadius: BorderRadius.full,
-      marginTop: 2,
+      marginTop: 4,
+    },
+    statusBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      paddingHorizontal: Spacing.xs,
+      paddingVertical: 2,
+      borderRadius: BorderRadius.full,
+      marginTop: 4,
     },
     arrowIcon: {
       marginLeft: Spacing.sm,

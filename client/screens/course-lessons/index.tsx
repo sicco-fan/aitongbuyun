@@ -22,6 +22,7 @@ import {
   generateCourseAudioKey,
   checkCourseAudioStatus,
   isLocalStorageSupported,
+  hasAudioLocal,
 } from '@/utils/audioStorage';
 import RNSSE from 'react-native-sse';
 
@@ -31,9 +32,11 @@ interface Lesson {
   title: string;
   description: string;
   sentences_count: number;
-  learned?: boolean; // 是否学过
-  cached?: number; // 已缓存句子数
-  total?: number; // 总句子数
+  learned?: boolean;
+  cached?: number;
+  total?: number;
+  isDownloading?: boolean;
+  downloadProgress?: number;
 }
 
 interface Course {
@@ -42,6 +45,13 @@ interface Course {
   book_number: number;
   description: string;
 }
+
+// 全局下载状态管理（退出页面后仍保持）
+const downloadingLessons = new Map<number, { 
+  controller: AbortController;
+  progress: number;
+  total: number;
+}>();
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
@@ -59,18 +69,14 @@ export default function CourseLessonsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastLearningPosition, setLastLearningPosition] = useState<LastLearningPosition | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generateProgress, setGenerateProgress] = useState({ current: 0, total: 0, lessonTitle: '' });
 
   const fetchData = useCallback(async () => {
     if (!courseId) return;
     
     try {
-      // 获取最后学习位置
       const lastPosition = await getLastLearningPosition();
       setLastLearningPosition(lastPosition);
       
-      // 获取课程信息
       const courseRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses`);
       const courseData = await courseRes.json();
       
@@ -79,32 +85,25 @@ export default function CourseLessonsScreen() {
         setCourse(foundCourse || null);
       }
       
-      // 获取课时列表
       const lessonsRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/${courseId}/lessons`);
       const lessonsData = await lessonsRes.json();
       
       if (lessonsData.lessons) {
-        // 获取用户对每个课时的学习状态
         let lessonsWithStatus = lessonsData.lessons;
         
         if (user?.id) {
-          const lessonIds = lessonsData.lessons.map((l: Lesson) => l.id);
-          
-          // 查询 file_learning_summary 表获取学习状态
           const statsRes = await fetch(
             `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/files?user_id=${user.id}`
           );
           const statsData = await statsRes.json();
           
           if (statsData.success && statsData.file_stats) {
-            // 创建已学习的课时ID集合
             const learnedLessonIds = new Set(
               statsData.file_stats
                 .filter((s: any) => s.sentence_files?.sourceType === 'course')
                 .map((s: any) => s.sentence_file_id)
             );
             
-            // 标记每个课时是否学过
             lessonsWithStatus = lessonsData.lessons.map((l: Lesson) => ({
               ...l,
               learned: learnedLessonIds.has(l.id),
@@ -116,7 +115,7 @@ export default function CourseLessonsScreen() {
         const lessonsWithCache = await Promise.all(
           lessonsWithStatus.map(async (l: Lesson) => {
             const sentencesCount = l.sentences_count || 0;
-            if (sentencesCount > 0) {
+            if (sentencesCount > 0 && isLocalStorageSupported()) {
               const status = await checkCourseAudioStatus(courseId, [{ 
                 id: l.id, 
                 sentences_count: sentencesCount 
@@ -125,6 +124,7 @@ export default function CourseLessonsScreen() {
                 ...l,
                 cached: status.cached,
                 total: status.total,
+                isDownloading: downloadingLessons.has(l.id),
               };
             }
             return { ...l, cached: 0, total: 0 };
@@ -152,98 +152,207 @@ export default function CourseLessonsScreen() {
     fetchData();
   }, [fetchData]);
 
-  const handleLessonClick = useCallback((lessonId: number, lessonNumber: number, lessonTitle: string) => {
-    router.push('/lesson-practice', { 
-      lessonId: lessonId.toString(), 
-      title: lessonTitle,
-      courseId: course?.id?.toString(),
-      courseTitle: course?.title,
-      lessonNumber: lessonNumber.toString(),
-    });
-  }, [router, course]);
-
   const handleBack = useCallback(() => {
     router.back();
   }, [router]);
 
   /**
-   * 生成全部音频（实时流式生成，保存到本地）
+   * 开始后台下载课时音频
    */
-  const handleGenerateAllAudio = useCallback(async () => {
-    if (!courseId || !course) return;
+  const startBackgroundDownload = useCallback(async (lessonId: number, lessonTitle: string) => {
+    if (!courseId || !isLocalStorageSupported()) return;
     
-    // Web 端提示不支持
-    if (Platform.OS === 'web') {
-      Alert.alert(
-        '提示', 
-        'Web 端不支持本地音频缓存。\n\n请使用手机 App 版本体验完整功能，包括离线音频播放。',
-        [{ text: '知道了' }]
-      );
+    // 检查是否已在下载中
+    if (downloadingLessons.has(lessonId)) {
+      Alert.alert('提示', '该课时正在下载中，请稍候');
       return;
     }
     
-    // 保存已确认的 courseId，用于 SSE 回调
-    const currentCourseId = courseId;
+    const controller = new AbortController();
+    downloadingLessons.set(lessonId, { controller, progress: 0, total: 0 });
     
-    setIsGenerating(true);
-    setGenerateProgress({ current: 0, total: 0, lessonTitle: '' });
+    // 更新UI状态
+    setLessons(prev => prev.map(l => 
+      l.id === lessonId ? { ...l, isDownloading: true, downloadProgress: 0 } : l
+    ));
     
-    console.log(`[音频生成] 开始为课程 ${currentCourseId} 生成音频...`);
+    console.log(`[后台下载] 开始下载课时 ${lessonId} 的音频...`);
     
-    // 使用 SSE 实时生成音频
-    const sse = new RNSSE(
-      `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/${currentCourseId}/generate-audio`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      }
-    );
-    
-    sse.addEventListener('message', async (event) => {
-      try {
-        if (!event.data || event.data === '[DONE]') {
-          sse.close();
-          setIsGenerating(false);
-          setGenerateProgress({ current: 0, total: 0, lessonTitle: '' });
-          Alert.alert('完成', '音频生成完成');
-          return;
+    try {
+      const sse = new RNSSE(
+        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/lessons/${lessonId}/generate-audio`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+          lineEndingCharacter: '\n', // 显式指定换行符，避免自动检测失败
         }
-        
-        const data = JSON.parse(event.data);
-        console.log(`[音频生成] 收到消息: type=${data.type}`);
-        
-        if (data.type === 'start') {
-          console.log(`[音频生成] 开始: 共 ${data.total} 句`);
-        } else if (data.type === 'progress') {
-          setGenerateProgress({
-            current: data.current,
-            total: data.total,
-            lessonTitle: data.lessonTitle || '',
-          });
-        } else if (data.type === 'audio') {
-          // 保存音频到本地
-          const audioKey = generateCourseAudioKey(currentCourseId, data.lessonId, data.sentenceIndex);
-          await saveAudioToLocal(audioKey, data.audioBase64);
-          console.log(`[音频生成] 已保存: ${audioKey}`);
-        } else if (data.type === 'error') {
-          Alert.alert('错误', data.message);
-          sse.close();
-          setIsGenerating(false);
+      );
+      
+      let totalSentences = 0;
+      let currentProgress = 0;
+      
+      sse.addEventListener('message', async (event) => {
+        try {
+          if (!event.data || event.data === '[DONE]') {
+            sse.close();
+            downloadingLessons.delete(lessonId);
+            
+            // 更新UI：下载完成
+            setLessons(prev => prev.map(l => {
+              if (l.id === lessonId) {
+                return { 
+                  ...l, 
+                  isDownloading: false, 
+                  cached: l.total, 
+                  downloadProgress: undefined 
+                };
+              }
+              return l;
+            }));
+            
+            console.log(`[后台下载] 课时 ${lessonId} 下载完成`);
+            return;
+          }
+          
+          const data = JSON.parse(event.data);
+          
+          if (data.type === 'start') {
+            totalSentences = data.total;
+            downloadingLessons.get(lessonId)!.total = totalSentences;
+          } else if (data.type === 'progress') {
+            currentProgress = data.current;
+            downloadingLessons.get(lessonId)!.progress = currentProgress;
+            
+            setLessons(prev => prev.map(l => 
+              l.id === lessonId 
+                ? { ...l, downloadProgress: currentProgress / totalSentences, cached: currentProgress }
+                : l
+            ));
+          } else if (data.type === 'audio') {
+            // 兼容后端返回的字段名 (audio_base64 或 audioBase64)
+            const audioBase64 = data.audio_base64 || data.audioBase64;
+            if (audioBase64) {
+              const audioKey = generateCourseAudioKey(courseId, lessonId, data.sentence_index || data.sentenceIndex);
+              await saveAudioToLocal(audioKey, audioBase64);
+            }
+          } else if (data.type === 'error') {
+            console.error(`[后台下载] 错误: ${data.message}`);
+            sse.close();
+            downloadingLessons.delete(lessonId);
+            setLessons(prev => prev.map(l => 
+              l.id === lessonId ? { ...l, isDownloading: false, downloadProgress: undefined } : l
+            ));
+          }
+        } catch (err) {
+          console.error('解析SSE消息失败:', err);
         }
-      } catch (err) {
-        console.error('解析SSE消息失败:', err);
-      }
-    });
+      });
+      
+      sse.addEventListener('error', (event) => {
+        console.error('SSE连接错误:', event);
+        downloadingLessons.delete(lessonId);
+        setLessons(prev => prev.map(l => 
+          l.id === lessonId ? { ...l, isDownloading: false, downloadProgress: undefined } : l
+        ));
+      });
+      
+    } catch (error) {
+      console.error('[后台下载] 失败:', error);
+      downloadingLessons.delete(lessonId);
+      setLessons(prev => prev.map(l => 
+        l.id === lessonId ? { ...l, isDownloading: false, downloadProgress: undefined } : l
+      ));
+    }
+  }, [courseId]);
+
+  /**
+   * 点击课时：检查缓存状态，决定是下载还是学习
+   */
+  const handleLessonClick = useCallback(async (lessonId: number, lessonNumber: number, lessonTitle: string) => {
+    const lesson = lessons.find(l => l.id === lessonId);
+    if (!lesson) return;
     
-    sse.addEventListener('error', (event) => {
-      console.error('SSE连接错误:', event);
-      setIsGenerating(false);
-      Alert.alert('错误', '连接失败，请重试');
-    });
-  }, [courseId, course]);
+    // Web 端：直接进入学习（使用在线TTS）
+    if (Platform.OS === 'web') {
+      router.push('/lesson-practice', { 
+        lessonId: lessonId.toString(), 
+        title: lessonTitle,
+        courseId: course?.id?.toString(),
+        courseTitle: course?.title,
+        lessonNumber: lessonNumber.toString(),
+      });
+      return;
+    }
+    
+    // 检查是否正在下载
+    if (lesson.isDownloading) {
+      Alert.alert('下载中', '该课时音频正在下载中，请稍候...');
+      return;
+    }
+    
+    // 检查是否已完全缓存
+    const allCached = lesson.cached === (lesson.total || 0) && (lesson.total || 0) > 0;
+    
+    if (allCached) {
+      // 已缓存：询问是学习还是重新下载
+      Alert.alert(
+        '音频已下载',
+        '该课时音频已缓存，您可以：',
+        [
+          {
+            text: '开始学习',
+            onPress: () => {
+              router.push('/lesson-practice', { 
+                lessonId: lessonId.toString(), 
+                title: lessonTitle,
+                courseId: course?.id?.toString(),
+                courseTitle: course?.title,
+                lessonNumber: lessonNumber.toString(),
+              });
+            }
+          },
+          {
+            text: '重新下载',
+            style: 'destructive',
+            onPress: () => {
+              startBackgroundDownload(lessonId, lessonTitle);
+            }
+          },
+          { text: '取消', style: 'cancel' }
+        ]
+      );
+    } else {
+      // 未缓存或部分缓存：询问是否下载
+      const message = lesson.cached && lesson.cached > 0
+        ? `已缓存 ${lesson.cached}/${lesson.total} 句，是否继续下载剩余音频？\n\n下载完成后可离线学习。`
+        : '该课时音频尚未下载，是否现在下载？\n\n下载完成后可离线学习，退出此页面不影响下载进度。';
+      
+      Alert.alert(
+        '下载音频',
+        message,
+        [
+          {
+            text: '下载',
+            onPress: () => startBackgroundDownload(lessonId, lessonTitle)
+          },
+          {
+            text: '在线学习',
+            style: 'cancel',
+            onPress: () => {
+              router.push('/lesson-practice', { 
+                lessonId: lessonId.toString(), 
+                title: lessonTitle,
+                courseId: course?.id?.toString(),
+                courseTitle: course?.title,
+                lessonNumber: lessonNumber.toString(),
+              });
+            }
+          }
+        ]
+      );
+    }
+  }, [lessons, course, router, startBackgroundDownload]);
 
   if (loading) {
     return (
@@ -285,36 +394,10 @@ export default function CourseLessonsScreen() {
                 {course?.title || '课程'}
               </ThemedText>
               <ThemedText variant="small" color={theme.textSecondary} style={styles.subtitle}>
-                {course?.description || '选择一课开始学习'}
+                点击课时自动下载音频
               </ThemedText>
             </View>
-            {!isGenerating && (
-              <TouchableOpacity 
-                style={styles.generateButton} 
-                onPress={handleGenerateAllAudio}
-              >
-                <FontAwesome6 name="wand-magic-sparkles" size={14} color={theme.primary} />
-                <ThemedText variant="smallMedium" color={theme.primary}>生成音频</ThemedText>
-              </TouchableOpacity>
-            )}
           </View>
-          
-          {/* 生成进度 */}
-          {isGenerating && generateProgress.total > 0 && (
-            <View style={styles.progressContainer}>
-              <View style={styles.progressBar}>
-                <View 
-                  style={[
-                    styles.progressFill, 
-                    { width: `${(generateProgress.current / generateProgress.total) * 100}%` }
-                  ]} 
-                />
-              </View>
-              <ThemedText variant="caption" color={theme.textMuted}>
-                {generateProgress.current}/{generateProgress.total} - {generateProgress.lessonTitle}
-              </ThemedText>
-            </View>
-          )}
         </View>
 
         {lessons.length === 0 ? (
@@ -326,14 +409,12 @@ export default function CourseLessonsScreen() {
           </View>
         ) : (
           lessons.map((lesson) => {
-            // 检查是否是上次学习的课时
             const isLastLearned = lastLearningPosition?.sourceType === 'lesson' && 
                                   lastLearningPosition.lessonId === lesson.id;
-            // 检查是否学过
             const hasLearned = lesson.learned;
-            // 检查音频缓存状态
             const hasAudioCache = lesson.cached && lesson.cached > 0;
-            const allCached = lesson.cached === lesson.total;
+            const allCached = lesson.cached === (lesson.total || 0) && (lesson.total || 0) > 0;
+            const isDownloading = lesson.isDownloading;
             
             return (
               <TouchableOpacity
@@ -358,16 +439,41 @@ export default function CourseLessonsScreen() {
                     {lesson.lesson_number}
                   </ThemedText>
                 </View>
+                
                 <View style={styles.lessonInfo}>
                   <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.lessonTitle}>
                     {lesson.title}
                   </ThemedText>
+                  
                   <ThemedText variant="caption" color={theme.textMuted} style={styles.lessonMeta}>
                     {lesson.sentences_count} 个句子
                     {hasLearned && ' · 已学过'}
-                    {hasAudioCache && !allCached && ` · 缓存 ${lesson.cached}/${lesson.total}`}
-                    {allCached && ' · 已缓存'}
                   </ThemedText>
+                  
+                  {/* 下载状态/缓存状态 */}
+                  {isDownloading ? (
+                    <View style={[styles.statusBadge, { backgroundColor: theme.primary + '20' }]}>
+                      <ActivityIndicator size="small" color={theme.primary} />
+                      <ThemedText variant="tiny" color={theme.primary} style={{ marginLeft: 6 }}>
+                        下载中 {lesson.downloadProgress ? `${Math.round(lesson.downloadProgress * 100)}%` : ''}
+                      </ThemedText>
+                    </View>
+                  ) : allCached ? (
+                    <View style={[styles.statusBadge, { backgroundColor: theme.success + '20' }]}>
+                      <FontAwesome6 name="check-circle" size={10} color={theme.success} />
+                      <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 4 }}>
+                        已缓存
+                      </ThemedText>
+                    </View>
+                  ) : hasAudioCache ? (
+                    <View style={[styles.statusBadge, { backgroundColor: theme.accent + '20' }]}>
+                      <FontAwesome6 name="down-arrow" size={10} color={theme.accent} />
+                      <ThemedText variant="tiny" color={theme.accent} style={{ marginLeft: 4 }}>
+                        缓存 {lesson.cached}/{lesson.total}
+                      </ThemedText>
+                    </View>
+                  ) : null}
+                  
                   {/* 上次学习提示 */}
                   {isLastLearned && (
                     <View style={[styles.lastLearnedBadge, { backgroundColor: theme.success + '20' }]}>
@@ -378,10 +484,11 @@ export default function CourseLessonsScreen() {
                     </View>
                   )}
                 </View>
+                
                 <FontAwesome6
-                  name="chevron-right"
-                  size={20}
-                  color={theme.textMuted}
+                  name={allCached ? "chevron-right" : "download"}
+                  size={18}
+                  color={isDownloading ? theme.textMuted : (allCached ? theme.textMuted : theme.accent)}
                   style={styles.arrowIcon}
                 />
               </TouchableOpacity>

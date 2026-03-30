@@ -13,7 +13,7 @@ const router: Router = express.Router();
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { text, speaker = 'zh_female_xiaohe_uranus_bigtts' } = req.query;
+    const { text, speaker = 'zh_female_xiaohe_uranus_bigtts' } = req.query as { text?: string; speaker?: string };
     
     if (!text || typeof text !== 'string') {
       return res.status(400).json({ error: '请提供文本内容' });

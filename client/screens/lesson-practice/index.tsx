@@ -371,6 +371,7 @@ export default function LessonPracticeScreen() {
         'Accept': 'text/event-stream',
       },
       body: JSON.stringify({ voiceIds: selectedVoicesToGenerate }),
+      lineEndingCharacter: '\n', // 显式指定换行符，避免自动检测失败
     });
     
     sseRef.current = sse;
