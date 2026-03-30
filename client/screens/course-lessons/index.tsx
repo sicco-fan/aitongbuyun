@@ -40,6 +40,7 @@ interface Lesson {
   total?: number;
   isDownloading?: boolean;
   downloadProgress?: number;
+  webDownloadComplete?: boolean; // 网页端下载完成标记
 }
 
 interface Course {
@@ -232,7 +233,10 @@ export default function CourseLessonsScreen() {
                   ...l, 
                   isDownloading: false, 
                   cached: l.total, 
-                  downloadProgress: undefined 
+                  // 网页端保留 downloadProgress: 1 用于显示「已下载」状态
+                  downloadProgress: isWeb ? 1 : undefined,
+                  // 网页端标记已下载
+                  webDownloadComplete: isWeb ? true : undefined,
                 };
               }
               return l;
@@ -273,28 +277,39 @@ export default function CourseLessonsScreen() {
               try {
                 console.log(`[云端下载] 开始下载: ${cloudAudioKey}`);
                 
-                // 从云端下载音频文件
-                const audioRes = await fetch(cloudAudioUrl);
-                if (!audioRes.ok) {
-                  throw new Error(`下载失败: ${audioRes.status}`);
+                if (isWeb) {
+                  // 网页端：触发浏览器下载
+                  const link = document.createElement('a');
+                  link.href = cloudAudioUrl;
+                  link.download = `课程${courseId}_课时${lessonId}_句子${data.sentence_index || data.sentenceIndex}.mp3`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  console.log(`[网页下载] 触发下载: ${link.download}`);
+                } else {
+                  // 移动端：下载并保存到本地存储
+                  const audioRes = await fetch(cloudAudioUrl);
+                  if (!audioRes.ok) {
+                    throw new Error(`下载失败: ${audioRes.status}`);
+                  }
+                  
+                  const audioBuffer = await audioRes.arrayBuffer();
+                  const audioBase64 = btoa(
+                    new Uint8Array(audioBuffer).reduce(
+                      (data, byte) => data + String.fromCharCode(byte),
+                      ''
+                    )
+                  );
+                  
+                  // 保存到本地
+                  const audioKey = generateCourseAudioKey(courseId!, lessonId, data.sentence_index || data.sentenceIndex);
+                  await saveAudioToLocal(audioKey, audioBase64);
+                  console.log(`[移动端下载] 保存成功: ${audioKey}`);
                 }
-                
-                const audioBuffer = await audioRes.arrayBuffer();
-                const audioBase64 = btoa(
-                  new Uint8Array(audioBuffer).reduce(
-                    (data, byte) => data + String.fromCharCode(byte),
-                    ''
-                  )
-                );
-                
-                // 保存到本地
-                const audioKey = generateCourseAudioKey(courseId!, lessonId, data.sentence_index || data.sentenceIndex);
-                await saveAudioToLocal(audioKey, audioBase64);
                 
                 // 收集云端key，稍后批量删除
                 cloudAudioKeys.push(cloudAudioKey);
                 
-                console.log(`[云端下载] 保存成功: ${audioKey}`);
               } catch (downloadErr) {
                 console.error(`[云端下载] 失败: ${cloudAudioKey}`, downloadErr);
               }
@@ -437,6 +452,10 @@ export default function CourseLessonsScreen() {
             const hasAudioCache = lesson.cached && lesson.cached > 0;
             const allCached = lesson.cached === (lesson.total || 0) && (lesson.total || 0) > 0;
             const isDownloading = lesson.isDownloading;
+            const downloadProgress = lesson.downloadProgress || 0;
+            
+            // 网页端：下载完成后显示「已下载」
+            const webDownloaded = isWeb && lesson.webDownloadComplete;
             
             return (
               <TouchableOpacity
@@ -479,19 +498,19 @@ export default function CourseLessonsScreen() {
                         <View 
                           style={[
                             styles.downloadProgressFill, 
-                            { width: `${(lesson.downloadProgress || 0) * 100}%` }
+                            { width: `${downloadProgress * 100}%` }
                           ]} 
                         />
                       </View>
                       <ThemedText variant="tiny" color={theme.textMuted} style={styles.downloadProgressText}>
-                        下载中 {lesson.downloadProgress ? `${Math.round(lesson.downloadProgress * 100)}%` : '0%'}
+                        {isWeb ? '下载中' : '缓存中'} {Math.round(downloadProgress * 100)}%
                       </ThemedText>
                     </View>
-                  ) : allCached ? (
+                  ) : allCached || webDownloaded ? (
                     <View style={[styles.statusBadge, { backgroundColor: theme.success + '20' }]}>
                       <FontAwesome6 name="check-circle" size={10} color={theme.success} />
                       <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 4 }}>
-                        已缓存
+                        {isWeb ? '已下载' : '已缓存'}
                       </ThemedText>
                     </View>
                   ) : hasAudioCache ? (
@@ -521,7 +540,7 @@ export default function CourseLessonsScreen() {
                 {/* 右侧按钮区域 */}
                 {isDownloading ? (
                   <ActivityIndicator size="small" color={theme.primary} style={styles.arrowIcon} />
-                ) : allCached ? (
+                ) : allCached || webDownloaded ? (
                   <FontAwesome6
                     name="chevron-right"
                     size={18}
