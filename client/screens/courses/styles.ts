@@ -3,6 +3,14 @@ import { Spacing, BorderRadius, Theme } from '@/constants/theme';
 
 export const createStyles = (theme: Theme) => {
   return StyleSheet.create({
+    container: {
+      flex: 1,
+      paddingHorizontal: Spacing.lg,
+    },
+    listContent: {
+      paddingTop: Spacing['2xl'],
+      paddingBottom: Spacing['5xl'],
+    },
     scrollContent: {
       flexGrow: 1,
       paddingHorizontal: Spacing.lg,

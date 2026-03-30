@@ -739,6 +739,42 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 /**
+ * PUT /api/v1/courses/reorder
+ * 批量更新课程排序（拖拽排序后保存）
+ * Body: { orders: Array<{ id: number; book_number: number }> }
+ */
+router.put('/reorder', async (req: Request, res: Response) => {
+  try {
+    const { orders } = req.body;
+    
+    if (!orders || !Array.isArray(orders) || orders.length === 0) {
+      return res.status(400).json({ error: '缺少排序数据' });
+    }
+    
+    const supabase = getSupabaseClient();
+    
+    // 批量更新每个课程的 book_number
+    for (const item of orders) {
+      if (!item.id || item.book_number === undefined) continue;
+      
+      const { error } = await supabase
+        .from('courses')
+        .update({ book_number: item.book_number })
+        .eq('id', item.id);
+      
+      if (error) {
+        console.error(`更新课程 ${item.id} 排序失败:`, error);
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('批量更新排序失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * GET /api/v1/courses/:courseId/lessons
  * 获取指定课程的课时列表
  */

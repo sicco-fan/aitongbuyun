@@ -1,16 +1,25 @@
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
-  ScrollView,
-  TouchableOpacity,
   View,
+  TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
   Modal,
   Alert,
   Platform,
   TextInput,
+  StyleSheet,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import Animated, {
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
+import DraggableFlatList, {
+  DragEndParams,
+  RenderItemParams,
+  ScaleDecorator,
+} from 'react-native-draggable-flatlist';
 import * as DocumentPicker from 'expo-document-picker';
 // @ts-ignore - react-native-sse 类型定义不完整
 import RNSSE from 'react-native-sse';
@@ -22,6 +31,7 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { createFormDataFile } from '@/utils';
 import { getLastLearningPosition, LastLearningPosition } from '@/utils/learningStorage';
+import { Spacing, BorderRadius } from '@/constants/theme';
 
 interface Course {
   id: number;
@@ -29,7 +39,7 @@ interface Course {
   book_number: number;
   description: string;
   total_lessons: number;
-  total_sentences?: number;  // 实际句子数
+  total_sentences?: number;
   cover_image?: string;
 }
 
@@ -44,19 +54,19 @@ export default function CoursesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importPhase, setImportPhase] = useState<'idle' | 'uploading' | 'importing'>('idle');
-  const [uploadProgress, setUploadProgress] = useState(0); // 0-100
-  const [importProgress, setImportProgress] = useState(''); // 导入进度消息
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [importProgress, setImportProgress] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
-  const [showInfoModal, setShowInfoModal] = useState(false); // 显示功能说明弹窗
+  const [showInfoModal, setShowInfoModal] = useState(false);
   const [importBookTitle, setImportBookTitle] = useState('');
   const [importBookNumber, setImportBookNumber] = useState('');
   const [lastLearningPosition, setLastLearningPosition] = useState<LastLearningPosition | null>(null);
-  const xhrRef = useRef<XMLHttpRequest | null>(null); // 用于取消上传
-  const sseRef = useRef<any>(null); // 用于取消 SSE
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const sseRef = useRef<any>(null);
+  const [hasShownDragTip, setHasShownDragTip] = useState(false);
 
   const fetchCourses = useCallback(async () => {
     try {
-      // 获取最后学习位置
       const lastPosition = await getLastLearningPosition();
       setLastLearningPosition(lastPosition);
       
@@ -85,9 +95,45 @@ export default function CoursesScreen() {
     fetchCourses();
   }, [fetchCourses]);
 
-  // 选择并上传文件（支持 PDF、Word、TXT）
+  // 保存排序
+  const saveReorder = useCallback(async (newCourses: Course[]) => {
+    try {
+      const orders = newCourses.map((course, index) => ({
+        id: course.id,
+        book_number: index + 1,
+      }));
+
+      /**
+       * 服务端文件：server/src/routes/courses.ts
+       * 接口：PUT /api/v1/courses/reorder
+       * Body 参数：orders: Array<{ id: number; book_number: number }>
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/reorder`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        console.log('[排序] 保存成功');
+      }
+    } catch (error) {
+      console.error('[排序] 保存失败:', error);
+    }
+  }, []);
+
+  // 拖拽结束处理
+  const handleDragEnd = useCallback((params: DragEndParams<Course>) => {
+    const { from, to, data } = params;
+    
+    if (from !== to) {
+      setCourses(data);
+      saveReorder(data);
+    }
+  }, [saveReorder]);
+
   const handlePickFile = useCallback(async (fileType: 'pdf' | 'word' | 'txt') => {
-    // 验证课程信息
     if (!importBookTitle.trim()) {
       Alert.alert('提示', '请输入课程名称');
       return;
@@ -104,17 +150,10 @@ export default function CoursesScreen() {
     }
 
     try {
-      // 根据文件类型设置 MIME 类型
       const mimeTypes = {
         pdf: 'application/pdf',
         word: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         txt: 'text/plain',
-      };
-      
-      const extensions = {
-        pdf: 'pdf',
-        word: 'docx',
-        txt: 'txt',
       };
 
       const result = await DocumentPicker.getDocumentAsync({
@@ -129,7 +168,6 @@ export default function CoursesScreen() {
       const file = result.assets[0];
       console.log('[导入课程] 选择的文件:', file.name, file.uri);
 
-      // 上传文件到对象存储
       setImporting(true);
       setImportPhase('uploading');
       setUploadProgress(0);
@@ -138,7 +176,6 @@ export default function CoursesScreen() {
       const fileData = await createFormDataFile(file.uri, file.name, mimeTypes[fileType]);
       formData.append('file', fileData as any);
 
-      // 使用 XMLHttpRequest 跟踪上传进度
       const uploadUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/upload`;
       const uploadData = await new Promise<{ url?: string; error?: string }>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -148,7 +185,6 @@ export default function CoursesScreen() {
           if (event.lengthComputable) {
             const progress = Math.round((event.loaded / event.total) * 100);
             setUploadProgress(progress);
-            console.log(`[导入课程] 上传进度: ${progress}%`);
           }
         });
 
@@ -185,7 +221,6 @@ export default function CoursesScreen() {
 
       console.log('[导入课程] 文件上传成功:', uploadData.url);
 
-      // 调用导入 API (使用 SSE 接收进度)
       setImportPhase('importing');
       setImportProgress('正在初始化导入...');
 
@@ -218,7 +253,6 @@ export default function CoursesScreen() {
 
           try {
             const data = JSON.parse(event.data);
-            console.log('[导入课程] SSE 消息:', data);
 
             if (data.type === 'progress') {
               setImportProgress(data.message);
@@ -267,7 +301,6 @@ export default function CoursesScreen() {
     }
   }, [importBookTitle, importBookNumber, fetchCourses]);
 
-  // 取消上传或导入
   const handleCancelUpload = useCallback(() => {
     if (xhrRef.current) {
       xhrRef.current.abort();
@@ -282,7 +315,18 @@ export default function CoursesScreen() {
     router.push('/course-lessons', { courseId: courseId.toString() });
   }, [router]);
 
-  const getBookIcon = (bookNumber: number): string => {
+  // 显示拖拽提示
+  const showDragTip = useCallback(() => {
+    if (hasShownDragTip) return;
+    setHasShownDragTip(true);
+    Alert.alert(
+      '排序提示',
+      '长按课程卡片可以拖动调整顺序',
+      [{ text: '知道了' }]
+    );
+  }, [hasShownDragTip]);
+
+  const getBookIcon = useCallback((bookNumber: number): string => {
     const icons: Record<number, string> = {
       1: 'book-open',
       2: 'book',
@@ -290,7 +334,78 @@ export default function CoursesScreen() {
       4: 'award',
     };
     return icons[bookNumber] || 'book';
-  };
+  }, []);
+
+  // 渲染单个课程卡片
+  const renderItem = useCallback(({ item, drag, isActive }: RenderItemParams<Course>) => {
+    const isLastLearned = lastLearningPosition?.sourceType === 'lesson' && 
+                          lastLearningPosition.courseId === item.id;
+
+    return (
+      <ScaleDecorator>
+        <TouchableOpacity
+          style={[
+            styles.courseCard,
+            isLastLearned && styles.lastLearnedCard,
+            isActive && { opacity: 0.9, transform: [{ scale: 1.02 }] },
+          ]}
+          onPress={() => handleCoursePress(item.id)}
+          onLongPress={drag}
+          activeOpacity={0.7}
+        >
+          {/* 上次学习提示 */}
+          {isLastLearned && (
+            <View style={[styles.lastLearnedBadge, { backgroundColor: theme.success + '20' }]}>
+              <FontAwesome6 name="clock-rotate-left" size={12} color={theme.success} />
+              <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 4 }}>
+                上次学到 第{lastLearningPosition?.lessonNumber}课
+              </ThemedText>
+            </View>
+          )}
+          
+          <View style={styles.courseHeader}>
+            <View style={styles.courseIcon}>
+              <FontAwesome6
+                name={getBookIcon(item.book_number)}
+                size={24}
+                color={theme.primary}
+              />
+            </View>
+            <View style={styles.courseInfo}>
+              <ThemedText variant="h4" color={theme.textPrimary} style={styles.courseTitle}>
+                {item.title}
+              </ThemedText>
+              <ThemedText variant="small" color={theme.textSecondary} style={styles.courseMeta}>
+                {item.description}
+              </ThemedText>
+            </View>
+          </View>
+          <View style={styles.courseStats}>
+            <View style={styles.statItem}>
+              <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
+                {item.total_lessons}
+              </ThemedText>
+              <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
+                课程数
+              </ThemedText>
+            </View>
+            <View style={styles.statItem}>
+              <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
+                {item.total_sentences || item.total_lessons * 18}
+              </ThemedText>
+              <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
+                句子数
+              </ThemedText>
+            </View>
+            <View style={styles.statItem}>
+              <FontAwesome6 name="grip-vertical" size={16} color={theme.textMuted} style={{ marginRight: 8 }} />
+              <FontAwesome6 name="chevron-right" size={20} color={theme.textMuted} />
+            </View>
+          </View>
+        </TouchableOpacity>
+      </ScaleDecorator>
+    );
+  }, [lastLearningPosition, handleCoursePress, getBookIcon, styles, theme]);
 
   if (loading) {
     return (
@@ -307,16 +422,8 @@ export default function CoursesScreen() {
 
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={theme.primary}
-          />
-        }
-      >
+      <View style={styles.container}>
+        {/* 头部 */}
         <View style={styles.header}>
           <View style={styles.headerRow}>
             <View style={styles.headerTitleRow}>
@@ -343,8 +450,16 @@ export default function CoursesScreen() {
           <ThemedText variant="small" color={theme.textSecondary} style={styles.subtitle}>
             系统化学习，循序渐进提升英语听力
           </ThemedText>
+          {courses.length > 1 && (
+            <TouchableOpacity onPress={showDragTip} style={{ marginTop: 8 }}>
+              <ThemedText variant="tiny" color={theme.textMuted}>
+                💡 长按课程卡片可拖动排序
+              </ThemedText>
+            </TouchableOpacity>
+          )}
         </View>
 
+        {/* 课程列表 */}
         {courses.length === 0 ? (
           <View style={styles.emptyContainer}>
             <FontAwesome6 name="book-open" size={48} color={theme.textMuted} />
@@ -353,71 +468,22 @@ export default function CoursesScreen() {
             </ThemedText>
           </View>
         ) : (
-          courses.map((course) => {
-            // 检查是否是上次学习的课程
-            const isLastLearned = lastLearningPosition?.sourceType === 'lesson' && 
-                                  lastLearningPosition.courseId === course.id;
-            
-            return (
-              <TouchableOpacity
-                key={course.id}
-                style={[styles.courseCard, isLastLearned && styles.lastLearnedCard]}
-                onPress={() => handleCoursePress(course.id)}
-                activeOpacity={0.7}
-              >
-                {/* 上次学习提示 */}
-                {isLastLearned && (
-                  <View style={[styles.lastLearnedBadge, { backgroundColor: theme.success + '20' }]}>
-                    <FontAwesome6 name="clock-rotate-left" size={12} color={theme.success} />
-                    <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 4 }}>
-                      上次学到 第{lastLearningPosition.lessonNumber}课
-                    </ThemedText>
-                  </View>
-                )}
-                
-                <View style={styles.courseHeader}>
-                  <View style={styles.courseIcon}>
-                    <FontAwesome6
-                      name={getBookIcon(course.book_number)}
-                      size={24}
-                      color={theme.primary}
-                    />
-                  </View>
-                  <View style={styles.courseInfo}>
-                    <ThemedText variant="h4" color={theme.textPrimary} style={styles.courseTitle}>
-                      {course.title}
-                    </ThemedText>
-                    <ThemedText variant="small" color={theme.textSecondary} style={styles.courseMeta}>
-                      {course.description}
-                    </ThemedText>
-                  </View>
-                </View>
-                <View style={styles.courseStats}>
-                  <View style={styles.statItem}>
-                    <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
-                      {course.total_lessons}
-                    </ThemedText>
-                    <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
-                      课程数
-                    </ThemedText>
-                  </View>
-                  <View style={styles.statItem}>
-                    <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
-                      {course.total_sentences || course.total_lessons * 18}
-                    </ThemedText>
-                    <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
-                      句子数
-                    </ThemedText>
-                  </View>
-                  <View style={styles.statItem}>
-                    <FontAwesome6 name="chevron-right" size={20} color={theme.textMuted} />
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })
+          <DraggableFlatList
+            data={courses}
+            renderItem={renderItem}
+            keyExtractor={(item) => item.id.toString()}
+            onDragEnd={handleDragEnd}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={theme.primary}
+              />
+            }
+          />
         )}
-      </ScrollView>
+      </View>
 
       {/* 导入弹窗 */}
       <Modal
@@ -436,7 +502,6 @@ export default function CoursesScreen() {
               支持 PDF、Word(.docx)、TXT 三种格式导入课程。如果课程已存在，将覆盖原有数据。
             </ThemedText>
 
-            {/* 上传进度显示 */}
             {importing ? (
               <View style={styles.progressContainer}>
                 <View style={styles.progressHeader}>
@@ -472,7 +537,6 @@ export default function CoursesScreen() {
               </View>
             ) : (
               <>
-                {/* 课程信息输入 */}
                 <View style={{ marginBottom: 20 }}>
                   <ThemedText variant="smallMedium" color={theme.textSecondary} style={{ marginBottom: 8 }}>
                     课程名称 <ThemedText color={theme.error}>*</ThemedText>
@@ -505,7 +569,6 @@ export default function CoursesScreen() {
                   </ThemedText>
                 </View>
 
-                {/* PDF 导入 */}
                 <TouchableOpacity 
                   style={styles.importOption}
                   onPress={() => handlePickFile('pdf')}
@@ -524,7 +587,6 @@ export default function CoursesScreen() {
                   <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
                 </TouchableOpacity>
 
-                {/* Word 导入 */}
                 <TouchableOpacity 
                   style={[styles.importOption, { marginTop: 12 }]}
                   onPress={() => handlePickFile('word')}
@@ -543,7 +605,6 @@ export default function CoursesScreen() {
                   <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
                 </TouchableOpacity>
 
-                {/* TXT 导入 */}
                 <TouchableOpacity 
                   style={[styles.importOption, { marginTop: 12 }]}
                   onPress={() => handlePickFile('txt')}
@@ -595,8 +656,7 @@ export default function CoursesScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.infoModalBody}>
-              {/* 什么是精品课程 */}
+            <View style={styles.infoModalBody}>
               <View style={styles.infoSection}>
                 <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
                   📚 什么是精品课程？
@@ -606,109 +666,24 @@ export default function CoursesScreen() {
                 </ThemedText>
               </View>
 
-              {/* 导入功能说明 */}
+              <View style={styles.infoSection}>
+                <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
+                  🔀 拖动排序
+                </ThemedText>
+                <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
+                  长按课程卡片可以拖动调整顺序，释放后自动保存新的排序。
+                </ThemedText>
+              </View>
+
               <View style={styles.infoSection}>
                 <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
                   📥 关于"导入"功能
                 </ThemedText>
                 <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
-                  点击右上角的「导入」按钮，上传文档文件即可自动创建课程。系统会提取文本内容、划分课时和句子，并为每个句子生成 AI 语音，方便您进行听力练习。
+                  点击右上角的「导入」按钮，上传文档文件即可自动创建课程。系统会提取文本内容、划分课时和句子，并为每个句子生成 AI 语音。
                 </ThemedText>
-                <View style={styles.infoHighlight}>
-                  <FontAwesome6 name="lightbulb" size={16} color={theme.accent} />
-                  <ThemedText variant="small" color={theme.textPrimary} style={{ marginLeft: 8, flex: 1 }}>
-                    导入后可在课程详情页为句子选择不同的 AI 音色并下载音频，支持多种发音风格。
-                  </ThemedText>
-                </View>
               </View>
-
-              {/* 支持的格式 */}
-              <View style={styles.infoSection}>
-                <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
-                  📄 支持的文件格式
-                </ThemedText>
-                
-                {/* PDF 格式 */}
-                <View style={[styles.infoHighlight, { marginBottom: 8 }]}>
-                  <FontAwesome6 name="file-pdf" size={16} color="#EF4444" />
-                  <View style={{ marginLeft: 8, flex: 1 }}>
-                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>PDF 文件</ThemedText>
-                    <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: 2 }}>
-                      自动提取文本内容，识别课时和句子
-                    </ThemedText>
-                  </View>
-                </View>
-                
-                {/* Word 格式 */}
-                <View style={[styles.infoHighlight, { marginBottom: 8 }]}>
-                  <FontAwesome6 name="file-word" size={16} color="#3B82F6" />
-                  <View style={{ marginLeft: 8, flex: 1 }}>
-                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>Word 文档 (.docx)</ThemedText>
-                    <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: 2 }}>
-                      自动提取文本内容，按段落分句
-                    </ThemedText>
-                  </View>
-                </View>
-                
-                {/* TXT 格式 */}
-                <View style={[styles.infoHighlight, { marginBottom: 8 }]}>
-                  <FontAwesome6 name="file-lines" size={16} color="#6B7280" />
-                  <View style={{ marginLeft: 8, flex: 1 }}>
-                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>纯文本文件 (.txt)</ThemedText>
-                    <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: 2 }}>
-                      UTF-8 编码，每行一个句子或按换行分段
-                    </ThemedText>
-                  </View>
-                </View>
-              </View>
-
-              {/* 文本格式要求与示范 */}
-              <View style={styles.infoSection}>
-                <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.infoSectionTitle}>
-                  📝 文本格式要求
-                </ThemedText>
-                <ThemedText variant="body" color={theme.textSecondary} style={styles.infoSectionText}>
-                  为确保正确识别，请按以下格式组织文档内容：
-                </ThemedText>
-                
-                {/* 格式示范 */}
-                <View style={styles.formatExample}>
-                  <ThemedText variant="smallMedium" color={theme.textMuted} style={{ marginBottom: 4 }}>
-                    格式示范：
-                  </ThemedText>
-                  <View style={styles.formatExampleCode}>
-                    <ThemedText variant="small" color={theme.textPrimary} style={{ fontFamily: 'monospace' }}>
-                      {'Lesson 1\n'}
-                      {'A private conversation\n'}
-                      {'私人谈话\n'}
-                      {'Last week I went to the theatre.\n'}
-                      {'上周我去看戏。\n'}
-                      {'I had a very good seat.\n'}
-                      {'我的座位很好。\n\n'}
-                      {'Lesson 2\n'}
-                      {'Breakfast or lunch?\n'}
-                      {'早餐还是午餐？\n'}
-                      {'It was Sunday.\n'}
-                      {'那是星期天。'}
-                    </ThemedText>
-                  </View>
-                </View>
-                
-                <View style={[styles.infoHighlight, { marginTop: 8 }]}>
-                  <FontAwesome6 name="check-circle" size={14} color={theme.success} />
-                  <ThemedText variant="small" color={theme.textSecondary} style={{ marginLeft: 6, flex: 1 }}>
-                    {'• 课时标题：以 "Lesson X" 开头\n• 句子格式：一行英文，下一行中文翻译\n• 句子间用换行分隔，课时间空一行'}
-                  </ThemedText>
-                </View>
-                
-                <View style={[styles.infoHighlight, { marginTop: 8, backgroundColor: theme.error + '10' }]}>
-                  <FontAwesome6 name="times-circle" size={14} color={theme.error} />
-                  <ThemedText variant="small" color={theme.textSecondary} style={{ marginLeft: 6, flex: 1 }}>
-                    {'不支持：英文和中文写同一行\n例如：Last week I went to the theatre. 上周我去看戏。'}
-                  </ThemedText>
-                </View>
-              </View>
-            </ScrollView>
+            </View>
 
             <TouchableOpacity 
               style={styles.infoModalCloseBtn}
@@ -722,3 +697,9 @@ export default function CoursesScreen() {
     </Screen>
   );
 }
+
+const dragStyles = StyleSheet.create({
+  itemContainer: {
+    marginBottom: Spacing.md,
+  },
+});
