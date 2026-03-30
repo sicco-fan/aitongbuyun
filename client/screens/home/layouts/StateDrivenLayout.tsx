@@ -187,10 +187,10 @@ export default function StateDrivenLayout({
           </View>
           <TouchableOpacity 
             onPress={() => router.push('/courses')}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 2, opacity: 0.5 }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 2, opacity: 0.3 }}
           >
             <ThemedText variant="tiny" color={theme.textMuted}>管理</ThemedText>
-            <FontAwesome6 name="chevron-right" size={10} color={theme.textMuted} />
+            <FontAwesome6 name="chevron-right" size={8} color={theme.textMuted} />
           </TouchableOpacity>
         </View>
 

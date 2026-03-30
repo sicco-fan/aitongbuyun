@@ -324,16 +324,6 @@ export default function CoursesScreen() {
     );
   }, [hasShownDragTip]);
 
-  const getBookIcon = useCallback((bookNumber: number): string => {
-    const icons: Record<number, string> = {
-      1: 'book-open',
-      2: 'book',
-      3: 'graduation-cap',
-      4: 'award',
-    };
-    return icons[bookNumber] || 'book';
-  }, []);
-
   // 渲染单个课程卡片
   const renderItem = useCallback(({ item, drag, isActive }: RenderItemParams<Course>) => {
     const isLastLearned = lastLearningPosition?.sourceType === 'lesson' && 
@@ -352,42 +342,14 @@ export default function CoursesScreen() {
           onLongPress={drag}
           delayLongPress={300}
         >
-          {/* 上次学习提示 */}
-          {isLastLearned && (
-            <View style={[styles.lastLearnedBadge, { backgroundColor: theme.success + '20' }]}>
-              <FontAwesome6 name="clock-rotate-left" size={10} color={theme.success} />
-              <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 2 }}>
-                第{lastLearningPosition?.lessonNumber}课
-              </ThemedText>
-            </View>
-          )}
-          
-          <View style={styles.courseHeader}>
-            <View style={styles.courseIcon}>
-              <FontAwesome6
-                name={getBookIcon(item.book_number)}
-                size={18}
-                color={theme.primary}
-              />
-            </View>
-            <View style={styles.courseInfo}>
-              <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.courseTitle}>
-                {item.title}
-              </ThemedText>
-              <ThemedText variant="tiny" color={theme.textMuted} style={styles.courseMeta}>
-                {item.total_lessons}课 · {item.total_sentences || item.total_lessons * 18}句
-              </ThemedText>
-            </View>
-          </View>
-          
-          <View style={styles.courseStats}>
-            <FontAwesome6 name="grip-vertical" size={14} color={theme.textMuted} />
-            <FontAwesome6 name="chevron-right" size={14} color={theme.textMuted} />
-          </View>
+          <ThemedText variant="body" color={theme.textPrimary} style={{ flex: 1 }}>
+            {item.title}
+          </ThemedText>
+          <FontAwesome6 name="grip-vertical" size={14} color={theme.textMuted} />
         </Pressable>
       </ScaleDecorator>
     );
-  }, [lastLearningPosition, handleCoursePress, getBookIcon, styles, theme]);
+  }, [lastLearningPosition, handleCoursePress, styles, theme]);
 
   if (loading) {
     return (
