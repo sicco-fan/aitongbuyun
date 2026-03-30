@@ -56,6 +56,9 @@ const downloadingLessons = new Map<number, {
   total: number;
 }>();
 
+// 全局：是否正在下载（限制同时只能下载一个课时）
+let isGloballyDownloading = false;
+
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
 export default function CourseLessonsScreen() {
@@ -165,11 +168,20 @@ export default function CourseLessonsScreen() {
   const startBackgroundDownload = useCallback(async (lessonId: number, lessonTitle: string) => {
     if (!courseId || !isLocalStorageSupported()) return;
     
+    // 检查是否已有其他下载任务
+    if (isGloballyDownloading) {
+      Alert.alert('提示', '请等待当前下载任务完成后再试');
+      return;
+    }
+    
     // 检查是否已在下载中
     if (downloadingLessons.has(lessonId)) {
       Alert.alert('提示', '该课时正在下载中，请稍候');
       return;
     }
+    
+    // 标记为下载中
+    isGloballyDownloading = true;
     
     const controller = new AbortController();
     downloadingLessons.set(lessonId, { controller, progress: 0, total: 0 });
@@ -217,6 +229,7 @@ export default function CourseLessonsScreen() {
             }));
             
             console.log(`[后台下载] 课时 ${lessonId} 下载完成`);
+            isGloballyDownloading = false; // 清除全局下载状态
             return;
           }
           
@@ -246,6 +259,7 @@ export default function CourseLessonsScreen() {
             console.error(`[后台下载] 错误: ${errorMsg}`);
             sse.close();
             downloadingLessons.delete(lessonId);
+            isGloballyDownloading = false; // 清除全局下载状态
             setLessons(prev => prev.map(l => 
               l.id === lessonId ? { ...l, isDownloading: false, downloadProgress: undefined } : l
             ));
@@ -259,6 +273,7 @@ export default function CourseLessonsScreen() {
       sse.addEventListener('error', (event) => {
         console.error('SSE连接错误:', event);
         downloadingLessons.delete(lessonId);
+        isGloballyDownloading = false; // 清除全局下载状态
         setLessons(prev => prev.map(l => 
           l.id === lessonId ? { ...l, isDownloading: false, downloadProgress: undefined } : l
         ));
@@ -268,6 +283,7 @@ export default function CourseLessonsScreen() {
     } catch (error: any) {
       console.error('[后台下载] 失败:', error);
       downloadingLessons.delete(lessonId);
+      isGloballyDownloading = false; // 清除全局下载状态
       setLessons(prev => prev.map(l => 
         l.id === lessonId ? { ...l, isDownloading: false, downloadProgress: undefined } : l
       ));
