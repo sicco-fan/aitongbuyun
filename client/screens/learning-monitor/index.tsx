@@ -68,7 +68,7 @@ const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL ||
  * 显示课程学习者的学习情况和错题分析
  * 支持课程筛选、学习趋势图表、导出报告
  * 
- * 权限要求：仅 admin 或 teacher 角色可访问
+ * 权限要求：仅 admin 角色可访问
  */
 export default function LearningMonitorScreen() {
   const router = useSafeRouter();
@@ -76,8 +76,8 @@ export default function LearningMonitorScreen() {
   const { user, isAuthenticated } = useAuth();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  // 权限检查：仅 admin 或 teacher 可访问
-  const canAccess = user?.role === 'admin' || user?.role === 'teacher';
+  // 权限检查：仅 admin 可访问
+  const canAccess = user?.role === 'admin';
 
   // 课程筛选
   const [courses, setCourses] = useState<Course[]>([]);
@@ -600,7 +600,7 @@ export default function LearningMonitorScreen() {
             无访问权限
           </ThemedText>
           <ThemedText variant="body" color={theme.textMuted} style={{ marginTop: Spacing.sm, textAlign: 'center' }}>
-            此功能仅限管理员和教师访问
+            此功能仅限管理员访问
           </ThemedText>
           <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: Spacing.md }}>
             正在返回上一页...

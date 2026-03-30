@@ -367,8 +367,8 @@ export default function ProfileScreen() {
           管理功能
         </ThemedText>
 
-        {/* 学习监控入口 - 仅管理者和教师可见 */}
-        {(user?.role === 'admin' || user?.role === 'teacher') && (
+        {/* 学习监控入口 - 仅管理员可见 */}
+        {user?.role === 'admin' && (
           <TouchableOpacity 
             style={styles.adminCard}
             onPress={() => router.push('/learning-monitor')}
