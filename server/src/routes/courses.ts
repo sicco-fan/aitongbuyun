@@ -1211,20 +1211,50 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
     let generatedCount = 0;
     let failedCount = 0;
     
+    // 辅助函数：延迟
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    
+    // 辅助函数：带重试的TTS生成
+    const synthesizeWithRetry = async (text: string, speaker: string, uid: string, maxRetries = 3): Promise<any> => {
+      let lastError: any;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          return await ttsClient.synthesize({
+            uid,
+            text,
+            speaker,
+            audioFormat: 'mp3',
+            sampleRate: 24000,
+          });
+        } catch (err: any) {
+          lastError = err;
+          // 检查是否为并发限制错误
+          if (err.message?.includes('quota exceeded') || err.message?.includes('concurrency')) {
+            // 等待后重试，每次等待时间递增
+            const waitTime = 1000 * (attempt + 1); // 1s, 2s, 3s
+            console.log(`TTS并发限制，等待 ${waitTime}ms 后重试 (第${attempt + 1}次)`);
+            await delay(waitTime);
+          } else {
+            // 其他错误直接抛出
+            throw err;
+          }
+        }
+      }
+      throw lastError;
+    };
+    
     // 为每个音色、每个句子生成音频
     for (const voiceId of targetVoiceIds) {
       const voiceName = voiceNameMap[voiceId] || voiceId;
       
       for (const sentence of sentences) {
         try {
-          // 调用TTS生成音频
-          const ttsResponse = await ttsClient.synthesize({
-            uid: `lesson_${lessonId}_sentence_${sentence.id}_${voiceId}`,
-            text: sentence.english_text,
-            speaker: voiceId,
-            audioFormat: 'mp3',
-            sampleRate: 24000,
-          });
+          // 调用TTS生成音频（带重试）
+          const ttsResponse = await synthesizeWithRetry(
+            sentence.english_text,
+            voiceId,
+            `lesson_${lessonId}_sentence_${sentence.id}_${voiceId}`
+          );
           
           // 下载音频数据
           const audioResponse = await axios.get(ttsResponse.audioUri, { 
