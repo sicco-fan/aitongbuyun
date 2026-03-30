@@ -222,3 +222,137 @@ export const sentenceFileItems = pgTable("sentence_file_items", {
 			name: "sentence_file_items_sentence_file_id_fkey"
 		}).onDelete("cascade"),
 ]);
+
+// ========== 社区系统 ==========
+
+// 打卡记录表
+export const checkIns = pgTable("check_ins", {
+	id: serial().primaryKey().notNull(),
+	userId: varchar("user_id", { length: 36 }).notNull(),
+	checkDate: varchar("check_date", { length: 10 }).notNull(), // YYYY-MM-DD
+	streakDays: integer("streak_days").default(1), // 当次打卡时的连续天数
+	durationSeconds: integer("duration_seconds").default(0), // 当日学习时长
+	sentencesCompleted: integer("sentences_completed").default(0), // 当日完成句子数
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("check_ins_user_id_idx").on(table.userId),
+	index("check_ins_check_date_idx").on(table.checkDate),
+	unique("check_ins_user_date_key").on(table.userId, table.checkDate),
+]);
+
+// 徽章定义表
+export const badges = pgTable("badges", {
+	id: serial().primaryKey().notNull(),
+	code: varchar("code", { length: 50 }).notNull().unique(),
+	name: varchar("name", { length: 100 }).notNull(),
+	description: text(),
+	icon: varchar("icon", { length: 255 }), // 图标名称或URL
+	type: varchar("type", { length: 20 }).default('streak'), // streak / achievement / special
+	requirement: integer("requirement").default(0), // 达成条件数值
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+// 用户徽章表
+export const userBadges = pgTable("user_badges", {
+	id: serial().primaryKey().notNull(),
+	userId: varchar("user_id", { length: 36 }).notNull(),
+	badgeId: integer("badge_id").notNull(),
+	earnedAt: timestamp("earned_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("user_badges_user_id_idx").on(table.userId),
+	unique("user_badges_user_badge_key").on(table.userId, table.badgeId),
+	foreignKey({
+		columns: [table.badgeId],
+		foreignColumns: [badges.id],
+		name: "user_badges_badge_id_fkey"
+	}),
+]);
+
+// 话题表
+export const topics = pgTable("topics", {
+	id: serial().primaryKey().notNull(),
+	title: varchar("title", { length: 255 }).notNull(),
+	description: text(),
+	isActive: boolean("is_active").default(true),
+	isPinned: boolean("is_pinned").default(false), // 是否置顶
+	postCount: integer("post_count").default(0),
+	createdBy: varchar("created_by", { length: 36 }), // 创建者（null为官方话题）
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("topics_is_active_idx").on(table.isActive),
+	index("topics_is_pinned_idx").on(table.isPinned),
+]);
+
+// 动态/帖子表
+export const posts = pgTable("posts", {
+	id: serial().primaryKey().notNull(),
+	userId: varchar("user_id", { length: 36 }).notNull(),
+	topicId: integer("topic_id"), // 所属话题（可选）
+	content: text().notNull(),
+	postType: varchar("post_type", { length: 20 }).default('dynamic'), // dynamic / share / achievement
+	// 自动生成的动态相关数据
+	metadata: text("metadata"), // JSON 格式的附加数据，如学习时长、完成句子数等
+	likeCount: integer("like_count").default(0),
+	commentCount: integer("comment_count").default(0),
+	isHidden: boolean("is_hidden").default(false),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("posts_user_id_idx").on(table.userId),
+	index("posts_topic_id_idx").on(table.topicId),
+	index("posts_created_at_idx").on(table.createdAt),
+	foreignKey({
+		columns: [table.topicId],
+		foreignColumns: [topics.id],
+		name: "posts_topic_id_fkey"
+	}),
+]);
+
+// 评论表
+export const comments = pgTable("comments", {
+	id: serial().primaryKey().notNull(),
+	postId: integer("post_id").notNull(),
+	userId: varchar("user_id", { length: 36 }).notNull(),
+	parentId: integer("parent_id"), // 父评论ID（用于回复功能）
+	content: text().notNull(),
+	likeCount: integer("like_count").default(0),
+	isHidden: boolean("is_hidden").default(false),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("comments_post_id_idx").on(table.postId),
+	index("comments_user_id_idx").on(table.userId),
+	index("comments_parent_id_idx").on(table.parentId),
+	foreignKey({
+		columns: [table.postId],
+		foreignColumns: [posts.id],
+		name: "comments_post_id_fkey"
+	}).onDelete("cascade"),
+]);
+
+// 点赞表
+export const likes = pgTable("likes", {
+	id: serial().primaryKey().notNull(),
+	userId: varchar("user_id", { length: 36 }).notNull(),
+	targetType: varchar("target_type", { length: 20 }).notNull(), // post / comment
+	targetId: integer("target_id").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("likes_user_id_idx").on(table.userId),
+	index("likes_target_idx").on(table.targetType, table.targetId),
+	unique("likes_user_target_key").on(table.userId, table.targetType, table.targetId),
+]);
+
+// 用户资料扩展表（用于排行榜显示）
+export const userProfiles = pgTable("user_profiles", {
+	id: serial().primaryKey().notNull(),
+	userId: varchar("user_id", { length: 36 }).notNull().unique(),
+	nickname: varchar("nickname", { length: 100 }),
+	avatarUrl: text("avatar_url"),
+	bio: text(), // 个人简介
+	showInRanking: boolean("show_in_ranking").default(true), // 是否显示在排行榜
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("user_profiles_user_id_idx").on(table.userId),
+]);
