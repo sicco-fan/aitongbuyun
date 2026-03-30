@@ -681,9 +681,10 @@ export default function LessonPracticeScreen() {
   };
 
   // 检查是否有音频（后端数据库 或 本地缓存）
+  // Web 端：始终使用在线 TTS，不需要缓存
   const hasAudioFromDb = sentences.some(s => s.audio_url);
   const hasLocalCache = voiceCacheStatuses.some(s => s.cached > 0);
-  const hasAudio = hasAudioFromDb || hasLocalCache;
+  const hasAudio = Platform.OS === 'web' ? sentences.length > 0 : (hasAudioFromDb || hasLocalCache);
   const selectedVoiceStatus = voiceCacheStatuses.find(s => s.voiceId === selectedVoice);
   const allDownloaded = voiceCacheStatuses.length > 0 && 
     voiceCacheStatuses.filter(s => s.hasAudio).every(s => s.cached === s.total && s.total > 0);

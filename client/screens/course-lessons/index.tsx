@@ -8,6 +8,9 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+
+// 检测是否为 Web 端（Platform.OS 类型不包含 'web'，需要类型断言）
+const isWeb = (Platform as any).OS === 'web';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -285,17 +288,11 @@ export default function CourseLessonsScreen() {
       return;
     }
     
-    // 检查是否正在下载
-    if (lesson.isDownloading) {
-      Alert.alert('下载中', '该课时音频正在下载中，请稍候...');
-      return;
-    }
-    
     // 检查是否已完全缓存
     const allCached = lesson.cached === (lesson.total || 0) && (lesson.total || 0) > 0;
     
-    if (allCached) {
-      // 已缓存：直接进入学习
+    // Web 端：直接进入学习（使用在线 TTS）
+    if (isWeb || allCached) {
       router.push('/lesson-practice', { 
         lessonId: lessonId.toString(), 
         title: lessonTitle,
@@ -304,7 +301,7 @@ export default function CourseLessonsScreen() {
         lessonNumber: lessonNumber.toString(),
       });
     } else {
-      // 未缓存：直接开始下载
+      // 移动端未缓存：开始下载
       startBackgroundDownload(lessonId, lessonTitle);
     }
   }, [lessons, course, router, startBackgroundDownload]);
