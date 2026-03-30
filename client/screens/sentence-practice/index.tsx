@@ -2461,7 +2461,11 @@ export default function SentencePracticeScreen() {
 
   // 获取完美发音列表（当前句子）
   const fetchPerfectRecordings = useCallback(async () => {
-    if (!isAuthenticated || !user?.id || !currentSentence?.id) return;
+    console.log(`[fetchPerfectRecordings] 开始获取, isAuthenticated: ${isAuthenticated}, userId: ${user?.id}, sentenceId: ${currentSentence?.id}`);
+    if (!isAuthenticated || !user?.id || !currentSentence?.id) {
+      console.log(`[fetchPerfectRecordings] 条件不满足，跳过获取`);
+      return;
+    }
 
     try {
       /**
@@ -2474,8 +2478,10 @@ export default function SentencePracticeScreen() {
       );
       const data = await response.json();
 
+      console.log(`[fetchPerfectRecordings] 获取结果: ${JSON.stringify(data)}`);
       if (data.success) {
         setPerfectRecordings(data.data || []);
+        console.log(`[fetchPerfectRecordings] 设置了 ${data.data?.length || 0} 条记录`);
       }
     } catch (error) {
       console.error('获取完美发音列表失败:', error);
@@ -2484,6 +2490,7 @@ export default function SentencePracticeScreen() {
 
   // 获取其他用户分享的发音（当前句子）
   const fetchPublicRecordings = useCallback(async () => {
+    console.log(`[fetchPublicRecordings] 开始获取, sentenceId: ${currentSentence?.id}`);
     if (!currentSentence?.id) return;
 
     try {
@@ -2497,8 +2504,10 @@ export default function SentencePracticeScreen() {
       );
       const data = await response.json();
 
+      console.log(`[fetchPublicRecordings] 获取结果: ${JSON.stringify(data)}`);
       if (data.success) {
         setPublicRecordings(data.data || []);
+        console.log(`[fetchPublicRecordings] 设置了 ${data.data?.length || 0} 条记录`);
       }
     } catch (error) {
       console.error('获取公开分享发音失败:', error);
@@ -5528,12 +5537,12 @@ export default function SentencePracticeScreen() {
               </View>
               
               {/* 我的发音 */}
-              {perfectRecordings.length > 0 && (
-                <View style={{ paddingVertical: Spacing.sm }}>
-                  <ThemedText variant="caption" color={theme.textMuted} style={{ paddingHorizontal: Spacing.md, marginBottom: Spacing.xs }}>
-                    我的发音 ({perfectRecordings.length})
-                  </ThemedText>
-                  {perfectRecordings.slice(0, 3).map((record: any, idx: number) => {
+              <View style={{ paddingVertical: Spacing.sm }}>
+                <ThemedText variant="caption" color={theme.textMuted} style={{ paddingHorizontal: Spacing.md, marginBottom: Spacing.xs }}>
+                  我的发音 {perfectRecordings.length > 0 && `(${perfectRecordings.length})`}
+                </ThemedText>
+                {perfectRecordings.length > 0 ? (
+                  perfectRecordings.slice(0, 3).map((record: any, idx: number) => {
                     const sourceId = `mine_${record.id}`;
                     const isSelected = selectedSourceIds.includes(sourceId);
                     const isCurrentlyPlaying = selectedSourceIds[currentPlayingSourceIndex] === sourceId;
@@ -5588,17 +5597,23 @@ export default function SentencePracticeScreen() {
                         </TouchableOpacity>
                       </TouchableOpacity>
                     );
-                  })}
-                </View>
-              )}
+                  })
+                ) : (
+                  <View style={{ paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm }}>
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      暂无我的发音，完成一遍过练习后会自动保存
+                    </ThemedText>
+                  </View>
+                )}
+              </View>
               
               {/* 社区分享 */}
-              {publicRecordings.length > 0 && (
-                <View style={{ paddingVertical: Spacing.sm }}>
-                  <ThemedText variant="caption" color={theme.textMuted} style={{ paddingHorizontal: Spacing.md, marginBottom: Spacing.xs }}>
-                    社区分享 ({publicRecordings.length})
-                  </ThemedText>
-                  {publicRecordings.slice(0, 3).map((record: any, idx: number) => {
+              <View style={{ paddingVertical: Spacing.sm }}>
+                <ThemedText variant="caption" color={theme.textMuted} style={{ paddingHorizontal: Spacing.md, marginBottom: Spacing.xs }}>
+                  社区分享 {publicRecordings.length > 0 && `(${publicRecordings.length})`}
+                </ThemedText>
+                {publicRecordings.length > 0 ? (
+                  publicRecordings.slice(0, 3).map((record: any, idx: number) => {
                     const sourceId = `community_${record.id}`;
                     const isSelected = selectedSourceIds.includes(sourceId);
                     const isCurrentlyPlaying = selectedSourceIds[currentPlayingSourceIndex] === sourceId;
@@ -5655,9 +5670,15 @@ export default function SentencePracticeScreen() {
                         </TouchableOpacity>
                       </TouchableOpacity>
                     );
-                  })}
-                </View>
-              )}
+                  })
+                ) : (
+                  <View style={{ paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm }}>
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      暂无社区分享的发音
+                    </ThemedText>
+                  </View>
+                )}
+              </View>
               
               {/* 提示 */}
               <View style={{ padding: Spacing.md, alignItems: 'center' }}>
