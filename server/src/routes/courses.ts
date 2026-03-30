@@ -521,6 +521,40 @@ const AVAILABLE_VOICES = [
 ];
 
 /**
+ * GET /api/v1/courses/check-number/:bookNumber
+ * 检查课程编号是否已存在
+ */
+router.get('/check-number/:bookNumber', async (req: Request, res: Response) => {
+  try {
+    const bookNumber = req.params.bookNumber as string;
+    const num = parseInt(bookNumber, 10);
+    
+    if (isNaN(num)) {
+      return res.status(400).json({ error: '无效的课程编号' });
+    }
+    
+    const supabase = getSupabaseClient();
+    const { data: course, error } = await supabase
+      .from('courses')
+      .select('id, title, book_number, total_lessons, created_at')
+      .eq('book_number', num)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') { // PGRST116 表示未找到记录
+      throw new Error(error.message);
+    }
+    
+    res.json({ 
+      exists: !!course,
+      course: course || null
+    });
+  } catch (error: any) {
+    console.error('检查课程编号失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * GET /api/v1/courses
  * 获取课程列表（包含实际句子数）
  */

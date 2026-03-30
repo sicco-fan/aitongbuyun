@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   ScrollView,
   TouchableOpacity,
@@ -8,6 +8,7 @@ import {
   Platform,
   TextInput,
   KeyboardAvoidingView,
+  FlatList,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 // @ts-ignore - react-native-sse 类型定义不完整
@@ -24,6 +25,13 @@ import { Spacing, BorderRadius } from '@/constants/theme';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
+interface ExistingCourse {
+  id: number;
+  title: string;
+  book_number: number;
+  total_lessons: number;
+}
+
 export default function CreateAISentenceFileScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -33,6 +41,11 @@ export default function CreateAISentenceFileScreen() {
   const [bookTitle, setBookTitle] = useState('');
   const [bookNumber, setBookNumber] = useState('');
   
+  // 已有课程列表
+  const [existingCourses, setExistingCourses] = useState<ExistingCourse[]>([]);
+  const [conflictCourse, setConflictCourse] = useState<ExistingCourse | null>(null);
+  const [suggestedNumber, setSuggestedNumber] = useState<number | null>(null);
+  
   // 上传状态
   const [importing, setImporting] = useState(false);
   const [importPhase, setImportPhase] = useState<'idle' | 'uploading' | 'importing'>('idle');
@@ -40,6 +53,70 @@ export default function CreateAISentenceFileScreen() {
   const [importProgress, setImportProgress] = useState('');
   const xhrRef = useRef<XMLHttpRequest | null>(null);
   const sseRef = useRef<any>(null);
+
+  // 获取已有课程列表
+  useEffect(() => {
+    const fetchExistingCourses = async () => {
+      try {
+        /**
+         * 服务端文件：server/src/routes/courses.ts
+         * 接口：GET /api/v1/courses
+         */
+        const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses`);
+        const data = await response.json();
+        if (data.courses) {
+          setExistingCourses(data.courses.map((c: any) => ({
+            id: c.id,
+            title: c.title,
+            book_number: c.book_number,
+            total_lessons: c.total_lessons,
+          })));
+        }
+      } catch (error) {
+        console.error('获取课程列表失败:', error);
+      }
+    };
+    fetchExistingCourses();
+  }, []);
+
+  // 检测编号冲突
+  useEffect(() => {
+    const checkConflict = async () => {
+      const num = parseInt(bookNumber, 10);
+      if (isNaN(num) || num < 1) {
+        setConflictCourse(null);
+        setSuggestedNumber(null);
+        return;
+      }
+
+      // 先在本地列表中查找
+      const found = existingCourses.find(c => c.book_number === num);
+      if (found) {
+        setConflictCourse(found);
+        // 推荐一个未使用的编号
+        const usedNumbers = new Set(existingCourses.map(c => c.book_number));
+        let suggested = 1;
+        while (usedNumbers.has(suggested)) {
+          suggested++;
+        }
+        setSuggestedNumber(suggested);
+      } else {
+        setConflictCourse(null);
+        setSuggestedNumber(null);
+      }
+    };
+    
+    // 防抖
+    const timer = setTimeout(checkConflict, 300);
+    return () => clearTimeout(timer);
+  }, [bookNumber, existingCourses]);
+
+  // 使用推荐编号
+  const handleUseSuggestedNumber = useCallback(() => {
+    if (suggestedNumber) {
+      setBookNumber(suggestedNumber.toString());
+    }
+  }, [suggestedNumber]);
 
   // 选择并上传文件
   const handlePickFile = useCallback(async (fileType: 'pdf' | 'word' | 'txt') => {
@@ -57,6 +134,28 @@ export default function CreateAISentenceFileScreen() {
     if (isNaN(bookNum) || bookNum < 1) {
       Alert.alert('提示', '课程编号必须是大于0的数字');
       return;
+    }
+
+    // 如果编号已存在，需要用户确认覆盖
+    if (conflictCourse) {
+      const shouldOverwrite = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          '⚠️ 编号已存在',
+          `编号 ${bookNum} 已被课程「${conflictCourse.title}」使用。\n\n继续将覆盖该课程的所有内容，此操作不可恢复！`,
+          [
+            { text: '取消', style: 'cancel', onPress: () => resolve(false) },
+            { 
+              text: '确认覆盖', 
+              style: 'destructive', 
+              onPress: () => resolve(true) 
+            },
+          ]
+        );
+      });
+      
+      if (!shouldOverwrite) {
+        return;
+      }
     }
 
     try {
@@ -294,9 +393,66 @@ export default function CreateAISentenceFileScreen() {
                 keyboardType="number-pad"
                 maxLength={10}
               />
-              <ThemedText variant="tiny" color={theme.textMuted} style={{ marginTop: 4 }}>
-                编号用于区分不同课程，请确保唯一性
-              </ThemedText>
+              
+              {/* 冲突警告 */}
+              {conflictCourse && (
+                <View style={styles.conflictWarning}>
+                  <FontAwesome6 name="triangle-exclamation" size={18} color="#D97706" />
+                  <View style={styles.conflictWarningText}>
+                    <ThemedText variant="small" color="#92400E" style={styles.conflictWarningTitle}>
+                      编号 {conflictCourse.book_number} 已被使用
+                    </ThemedText>
+                    <ThemedText variant="tiny" color="#92400E">
+                      已有课程：「{conflictCourse.title}」（{conflictCourse.total_lessons || 0}课）{'\n'}
+                      继续将覆盖该课程的所有内容！
+                    </ThemedText>
+                  </View>
+                </View>
+              )}
+              
+              {/* 推荐编号 */}
+              {suggestedNumber && (
+                <TouchableOpacity style={styles.suggestedNumber} onPress={handleUseSuggestedNumber}>
+                  <FontAwesome6 name="lightbulb" size={14} color={theme.primary} />
+                  <ThemedText variant="small" style={styles.suggestedNumberText}>
+                    建议使用编号 {suggestedNumber}（点击使用）
+                  </ThemedText>
+                </TouchableOpacity>
+              )}
+              
+              {/* 已有课程列表 */}
+              {existingCourses.length > 0 && (
+                <View style={styles.existingCoursesSection}>
+                  <ThemedText variant="tiny" color={theme.textMuted} style={{ marginTop: 8, marginBottom: 4 }}>
+                    已有课程（{existingCourses.length}个）：
+                  </ThemedText>
+                  <View style={styles.existingCoursesList}>
+                    {existingCourses.slice(0, 5).map((course, index) => (
+                      <View 
+                        key={course.id} 
+                        style={[
+                          styles.existingCourseItem,
+                          index === Math.min(existingCourses.length - 1, 4) && styles.existingCourseItemLast
+                        ]}
+                      >
+                        <ThemedText variant="tiny" color={theme.textSecondary}>
+                          {course.book_number}. {course.title}
+                        </ThemedText>
+                        <ThemedText variant="tiny" color={theme.textMuted}>
+                          {course.total_lessons || 0}课
+                        </ThemedText>
+                      </View>
+                    ))}
+                    {existingCourses.length > 5 && (
+                      <View style={[styles.existingCourseItem, styles.existingCourseItemLast]}>
+                        <ThemedText variant="tiny" color={theme.textMuted}>
+                          还有 {existingCourses.length - 5} 个课程...
+                        </ThemedText>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
             </View>
           </View>
 

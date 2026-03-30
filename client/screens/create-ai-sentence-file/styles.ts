@@ -141,5 +141,66 @@ export const createStyles = (theme: Theme) => {
       flexDirection: 'row',
       alignItems: 'center',
     },
+    // 已有课程列表
+    existingCoursesSection: {
+      marginTop: Spacing.md,
+      marginBottom: Spacing.md,
+    },
+    existingCoursesList: {
+      maxHeight: 150,
+      borderWidth: 1,
+      borderColor: theme.borderLight,
+      borderRadius: BorderRadius.md,
+      overflow: 'hidden',
+    },
+    existingCourseItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.borderLight,
+    },
+    existingCourseItemLast: {
+      borderBottomWidth: 0,
+    },
+    // 冲突警告
+    conflictWarning: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      backgroundColor: '#FEF3C7',
+      borderRadius: BorderRadius.md,
+      padding: Spacing.md,
+      marginTop: Spacing.sm,
+      borderWidth: 1,
+      borderColor: '#F59E0B',
+    },
+    conflictWarningText: {
+      flex: 1,
+      marginLeft: Spacing.sm,
+    },
+    conflictWarningTitle: {
+      fontWeight: '600',
+      marginBottom: 2,
+    },
+    conflictWarningDesc: {
+      fontSize: 12,
+      lineHeight: 18,
+      color: '#92400E',
+    },
+    // 推荐编号
+    suggestedNumber: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.primary + '10',
+      borderRadius: BorderRadius.md,
+      padding: Spacing.sm,
+      marginTop: Spacing.xs,
+    },
+    suggestedNumberText: {
+      marginLeft: Spacing.xs,
+      color: theme.primary,
+    },
   });
 };
