@@ -2255,8 +2255,9 @@ export default function SentencePracticeScreen() {
               
               if (progressData.success && progressData.progress) {
                 const savedIndex = progressData.progress.lastSentenceIndex;
-                // 如果有进度且不是第一句，询问是否继续
-                if (savedIndex > 0 && savedIndex < loadedSentences.length) {
+                // 如果有进度且不是第一句，且不是最后一句（课程未学完），才询问是否继续
+                // 如果学到了最后一句（savedIndex === loadedSentences.length - 1），说明课程已学完，直接从头开始
+                if (savedIndex > 0 && savedIndex < loadedSentences.length - 1) {
                   setResumingFromProgress(true);
                   Alert.alert(
                     '继续学习',
@@ -2281,7 +2282,7 @@ export default function SentencePracticeScreen() {
                     ]
                   );
                 } else {
-                  // 没有进度记录，初始索引为0
+                  // 课程已学完或没有有效进度，从头开始
                   initialIndexRef.current = 0;
                 }
               } else {
