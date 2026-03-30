@@ -492,6 +492,192 @@ router.get('/file/:file_id', async (req, res) => {
 });
 
 /**
+ * GET /api/v1/stats/learners
+ * 获取所有学习者列表（不按课程筛选）
+ */
+router.get('/learners', async (req, res) => {
+  try {
+    const client = getSupabaseClient();
+    
+    // 1. 获取所有用户的每日统计
+    const { data: dailyStats, error: dailyError } = await client
+      .from('daily_stats')
+      .select('user_id, total_score, total_duration, sentences_completed, date')
+      .order('date', { ascending: false });
+    
+    if (dailyError) throw dailyError;
+    
+    // 2. 获取总句子数（用于计算进度）
+    const { count: totalSentences, error: countError } = await client
+      .from('sentence_items')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'ready');
+    
+    if (countError) console.error('获取句子总数失败:', countError);
+    
+    // 3. 汇总每个用户的学习数据
+    const learnerMap = new Map<string, {
+      user_id: string;
+      total_score: number;
+      total_duration: number;
+      sentences_completed: number;
+      learning_days: number;
+      today_score: number;
+      today_duration: number;
+      today_sentences: number;
+      last_learned_at: string | null;
+    }>();
+    
+    const today = getTodayString();
+    
+    if (dailyStats && dailyStats.length > 0) {
+      dailyStats.forEach(stat => {
+        if (!stat.user_id) return;
+        
+        const existing = learnerMap.get(stat.user_id) || {
+          user_id: stat.user_id,
+          total_score: 0,
+          total_duration: 0,
+          sentences_completed: 0,
+          learning_days: 0,
+          today_score: 0,
+          today_duration: 0,
+          today_sentences: 0,
+          last_learned_at: null,
+        };
+        
+        existing.total_score += stat.total_score || 0;
+        existing.total_duration += stat.total_duration || 0;
+        existing.sentences_completed += stat.sentences_completed || 0;
+        existing.learning_days += 1;
+        
+        if (stat.date === today) {
+          existing.today_score = stat.total_score || 0;
+          existing.today_duration = stat.total_duration || 0;
+          existing.today_sentences = stat.sentences_completed || 0;
+        }
+        
+        if (!existing.last_learned_at || stat.date > existing.last_learned_at) {
+          existing.last_learned_at = stat.date;
+        }
+        
+        learnerMap.set(stat.user_id, existing);
+      });
+    }
+    
+    // 4. 获取用户昵称
+    const userIds = Array.from(learnerMap.keys());
+    let userNicknames = new Map<string, string>();
+    
+    if (userIds.length > 0) {
+      const { data: users, error: usersError } = await client
+        .from('users')
+        .select('id, nickname, username')
+        .in('id', userIds);
+      
+      if (!usersError && users) {
+        users.forEach(u => {
+          userNicknames.set(u.id, u.nickname || u.username || `学习者_${u.id.slice(-6)}`);
+        });
+      }
+    }
+    
+    // 5. 组装返回数据
+    const learners = Array.from(learnerMap.values()).map(learner => ({
+      ...learner,
+      nickname: userNicknames.get(learner.user_id) || `学习者_${learner.user_id.slice(-6)}`,
+      total_score: Math.round(learner.total_score * 100) / 100,
+      total_duration_minutes: Math.round(learner.total_duration / 60),
+      progress_percent: (totalSentences || 0) > 0 
+        ? Math.min(Math.round((learner.sentences_completed / totalSentences) * 100), 100) 
+        : 0,
+    }));
+    
+    learners.sort((a, b) => b.total_score - a.total_score);
+    
+    res.json({ 
+      success: true, 
+      learners,
+      total_sentences: totalSentences || 0,
+      total_learners: learners.length,
+    });
+  } catch (error) {
+    console.error('获取学习者列表失败:', error);
+    res.status(500).json({ error: '获取学习者列表失败' });
+  }
+});
+
+/**
+ * GET /api/v1/stats/user-trend/:userId
+ * 获取用户学习趋势数据（最近7天）
+ * Query: course_id (可选)
+ */
+router.get('/user-trend/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { course_id } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({ error: '缺少用户ID' });
+    }
+    
+    const client = getSupabaseClient();
+    
+    // 获取最近7天的数据
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 6);
+    const startDateStr = startDate.toISOString().split('T')[0];
+    
+    const { data: dailyStats, error } = await client
+      .from('daily_stats')
+      .select('date, total_score, total_duration, sentences_completed')
+      .eq('user_id', userId)
+      .gte('date', startDateStr)
+      .order('date', { ascending: true });
+    
+    if (error) throw error;
+    
+    // 填充缺失的日期
+    const trendData: Array<{
+      date: string;
+      score: number;
+      duration: number;
+      sentences: number;
+    }> = [];
+    
+    const statsMap = new Map<string, { score: number; duration: number; sentences: number }>();
+    if (dailyStats) {
+      dailyStats.forEach(s => {
+        statsMap.set(s.date, {
+          score: s.total_score || 0,
+          duration: s.total_duration || 0,
+          sentences: s.sentences_completed || 0,
+        });
+      });
+    }
+    
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + i);
+      const dateStr = date.toISOString().split('T')[0];
+      const stats = statsMap.get(dateStr) || { score: 0, duration: 0, sentences: 0 };
+      trendData.push({
+        date: dateStr,
+        ...stats,
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      trend_data: trendData,
+    });
+  } catch (error) {
+    console.error('获取学习趋势失败:', error);
+    res.status(500).json({ error: '获取学习趋势失败' });
+  }
+});
+
+/**
  * GET /api/v1/stats/course-learners/:courseId
  * 获取课程的学习者列表（管理员功能）
  * 返回：学习者名单、积分、学习时长、完成句子数、今日进度等

@@ -1,19 +1,32 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   Modal,
+  Alert,
+  Platform,
+  Share,
 } from 'react-native';
-import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
+import { useFocusEffect } from 'expo-router';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/contexts/AuthContext';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { Spacing } from '@/constants/theme';
+import { Spacing, BorderRadius } from '@/constants/theme';
 import { createStyles } from './styles';
+import { LineChart } from 'react-native-gifted-charts';
+
+interface Course {
+  id: number;
+  title: string;
+}
 
 interface Learner {
   user_id: string;
@@ -38,78 +51,189 @@ interface WeakWord {
 interface LearnerDetail {
   weak_words: WeakWord[];
   total_errors: number;
+  trend_data?: TrendDataPoint[];
 }
+
+interface TrendDataPoint {
+  date: string;
+  score: number;
+  duration: number;
+  sentences: number;
+}
+
+const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
 /**
  * 学习监控页面
  * 显示课程学习者的学习情况和错题分析
+ * 支持课程筛选、学习趋势图表、导出报告
  */
 export default function LearningMonitorScreen() {
   const router = useSafeRouter();
   const { theme, isDark } = useTheme();
+  const { user } = useAuth();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  // 从路由参数获取课程ID
-  const params = useSafeSearchParams<{ courseId?: string }>();
-  const courseId = params.courseId;
+  // 课程筛选
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
+  const [coursePickerVisible, setCoursePickerVisible] = useState(false);
 
-  // 状态
+  // 学习者数据
   const [learners, setLearners] = useState<Learner[]>([]);
   const [totalSentences, setTotalSentences] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // 详情Modal
   const [selectedLearner, setSelectedLearner] = useState<Learner | null>(null);
   const [learnerDetail, setLearnerDetail] = useState<LearnerDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
-  // 获取学习者列表
-  useEffect(() => {
-    if (!courseId) {
-      setLoading(false);
-      return;
+  // 导出状态
+  const [exporting, setExporting] = useState(false);
+
+  // 获取课程列表
+  const fetchCourses = useCallback(async () => {
+    try {
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/sentence-files`);
+      const data = await response.json();
+      
+      if (data.files) {
+        setCourses(data.files.map((f: any) => ({ id: f.id, title: f.title || f.name })));
+      }
+    } catch (error) {
+      console.error('获取课程列表失败:', error);
     }
+  }, []);
 
-    fetchLearners();
-  }, [courseId]);
-
-  const fetchLearners = async () => {
+  // 获取学习者列表
+  const fetchLearners = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/course-learners/${courseId}`
-      );
+      let url = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/learners`;
+      if (selectedCourseId) {
+        url = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/course-learners/${selectedCourseId}`;
+      }
+
+      const response = await fetch(url);
       const data = await response.json();
       
       if (data.success) {
         setLearners(data.learners);
         setTotalSentences(data.total_sentences);
+      } else {
+        setLearners([]);
+        setTotalSentences(0);
       }
     } catch (error) {
       console.error('获取学习者列表失败:', error);
+      setLearners([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedCourseId]);
 
-  // 获取学习者详情（错题分析）
+  // 初始化加载
+  useEffect(() => {
+    fetchCourses();
+  }, [fetchCourses]);
+
+  // 当课程选择变化时刷新学习者列表
+  useFocusEffect(
+    useCallback(() => {
+      fetchLearners();
+    }, [fetchLearners])
+  );
+
+  // 获取学习者详情（错题分析 + 趋势数据）
   const fetchLearnerDetail = async (learner: Learner) => {
     try {
       setDetailLoading(true);
       setSelectedLearner(learner);
       setShowDetailModal(true);
       
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/user-errors/${learner.user_id}`
+      // 获取错题分析
+      const errorResponse = await fetch(
+        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/user-errors/${learner.user_id}`
       );
-      const data = await response.json();
+      const errorData = await errorResponse.json();
       
-      if (data.success) {
-        setLearnerDetail(data);
+      // 获取趋势数据
+      const trendResponse = await fetch(
+        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/user-trend/${learner.user_id}${selectedCourseId ? `?course_id=${selectedCourseId}` : ''}`
+      );
+      const trendData = await trendResponse.json();
+      
+      if (errorData.success) {
+        setLearnerDetail({
+          ...errorData,
+          trend_data: trendData.success ? trendData.trend_data : [],
+        });
       }
     } catch (error) {
       console.error('获取学习者详情失败:', error);
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  // 导出学习报告
+  const handleExportReport = async () => {
+    if (learners.length === 0) {
+      Alert.alert('提示', '暂无数据可导出');
+      return;
+    }
+
+    try {
+      setExporting(true);
+      
+      // 生成报告内容
+      const courseName = selectedCourseId 
+        ? courses.find(c => c.id === selectedCourseId)?.title || '未知课程'
+        : '所有课程';
+      
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('zh-CN');
+      
+      let reportContent = `学习报告\n`;
+      reportContent += `====================\n`;
+      reportContent += `导出时间: ${dateStr}\n`;
+      reportContent += `课程: ${courseName}\n`;
+      reportContent += `学习者总数: ${learners.length}\n`;
+      reportContent += `总句子数: ${totalSentences}\n`;
+      reportContent += `\n学习者详情:\n`;
+      reportContent += `--------------------\n`;
+      
+      learners.forEach((learner, index) => {
+        reportContent += `\n${index + 1}. ${learner.nickname}\n`;
+        reportContent += `   总积分: ${Math.round(learner.total_score)}\n`;
+        reportContent += `   学习时长: ${learner.total_duration_minutes}分钟\n`;
+        reportContent += `   完成句子: ${learner.sentences_completed}\n`;
+        reportContent += `   学习天数: ${learner.learning_days}天\n`;
+        reportContent += `   进度: ${learner.progress_percent}%\n`;
+        reportContent += `   今日积分: ${Math.round(learner.today_score)}\n`;
+        reportContent += `   今日时长: ${Math.round(learner.today_duration / 60)}分钟\n`;
+        reportContent += `   今日句子: ${learner.today_sentences}\n`;
+      });
+
+      // 保存到文件
+      const fileName = `学习报告_${dateStr.replace(/\//g, '-')}.txt`;
+      const filePath = `${(FileSystem as any).documentDirectory}${fileName}`;
+      
+      await FileSystem.writeAsStringAsync(filePath, reportContent);
+      
+      // 分享文件
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(filePath);
+      } else {
+        Alert.alert('成功', `报告已保存到: ${filePath}`);
+      }
+    } catch (error) {
+      console.error('导出报告失败:', error);
+      Alert.alert('错误', '导出报告失败，请重试');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -129,6 +253,68 @@ export default function LearningMonitorScreen() {
     if (rank === 3) return '#CD7F32'; // 铜色
     return theme.primary;
   };
+
+  // 渲染课程筛选器
+  const renderCoursePicker = () => (
+    <Modal
+      visible={coursePickerVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setCoursePickerVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.pickerContent}>
+          <View style={styles.modalHeader}>
+            <ThemedText variant="h4" color={theme.textPrimary}>选择课程</ThemedText>
+            <TouchableOpacity onPress={() => setCoursePickerVisible(false)}>
+              <FontAwesome6 name="times" size={20} color={theme.textMuted} />
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView>
+            <TouchableOpacity
+              style={[styles.pickerItem, selectedCourseId === null && styles.pickerItemSelected]}
+              onPress={() => {
+                setSelectedCourseId(null);
+                setCoursePickerVisible(false);
+              }}
+            >
+              <ThemedText 
+                variant="bodyMedium" 
+                color={selectedCourseId === null ? theme.primary : theme.textPrimary}
+              >
+                全部课程
+              </ThemedText>
+              {selectedCourseId === null && (
+                <FontAwesome6 name="check" size={16} color={theme.primary} />
+              )}
+            </TouchableOpacity>
+            
+            {courses.map(course => (
+              <TouchableOpacity
+                key={course.id}
+                style={[styles.pickerItem, selectedCourseId === course.id && styles.pickerItemSelected]}
+                onPress={() => {
+                  setSelectedCourseId(course.id);
+                  setCoursePickerVisible(false);
+                }}
+              >
+                <ThemedText 
+                  variant="bodyMedium" 
+                  color={selectedCourseId === course.id ? theme.primary : theme.textPrimary}
+                >
+                  {course.title}
+                </ThemedText>
+                {selectedCourseId === course.id && (
+                  <FontAwesome6 name="check" size={16} color={theme.primary} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
 
   // 渲染学习者卡片
   const renderLearnerCard = (learner: Learner, index: number) => {
@@ -248,6 +434,46 @@ export default function LearningMonitorScreen() {
     </View>
   );
 
+  // 渲染趋势图表
+  const renderTrendChart = () => {
+    if (!learnerDetail?.trend_data || learnerDetail.trend_data.length === 0) {
+      return (
+        <View style={styles.emptyState}>
+          <ThemedText variant="small" color={theme.textMuted}>暂无趋势数据</ThemedText>
+        </View>
+      );
+    }
+
+    const data = learnerDetail.trend_data.slice(-7); // 最近7天
+    const chartData = data.map(d => ({
+      value: d.score,
+      label: d.date.slice(5), // MM-DD
+    }));
+
+    return (
+      <View style={styles.chartContainer}>
+        <LineChart
+          data={chartData}
+          width={280}
+          height={150}
+          color={theme.primary}
+          thickness={2}
+          curved
+          initialSpacing={20}
+          endSpacing={20}
+          yAxisColor={theme.border}
+          xAxisColor={theme.border}
+          yAxisTextStyle={{ color: theme.textMuted, fontSize: 10 }}
+          xAxisLabelTextStyle={{ color: theme.textMuted, fontSize: 10 }}
+          rulesColor={theme.borderLight}
+          rulesType="solid"
+          noOfSections={4}
+          maxValue={Math.max(...chartData.map(d => d.value), 100)}
+        />
+      </View>
+    );
+  };
+
   // 详情Modal
   const renderDetailModal = () => (
     <Modal
@@ -303,6 +529,22 @@ export default function LearningMonitorScreen() {
               </View>
             </View>
 
+            {/* 学习趋势 */}
+            <View style={{ marginBottom: Spacing.lg }}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitle}>
+                  <FontAwesome6 name="chart-line" size={14} color={theme.primary} />
+                  <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                    学习趋势（近7天积分）
+                  </ThemedText>
+                </View>
+              </View>
+              
+              {detailLoading ? (
+                <ActivityIndicator size="large" color={theme.primary} style={{ marginVertical: Spacing.lg }} />
+              ) : renderTrendChart()}
+            </View>
+
             {/* 薄弱单词 */}
             <View>
               <View style={styles.sectionHeader}>
@@ -336,18 +578,49 @@ export default function LearningMonitorScreen() {
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* 标题 */}
+        {/* 标题与操作 */}
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitle}>
             <FontAwesome6 name="users" size={18} color={theme.primary} />
             <ThemedText variant="h4" color={theme.textPrimary}>
-              学习者概览
+              学习监控
             </ThemedText>
           </View>
-          <TouchableOpacity onPress={fetchLearners}>
-            <FontAwesome6 name="refresh" size={16} color={theme.textMuted} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: Spacing.md }}>
+            <TouchableOpacity 
+              onPress={() => setCoursePickerVisible(true)}
+              style={styles.actionButton}
+            >
+              <FontAwesome6 name="filter" size={16} color={theme.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              onPress={handleExportReport}
+              disabled={exporting}
+              style={styles.actionButton}
+            >
+              {exporting ? (
+                <ActivityIndicator size="small" color={theme.primary} />
+              ) : (
+                <FontAwesome6 name="file-export" size={16} color={theme.primary} />
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={fetchLearners}>
+              <FontAwesome6 name="refresh" size={16} color={theme.textMuted} />
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* 当前筛选 */}
+        {selectedCourseId && (
+          <View style={styles.filterTag}>
+            <ThemedText variant="small" color={theme.primary}>
+              {courses.find(c => c.id === selectedCourseId)?.title}
+            </ThemedText>
+            <TouchableOpacity onPress={() => setSelectedCourseId(null)}>
+              <FontAwesome6 name="times" size={12} color={theme.primary} />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* 统计卡片 */}
         <ThemedView level="default" style={styles.statsCard}>
@@ -388,6 +661,9 @@ export default function LearningMonitorScreen() {
           learners.map((learner, index) => renderLearnerCard(learner, index))
         )}
       </ScrollView>
+
+      {/* 课程筛选Modal */}
+      {renderCoursePicker()}
 
       {/* 详情Modal */}
       {renderDetailModal()}

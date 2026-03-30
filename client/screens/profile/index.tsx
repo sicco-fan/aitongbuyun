@@ -367,6 +367,25 @@ export default function ProfileScreen() {
           管理功能
         </ThemedText>
 
+        {/* 学习监控入口 */}
+        <TouchableOpacity 
+          style={styles.adminCard}
+          onPress={() => router.push('/learning-monitor')}
+        >
+          <View style={[styles.adminIcon, { backgroundColor: theme.success + '15' }]}>
+            <FontAwesome6 name="users" size={24} color={theme.success} />
+          </View>
+          <View style={styles.adminContent}>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+              学习监控
+            </ThemedText>
+            <ThemedText variant="small" color={theme.textMuted}>
+              查看所有学习者的学习情况和薄弱单词
+            </ThemedText>
+          </View>
+          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+        </TouchableOpacity>
+
         <TouchableOpacity 
           style={styles.adminCard}
           onPress={() => router.push('/my-files')}

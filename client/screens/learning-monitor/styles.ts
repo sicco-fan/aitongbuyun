@@ -14,6 +14,24 @@ export const createStyles = (theme: Theme) => {
       paddingBottom: Spacing['4xl'],
     },
     
+    // 操作按钮
+    actionButton: {
+      padding: Spacing.xs,
+    },
+    
+    // 筛选标签
+    filterTag: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+      backgroundColor: theme.primary + '15',
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.xs,
+      borderRadius: BorderRadius.full,
+      alignSelf: 'flex-start',
+      marginBottom: Spacing.md,
+    },
+    
     // 统计卡片
     statsCard: {
       backgroundColor: theme.primary,
@@ -156,6 +174,14 @@ export const createStyles = (theme: Theme) => {
       borderLeftColor: theme.border,
     },
     
+    // 图表容器
+    chartContainer: {
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.md,
+      alignItems: 'center',
+    },
+    
     // 空状态
     emptyState: {
       alignItems: 'center',
@@ -177,6 +203,12 @@ export const createStyles = (theme: Theme) => {
       borderTopRightRadius: BorderRadius.xl,
       maxHeight: '80%',
     },
+    pickerContent: {
+      backgroundColor: theme.backgroundDefault,
+      borderTopLeftRadius: BorderRadius.xl,
+      borderTopRightRadius: BorderRadius.xl,
+      maxHeight: '60%',
+    },
     modalHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -187,6 +219,20 @@ export const createStyles = (theme: Theme) => {
     },
     modalBody: {
       padding: Spacing.lg,
+    },
+    
+    // 选择器项目
+    pickerItem: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: Spacing.lg,
+      paddingHorizontal: Spacing.lg,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.borderLight,
+    },
+    pickerItemSelected: {
+      backgroundColor: theme.primary + '10',
     },
   });
 };

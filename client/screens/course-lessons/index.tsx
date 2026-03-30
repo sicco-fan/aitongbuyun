@@ -143,26 +143,6 @@ export default function CourseLessonsScreen() {
           </ThemedText>
         </View>
 
-        {/* 学习监控入口 */}
-        <TouchableOpacity 
-          style={[styles.monitorButton, { backgroundColor: theme.primary + '15', borderColor: theme.primary + '30' }]}
-          onPress={() => router.push('/learning-monitor', { courseId: courseId })}
-          activeOpacity={0.7}
-        >
-          <View style={styles.monitorIconContainer}>
-            <FontAwesome6 name="users" size={18} color={theme.primary} />
-          </View>
-          <View style={styles.monitorInfo}>
-            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-              学习监控
-            </ThemedText>
-            <ThemedText variant="small" color={theme.textMuted}>
-              查看所有学习者的学习情况
-            </ThemedText>
-          </View>
-          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
-        </TouchableOpacity>
-
         {lessons.length === 0 ? (
           <View style={styles.emptyContainer}>
             <FontAwesome6 name="book-open" size={48} color={theme.textMuted} />
