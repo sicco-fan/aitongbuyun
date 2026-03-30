@@ -316,6 +316,94 @@ const numberToWords = (num: number | string): string[] => {
 };
 
 /**
+ * 将英文数字单词转换为阿拉伯数字
+ * 这是 numberToWords 的反向函数
+ * 例如：thirteen -> 13, twenty-five -> 25
+ */
+const WORD_TO_NUMBER: Record<string, number> = {
+  'zero': 0, 'oh': 0,
+  'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+  'six': 6, 'seven': 7, 'eight': 8, 'nine': 9,
+  'ten': 10, 'eleven': 11, 'twelve': 12,
+  'thirteen': 13, 'fourteen': 14, 'fifteen': 15, 'sixteen': 16,
+  'seventeen': 17, 'eighteen': 18, 'nineteen': 19,
+  'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50,
+  'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90,
+  'hundred': 100, 'thousand': 1000, 'million': 1000000, 'billion': 1000000000,
+};
+
+const wordToNumber = (word: string): number | null => {
+  const w = word.toLowerCase().trim();
+  
+  // 直接匹配
+  if (WORD_TO_NUMBER[w] !== undefined) {
+    return WORD_TO_NUMBER[w];
+  }
+  
+  // 处理连字符形式：twenty-five, forty-two
+  if (w.includes('-')) {
+    const parts = w.split('-');
+    let total = 0;
+    for (const part of parts) {
+      const num = WORD_TO_NUMBER[part];
+      if (num === undefined) return null;
+      total += num;
+    }
+    return total;
+  }
+  
+  // 处理空格分隔形式：twenty five, forty two
+  if (w.includes(' ')) {
+    const parts = w.split(/\s+/);
+    let total = 0;
+    let current = 0;
+    
+    for (const part of parts) {
+      const num = WORD_TO_NUMBER[part];
+      if (num === undefined) return null;
+      
+      if (num === 100) {
+        current = current * 100;
+      } else if (num === 1000 || num === 1000000 || num === 1000000000) {
+        current = current * num;
+        total += current;
+        current = 0;
+      } else {
+        current += num;
+      }
+    }
+    
+    return total + current;
+  }
+  
+  return null;
+};
+
+/**
+ * 检查一个单词是否是英文数字
+ */
+const isNumberWord = (word: string): boolean => {
+  const w = word.toLowerCase().trim();
+  
+  // 检查是否在映射表中
+  if (WORD_TO_NUMBER[w] !== undefined) return true;
+  
+  // 检查连字符形式
+  if (w.includes('-')) {
+    const parts = w.split('-');
+    return parts.every(p => WORD_TO_NUMBER[p] !== undefined);
+  }
+  
+  // 检查空格分隔形式
+  if (w.includes(' ')) {
+    const parts = w.split(/\s+/);
+    return parts.every(p => WORD_TO_NUMBER[p] !== undefined);
+  }
+  
+  return false;
+};
+
+/**
  * 将序数转换为英文单词
  * 例如：1st -> first, 21st -> twenty-first
  */
@@ -746,6 +834,45 @@ const generateVariants = (word: string): string[] => {
   // 语音识别经常把缩写词拆开：it's → it is / it s / its
   const contractionVariants = expandContraction(w);
   results.push(...contractionVariants);
+  
+  // 13. 英文数字单词 -> 阿拉伯数字变体
+  // 例如：thirteen -> 13, twenty-five -> 25
+  if (isNumberWord(w)) {
+    const num = wordToNumber(w);
+    if (num !== null) {
+      results.push(String(num));
+    }
+  }
+  
+  // 14. o'clock 特殊处理
+  // 目标是 "o'clock"，用户可能说 "1:00" 或 "one o'clock"
+  if (w.toLowerCase() === "o'clock") {
+    // o'clock 单独出现时，可以匹配空（用户可能只说数字）
+    results.push('');
+  }
+  
+  // 15. 数字 + o'clock 组合（如 "one o'clock"）
+  // 用户可能说 "1:00"，目标是 "one o'clock"
+  const oclockMatch = w.match(/^(.+)\s+o'clock$/i);
+  if (oclockMatch) {
+    const numPart = oclockMatch[1];
+    // 生成时间格式变体
+    const num = wordToNumber(numPart);
+    if (num !== null) {
+      results.push(`${num}:00`);  // 1:00
+      results.push(String(num));  // 1
+    }
+    // 也生成数字部分的变体
+    results.push(...numberToWords(numPart));
+  }
+  
+  // 16. alright 变体（目标可能是 "all right" 或 "alright"）
+  if (w.toLowerCase() === 'alright') {
+    results.push('all right', 'all-right');
+  }
+  if (w.toLowerCase() === 'all right') {
+    results.push('alright', 'all-right');
+  }
   
   // 去重并返回
   return [...new Set(results.map(r => r.toLowerCase()))];
