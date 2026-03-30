@@ -125,6 +125,27 @@ export const createStyles = (theme: Theme) => {
       borderRadius: BorderRadius.full,
       marginTop: 4,
     },
+    downloadProgressContainer: {
+      marginTop: Spacing.sm,
+      width: '100%',
+    },
+    downloadProgressBar: {
+      height: 4,
+      backgroundColor: theme.backgroundTertiary,
+      borderRadius: 2,
+      overflow: 'hidden',
+    },
+    downloadProgressFill: {
+      height: '100%',
+      backgroundColor: theme.primary,
+      borderRadius: 2,
+    },
+    downloadProgressText: {
+      marginTop: 4,
+      fontSize: 11,
+      color: theme.textMuted,
+      textAlign: 'right',
+    },
     arrowIcon: {
       marginLeft: Spacing.sm,
     },

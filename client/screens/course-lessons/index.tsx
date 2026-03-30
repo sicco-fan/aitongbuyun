@@ -424,10 +424,17 @@ export default function CourseLessonsScreen() {
                   
                   {/* 下载状态/缓存状态 */}
                   {isDownloading ? (
-                    <View style={[styles.statusBadge, { backgroundColor: theme.primary + '20' }]}>
-                      <ActivityIndicator size="small" color={theme.primary} />
-                      <ThemedText variant="tiny" color={theme.primary} style={{ marginLeft: 6 }}>
-                        下载中 {lesson.downloadProgress ? `${Math.round(lesson.downloadProgress * 100)}%` : ''}
+                    <View style={styles.downloadProgressContainer}>
+                      <View style={styles.downloadProgressBar}>
+                        <View 
+                          style={[
+                            styles.downloadProgressFill, 
+                            { width: `${(lesson.downloadProgress || 0) * 100}%` }
+                          ]} 
+                        />
+                      </View>
+                      <ThemedText variant="tiny" color={theme.textMuted} style={styles.downloadProgressText}>
+                        下载中 {lesson.downloadProgress ? `${Math.round(lesson.downloadProgress * 100)}%` : '0%'}
                       </ThemedText>
                     </View>
                   ) : allCached ? (
