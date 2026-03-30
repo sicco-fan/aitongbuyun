@@ -34,6 +34,9 @@ interface FileStat {
   sentence_files: {
     title: string;
     description: string | null;
+    sourceType?: 'sentence_file' | 'lesson' | 'unknown';
+    courseTitle?: string;
+    lessonNumber?: number;
   } | null;
 }
 
@@ -220,10 +223,23 @@ export default function StatsScreen() {
           fileStats.map((stat, index) => (
             <View key={stat.id || index} style={styles.fileCard}>
               <View style={styles.fileCardHeader}>
-                <View style={styles.fileIconContainer}>
-                  <FontAwesome6 name="book" size={18} color={theme.primary} />
+                <View style={[
+                  styles.fileIconContainer,
+                  stat.sentence_files?.sourceType === 'lesson' && { backgroundColor: theme.accent + '15' }
+                ]}>
+                  <FontAwesome6 
+                    name={stat.sentence_files?.sourceType === 'lesson' ? 'graduation-cap' : 'book'} 
+                    size={18} 
+                    color={stat.sentence_files?.sourceType === 'lesson' ? theme.accent : theme.primary} 
+                  />
                 </View>
                 <View style={styles.fileInfo}>
+                  {stat.sentence_files?.sourceType === 'lesson' && stat.sentence_files?.courseTitle && (
+                    <ThemedText variant="caption" color={theme.accent} style={{ marginBottom: 2 }}>
+                      {stat.sentence_files.courseTitle}
+                      {stat.sentence_files.lessonNumber && ` · 第${stat.sentence_files.lessonNumber}课`}
+                    </ThemedText>
+                  )}
                   <ThemedText variant="bodyMedium" color={theme.textPrimary} numberOfLines={1}>
                     {stat.sentence_files?.title || '未知句库'}
                   </ThemedText>

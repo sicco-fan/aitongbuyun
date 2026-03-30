@@ -47,7 +47,7 @@ export default function TabLayout() {
         options={{
           title: '社区',
           tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="users" size={20} color={color} />
+            <FontAwesome6 name="comments" size={20} color={color} />
           ),
         }}
       />

@@ -403,7 +403,7 @@ router.get('/daily', async (req, res) => {
 
 /**
  * GET /api/v1/stats/files
- * 获取句库学习统计
+ * 获取句库学习统计（包括自制句库和精品课程）
  * Query: user_id
  */
 router.get('/files', async (req, res) => {
@@ -416,20 +416,106 @@ router.get('/files', async (req, res) => {
     
     const client = getSupabaseClient();
     
+    // 获取所有学习汇总记录
     const { data: fileStats, error } = await client
       .from('file_learning_summary')
-      .select(`
-        *,
-        sentence_files(title, description)
-      `)
+      .select('*')
       .eq('user_id', user_id)
       .order('last_learned_at', { ascending: false });
     
     if (error) throw error;
     
+    if (!fileStats || fileStats.length === 0) {
+      return res.json({ success: true, file_stats: [] });
+    }
+    
+    // 获取所有 sentence_file_id
+    const sentenceFileIds = fileStats
+      .map(s => s.sentence_file_id)
+      .filter(id => id !== null);
+    
+    // 查询自制句库信息
+    const { data: sentenceFiles, error: sfError } = await client
+      .from('sentence_files')
+      .select('id, title, description')
+      .in('id', sentenceFileIds);
+    
+    if (sfError) console.error('获取句库信息失败:', sfError);
+    
+    // 查询精品课程课时信息（可能是 lessonId）
+    const { data: lessons, error: lessonsError } = await client
+      .from('lessons')
+      .select('id, title, course_id, lesson_number')
+      .in('id', sentenceFileIds);
+    
+    if (lessonsError) console.error('获取课时信息失败:', lessonsError);
+    
+    // 获取课程信息（用于显示课程名称）
+    const courseIds = lessons?.map(l => l.course_id).filter(id => id !== null) || [];
+    let courses: any[] = [];
+    if (courseIds.length > 0) {
+      const { data: coursesData, error: coursesError } = await client
+        .from('courses')
+        .select('id, title')
+        .in('id', courseIds);
+      
+      if (!coursesError && coursesData) {
+        courses = coursesData;
+      }
+    }
+    
+    // 创建映射
+    const sentenceFileMap = new Map(
+      (sentenceFiles || []).map(f => [f.id, f])
+    );
+    const lessonMap = new Map(
+      (lessons || []).map(l => [l.id, l])
+    );
+    const courseMap = new Map(
+      courses.map(c => [c.id, c])
+    );
+    
+    // 组装结果
+    const enrichedStats = fileStats.map(stat => {
+      const sentenceFile = sentenceFileMap.get(stat.sentence_file_id);
+      const lesson = lessonMap.get(stat.sentence_file_id);
+      
+      let title = '未知句库';
+      let description = '';
+      let sourceType = 'unknown';
+      let courseTitle = '';
+      let lessonNumber = null;
+      
+      if (sentenceFile) {
+        // 自制句库
+        title = sentenceFile.title;
+        description = sentenceFile.description || '';
+        sourceType = 'sentence_file';
+      } else if (lesson) {
+        // 精品课程课时
+        const course = courseMap.get(lesson.course_id);
+        title = lesson.title;
+        description = '';
+        sourceType = 'lesson';
+        courseTitle = course?.title || '';
+        lessonNumber = lesson.lesson_number;
+      }
+      
+      return {
+        ...stat,
+        sentence_files: {
+          title,
+          description,
+          sourceType,
+          courseTitle,
+          lessonNumber,
+        },
+      };
+    });
+    
     res.json({ 
       success: true, 
-      file_stats: fileStats || []
+      file_stats: enrichedStats
     });
   } catch (error) {
     console.error('获取句库统计失败:', error);
