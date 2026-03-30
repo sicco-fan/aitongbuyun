@@ -555,6 +555,145 @@ router.get('/check-number/:bookNumber', async (req: Request, res: Response) => {
 });
 
 /**
+ * 中文数字转阿拉伯数字
+ */
+const chineseToNumber: Record<string, number> = {
+  '零': 0, '一': 1, '二': 2, '三': 3, '四': 4,
+  '五': 5, '六': 6, '七': 7, '八': 8, '九': 9,
+  '十': 10, '十一': 11, '十二': 12, '十三': 13, '十四': 14,
+  '十五': 15, '十六': 16, '十七': 17, '十八': 18, '十九': 19, '二十': 20,
+  '上': 0.1, '下': 0.2, // 上册、下册
+};
+
+/**
+ * 罗马数字转阿拉伯数字
+ */
+const romanToNumber: Record<string, number> = {
+  'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5,
+  'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10,
+};
+
+/**
+ * 从课程标题中提取排序信息
+ * 返回：{ seriesName: 系列名, order: 序号 }
+ */
+function extractSortInfo(title: string): { seriesName: string; order: number; subOrder: number } {
+  // 匹配模式优先级：
+  // 1. "新概念英语第X册" -> 新概念英语 + X
+  // 2. "典范英语XA/XB" -> 典范英语 + X + A/B
+  // 3. "POWER UP X" -> POWER UP + X
+  // 4. "X年级上/下册" -> X年级 + 上/下
+  // 5. 罗马数字 "新概念英语 第I/II/III册"
+
+  let seriesName = title;
+  let order = 0;
+  let subOrder = 0;
+
+  // 模式1: 第X册、第X卷
+  const matchCe = title.match(/^(.+?)第([一二三四五六七八九十]+)[册卷]/);
+  if (matchCe) {
+    seriesName = matchCe[1].trim();
+    order = chineseToNumber[matchCe[2]] || 0;
+    return { seriesName, order, subOrder };
+  }
+
+  // 模式2: XA/XB (如 典范英语1A、典范英语1B)
+  const matchAB = title.match(/^(.+?)(\d+)([ABab])$/);
+  if (matchAB) {
+    seriesName = matchAB[1].trim();
+    order = parseInt(matchAB[2], 10);
+    subOrder = matchAB[3].toUpperCase() === 'A' ? 0.1 : 0.2;
+    return { seriesName, order, subOrder };
+  }
+
+  // 模式3: X上/X下 (如 一年级上册、二年级下册)
+  const matchUpDown = title.match(/^(.+?)(\d+)[年级]?(上|下)册?$/);
+  if (matchUpDown) {
+    seriesName = matchUpDown[1].trim();
+    order = parseInt(matchUpDown[2], 10);
+    subOrder = matchUpDown[3] === '上' ? 0.1 : 0.2;
+    return { seriesName, order, subOrder };
+  }
+
+  // 模式4: 罗马数字 第I/II/III册
+  const matchRoman = title.match(/^(.+?)第([IVX]+)[册卷]/);
+  if (matchRoman) {
+    seriesName = matchRoman[1].trim();
+    order = romanToNumber[matchRoman[2]] || 0;
+    return { seriesName, order, subOrder };
+  }
+
+  // 模式5: 数字结尾 (如 POWER UP 2, Book 3)
+  const matchNum = title.match(/^(.+?)(\d+)$/);
+  if (matchNum) {
+    seriesName = matchNum[1].trim();
+    order = parseInt(matchNum[2], 10);
+    return { seriesName, order, subOrder };
+  }
+
+  // 模式6: 中文数字+上/下册
+  const matchCeUpDown = title.match(/^(.+?)([一二三四五六七八九十]+)(上|下)册?$/);
+  if (matchCeUpDown) {
+    seriesName = matchCeUpDown[1].trim();
+    order = chineseToNumber[matchCeUpDown[2]] || 0;
+    subOrder = matchCeUpDown[3] === '上' ? 0.1 : 0.2;
+    return { seriesName, order, subOrder };
+  }
+
+  // 无法匹配，使用原标题作为系列名
+  return { seriesName: title, order: 0, subOrder: 0 };
+}
+
+/**
+ * 智能排序课程列表
+ * 规则：
+ * 1. 同名系列课程（如新概念英语第1/2/3册）按序号排序，放在一起
+ * 2. 不同系列之间的顺序，由该系列中最小的 book_number 决定
+ */
+function sortCoursesSmart(courses: any[]): any[] {
+  // 提取每个课程的排序信息
+  const coursesWithSortKey = courses.map(course => {
+    const { seriesName, order, subOrder } = extractSortInfo(course.title);
+    return {
+      ...course,
+      _seriesName: seriesName,
+      _order: order,
+      _subOrder: subOrder,
+    };
+  });
+
+  // 计算每个系列的最小 book_number（用于确定系列间的顺序）
+  const seriesMinBookNumber = new Map<string, number>();
+  for (const course of coursesWithSortKey) {
+    const current = seriesMinBookNumber.get(course._seriesName);
+    if (current === undefined || course.book_number < current) {
+      seriesMinBookNumber.set(course._seriesName, course.book_number);
+    }
+  }
+
+  // 排序：
+  // 1. 先按系列的 minBookNumber 排序（保持用户创建的系列顺序）
+  // 2. 同系列内按 order 排序
+  coursesWithSortKey.sort((a, b) => {
+    const aSeriesOrder = seriesMinBookNumber.get(a._seriesName) || 0;
+    const bSeriesOrder = seriesMinBookNumber.get(b._seriesName) || 0;
+    
+    // 不同系列，按系列的最小 book_number 排序
+    if (a._seriesName !== b._seriesName) {
+      return aSeriesOrder - bSeriesOrder;
+    }
+    
+    // 同系列内，按序号排序
+    if (a._order !== b._order) {
+      return a._order - b._order;
+    }
+    return a._subOrder - b._subOrder;
+  });
+
+  return coursesWithSortKey;
+}
+
+/**
  * GET /api/v1/courses
  * 获取课程列表（包含实际句子数）
  */
@@ -589,7 +728,10 @@ router.get('/', async (req: Request, res: Response) => {
       })
     );
     
-    res.json({ courses: coursesWithSentences });
+    // 智能排序：同名系列按序号排序，不同系列按book_number排序
+    const sortedCourses = sortCoursesSmart(coursesWithSentences);
+    
+    res.json({ courses: sortedCourses });
   } catch (error: any) {
     console.error('获取课程列表失败:', error);
     res.status(500).json({ error: error.message });
