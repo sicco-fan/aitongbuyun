@@ -16,7 +16,11 @@ import { ThemedText } from '@/components/ThemedText';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { getLastLearningPosition, LastLearningPosition } from '@/utils/learningStorage';
-import { saveAudioToLocal, generateCourseAudioKey } from '@/utils/audioStorage';
+import { 
+  saveAudioToLocal, 
+  generateCourseAudioKey,
+  checkCourseAudioStatus,
+} from '@/utils/audioStorage';
 import RNSSE from 'react-native-sse';
 
 interface Lesson {
@@ -26,6 +30,8 @@ interface Lesson {
   description: string;
   sentences_count: number;
   learned?: boolean; // 是否学过
+  cached?: number; // 已缓存句子数
+  total?: number; // 总句子数
 }
 
 interface Course {
@@ -104,7 +110,26 @@ export default function CourseLessonsScreen() {
           }
         }
         
-        setLessons(lessonsWithStatus);
+        // 检查每个课时的本地音频缓存状态
+        const lessonsWithCache = await Promise.all(
+          lessonsWithStatus.map(async (l: Lesson) => {
+            const sentencesCount = l.sentences_count || 0;
+            if (sentencesCount > 0) {
+              const status = await checkCourseAudioStatus(courseId, [{ 
+                id: l.id, 
+                sentences_count: sentencesCount 
+              }]);
+              return {
+                ...l,
+                cached: status.cached,
+                total: status.total,
+              };
+            }
+            return { ...l, cached: 0, total: 0 };
+          })
+        );
+        
+        setLessons(lessonsWithCache);
       }
     } catch (error) {
       console.error('获取课时列表失败:', error);
@@ -289,6 +314,9 @@ export default function CourseLessonsScreen() {
                                   lastLearningPosition.lessonId === lesson.id;
             // 检查是否学过
             const hasLearned = lesson.learned;
+            // 检查音频缓存状态
+            const hasAudioCache = lesson.cached && lesson.cached > 0;
+            const allCached = lesson.cached === lesson.total;
             
             return (
               <TouchableOpacity
@@ -320,6 +348,8 @@ export default function CourseLessonsScreen() {
                   <ThemedText variant="caption" color={theme.textMuted} style={styles.lessonMeta}>
                     {lesson.sentences_count} 个句子
                     {hasLearned && ' · 已学过'}
+                    {hasAudioCache && !allCached && ` · 缓存 ${lesson.cached}/${lesson.total}`}
+                    {allCached && ' · 已缓存'}
                   </ThemedText>
                   {/* 上次学习提示 */}
                   {isLastLearned && (

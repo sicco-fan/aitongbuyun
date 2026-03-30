@@ -128,3 +128,62 @@ export function generateCourseAudioKey(courseId: number, lessonId: number, sente
 export function generateFileAudioKey(fileId: number, sentenceIndex: number): string {
   return `file_${fileId}_sentence_${sentenceIndex}`;
 }
+
+/**
+ * 批量检查多个音频是否存在
+ * @param keys 音频标识数组
+ * @returns 已存在的数量
+ */
+export async function checkAudiosExist(keys: string[]): Promise<{ cached: number; total: number }> {
+  let cached = 0;
+  for (const key of keys) {
+    if (await hasAudioLocal(key)) {
+      cached++;
+    }
+  }
+  return { cached, total: keys.length };
+}
+
+/**
+ * 检查课时音频缓存状态
+ * @param courseId 课程ID
+ * @param lessonId 课时ID
+ * @param sentenceCount 句子数量
+ * @returns 缓存状态
+ */
+export async function checkLessonAudioStatus(
+  courseId: number,
+  lessonId: number,
+  sentenceCount: number
+): Promise<{ cached: number; total: number }> {
+  const keys: string[] = [];
+  for (let i = 1; i <= sentenceCount; i++) {
+    keys.push(generateCourseAudioKey(courseId, lessonId, i));
+  }
+  return checkAudiosExist(keys);
+}
+
+/**
+ * 检查课程所有课时的音频缓存状态
+ * @param courseId 课程ID
+ * @param lessons 课时列表 [{ id, sentence_count }]
+ * @returns 总缓存状态
+ */
+export async function checkCourseAudioStatus(
+  courseId: number,
+  lessons: Array<{ id: number; sentence_count?: number; sentences_count?: number }>
+): Promise<{ cached: number; total: number }> {
+  let totalCached = 0;
+  let totalCount = 0;
+  
+  for (const lesson of lessons) {
+    const sentenceCount = lesson.sentence_count || lesson.sentences_count || 0;
+    if (sentenceCount > 0) {
+      const status = await checkLessonAudioStatus(courseId, lesson.id, sentenceCount);
+      totalCached += status.cached;
+      totalCount += status.total;
+    }
+  }
+  
+  return { cached: totalCached, total: totalCount };
+}

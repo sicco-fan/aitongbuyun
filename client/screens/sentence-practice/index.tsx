@@ -42,6 +42,11 @@ import {
   getVoicePracticeMode,
   VoicePracticeMode,
 } from '@/utils/voicePracticeConfig';
+import { 
+  getAudioFromLocal, 
+  generateCourseAudioKey,
+  hasAudioLocal,
+} from '@/utils/audioStorage';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
@@ -2713,8 +2718,8 @@ export default function SentencePracticeScreen() {
 
   // 播放音频片段
   const playAudio = useCallback(async () => {
-    // 课程模式：每个句子有独立的音频URL
-    if (file?.is_lesson && currentSentence?.audio_url) {
+    // 课程模式：从本地存储读取音频
+    if (file?.is_lesson && courseId && lessonId && currentSentence) {
       try {
         if (soundRef.current && isPlaying) {
           return;
@@ -2739,10 +2744,63 @@ export default function SentencePracticeScreen() {
           playThroughEarpieceAndroid: false,
         });
 
-        console.log(`[playAudio-课程] 播放独立音频`);
+        // 从本地获取音频
+        const audioKey = generateCourseAudioKey(
+          parseInt(courseId, 10),
+          parseInt(lessonId, 10),
+          currentSentence.sentence_index
+        );
+        const localAudioUri = await getAudioFromLocal(audioKey);
+        
+        if (!localAudioUri) {
+          // 本地没有音频，尝试使用云端 URL（兼容旧数据）
+          if (currentSentence.audio_url) {
+            console.log(`[playAudio-课程] 本地无音频，使用云端URL`);
+            const { sound } = await Audio.Sound.createAsync(
+              { uri: currentSentence.audio_url },
+              {
+                shouldPlay: true,
+                isLooping: false,
+                volume: volumeRef.current,
+                rate: playbackRateRef.current,
+                shouldCorrectPitch: true,
+              },
+              (status) => {
+                if (status.isLoaded) {
+                  if (status.didJustFinish) {
+                    setIsPlaying(false);
+                    if (isLoopingRef.current && isMountedRef.current) {
+                      setTimeout(async () => {
+                        if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
+                          try {
+                            await soundRef.current.replayAsync();
+                            setIsPlaying(true);
+                          } catch (e) {
+                            console.log('[循环播放] 失败:', e);
+                          }
+                        }
+                      }, 500);
+                    }
+                  }
+                } else if (status.error) {
+                  console.error('[播放错误]', status.error);
+                  setIsPlaying(false);
+                }
+              }
+            );
+            soundRef.current = sound;
+            setIsPlaying(true);
+          } else {
+            console.log(`[playAudio-课程] 本地无音频，请先生成`);
+            Alert.alert('提示', '请先在课程详情页生成音频');
+          }
+          return;
+        }
+
+        console.log(`[playAudio-课程] 播放本地音频: ${audioKey}`);
 
         const { sound } = await Audio.Sound.createAsync(
-          { uri: currentSentence.audio_url },
+          { uri: localAudioUri },
           {
             shouldPlay: true,
             isLooping: false,
