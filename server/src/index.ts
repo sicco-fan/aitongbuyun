@@ -19,6 +19,7 @@ import perfectRecordingsRouter from "./routes/perfect-recordings";
 import usersRouter from "./routes/users";
 import communityRouter from "./routes/community";
 import tasksRouter from "./routes/tasks";
+import ttsRouter from "./routes/tts";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -53,6 +54,9 @@ app.use('/api/v1/learning-records', learningRouter);
 app.use('/api/v1/speech-recognize', speechRouter);
 app.use('/api/v1/translate', translateRouter);
 app.use('/api/v1/letter-pronunciation', letterPronunciationRouter);
+
+// TTS 语音合成路由
+app.use('/api/v1/tts', ttsRouter);
 
 // 用户认证路由
 app.use('/api/v1/auth', authRouter);

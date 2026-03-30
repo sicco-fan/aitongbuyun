@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
@@ -20,6 +21,7 @@ import {
   saveAudioToLocal, 
   generateCourseAudioKey,
   checkCourseAudioStatus,
+  isLocalStorageSupported,
 } from '@/utils/audioStorage';
 import RNSSE from 'react-native-sse';
 
@@ -170,11 +172,23 @@ export default function CourseLessonsScreen() {
   const handleGenerateAllAudio = useCallback(async () => {
     if (!courseId || !course) return;
     
+    // Web 端提示不支持
+    if (Platform.OS === 'web') {
+      Alert.alert(
+        '提示', 
+        'Web 端不支持本地音频缓存。\n\n请使用手机 App 版本体验完整功能，包括离线音频播放。',
+        [{ text: '知道了' }]
+      );
+      return;
+    }
+    
     // 保存已确认的 courseId，用于 SSE 回调
     const currentCourseId = courseId;
     
     setIsGenerating(true);
     setGenerateProgress({ current: 0, total: 0, lessonTitle: '' });
+    
+    console.log(`[音频生成] 开始为课程 ${currentCourseId} 生成音频...`);
     
     // 使用 SSE 实时生成音频
     const sse = new RNSSE(
@@ -199,8 +213,11 @@ export default function CourseLessonsScreen() {
         }
         
         const data = JSON.parse(event.data);
+        console.log(`[音频生成] 收到消息: type=${data.type}`);
         
-        if (data.type === 'progress') {
+        if (data.type === 'start') {
+          console.log(`[音频生成] 开始: 共 ${data.total} 句`);
+        } else if (data.type === 'progress') {
           setGenerateProgress({
             current: data.current,
             total: data.total,

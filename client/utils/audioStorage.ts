@@ -14,7 +14,7 @@ const FS = FileSystem as any;
 /**
  * 检查是否在支持本地存储的平台
  */
-function isLocalStorageSupported(): boolean {
+export function isLocalStorageSupported(): boolean {
   return Platform.OS !== 'web' && !!FS.documentDirectory;
 }
 

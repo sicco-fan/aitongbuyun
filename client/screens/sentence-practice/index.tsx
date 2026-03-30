@@ -2744,7 +2744,59 @@ export default function SentencePracticeScreen() {
           playThroughEarpieceAndroid: false,
         });
 
-        // 从本地获取音频
+        // Web 端：使用在线 TTS API 播放
+        if (Platform.OS === 'web') {
+          console.log('[playAudio-课程] Web端，使用在线TTS');
+          try {
+            /**
+             * 服务端文件：server/src/routes/tts.ts
+             * 接口：GET /api/v1/tts
+             * Query 参数：text: string, speaker?: string
+             */
+            const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=zh_female_xiaohe_uranus_bigtts`;
+            
+            const { sound } = await Audio.Sound.createAsync(
+              { uri: ttsUrl },
+              {
+                shouldPlay: true,
+                isLooping: false,
+                volume: volumeRef.current,
+                rate: playbackRateRef.current,
+                shouldCorrectPitch: true,
+              },
+              (status) => {
+                if (status.isLoaded) {
+                  if (status.didJustFinish) {
+                    setIsPlaying(false);
+                    if (isLoopingRef.current && isMountedRef.current) {
+                      setTimeout(async () => {
+                        if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
+                          try {
+                            await soundRef.current.replayAsync();
+                            setIsPlaying(true);
+                          } catch (e) {
+                            console.log('[循环播放] 失败:', e);
+                          }
+                        }
+                      }, 500);
+                    }
+                  }
+                } else if (status.error) {
+                  console.error('[播放错误]', status.error);
+                  setIsPlaying(false);
+                }
+              }
+            );
+            soundRef.current = sound;
+            setIsPlaying(true);
+          } catch (webError) {
+            console.error('[playAudio-课程] Web端TTS失败:', webError);
+            Alert.alert('提示', 'Web端音频播放失败，请稍后重试');
+          }
+          return;
+        }
+
+        // 移动端：从本地获取音频
         const audioKey = generateCourseAudioKey(
           parseInt(courseId, 10),
           parseInt(lessonId, 10),
