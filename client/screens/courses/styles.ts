@@ -41,6 +41,15 @@ export const createStyles = (theme: Theme) => {
       shadowRadius: 12,
       elevation: 4,
     },
+    draggingItem: {
+      opacity: 0.9,
+      transform: [{ scale: 1.02 }],
+      shadowColor: theme.primary,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.2,
+      shadowRadius: 16,
+      elevation: 8,
+    },
     lastLearnedCard: {
       borderWidth: 2,
       borderColor: theme.success + '40',

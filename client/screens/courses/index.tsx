@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
-  TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
   Modal,
@@ -9,12 +8,11 @@ import {
   Platform,
   TextInput,
   StyleSheet,
+  Pressable,
+  TouchableOpacity,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import Animated, {
-  useAnimatedStyle,
-  withSpring,
-} from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import DraggableFlatList, {
   DragEndParams,
   RenderItemParams,
@@ -343,15 +341,16 @@ export default function CoursesScreen() {
 
     return (
       <ScaleDecorator>
-        <TouchableOpacity
-          style={[
+        <Pressable
+          style={({ pressed }) => [
             styles.courseCard,
             isLastLearned && styles.lastLearnedCard,
-            isActive && { opacity: 0.9, transform: [{ scale: 1.02 }] },
+            isActive && styles.draggingItem,
+            pressed && { opacity: 0.8 },
           ]}
           onPress={() => handleCoursePress(item.id)}
           onLongPress={drag}
-          activeOpacity={0.7}
+          delayLongPress={300}
         >
           {/* 上次学习提示 */}
           {isLastLearned && (
@@ -402,7 +401,7 @@ export default function CoursesScreen() {
               <FontAwesome6 name="chevron-right" size={20} color={theme.textMuted} />
             </View>
           </View>
-        </TouchableOpacity>
+        </Pressable>
       </ScaleDecorator>
     );
   }, [lastLearningPosition, handleCoursePress, getBookIcon, styles, theme]);
@@ -473,6 +472,7 @@ export default function CoursesScreen() {
             renderItem={renderItem}
             keyExtractor={(item) => item.id.toString()}
             onDragEnd={handleDragEnd}
+            activationDistance={10}
             contentContainerStyle={styles.listContent}
             refreshControl={
               <RefreshControl

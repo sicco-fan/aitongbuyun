@@ -19,6 +19,8 @@ import {
   KeyboardAwareFlatList,
   KeyboardAwareSectionList
 } from 'react-native-keyboard-aware-scroll-view';
+// 引入 DraggableFlatList 用于类型检测
+import DraggableFlatList from 'react-native-draggable-flatlist';
 
 /**
  * # Screen 组件使用指南
@@ -171,7 +173,7 @@ export const Screen = ({
       // 仅识别“垂直”滚动容器；横向滚动不视为页面已处理垂直滚动
       // eslint-disable-next-line react/prop-types
       const isHorizontal = !!(props && (props as any).horizontal === true);
-      if ((t === ScrollView || t === FlatList || t === SectionList) && !isHorizontal) return true;
+      if ((t === ScrollView || t === FlatList || t === SectionList || t === DraggableFlatList) && !isHorizontal) return true;
       const c: React.ReactNode | undefined = props && 'children' in props
         ? (props.children as React.ReactNode)
         : undefined;
