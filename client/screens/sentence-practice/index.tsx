@@ -1784,6 +1784,8 @@ export default function SentencePracticeScreen() {
   const inputRef = useRef<TextInput>(null); // 输入框引用，用于点击提示后恢复焦点
   const [translationWordIndex, setTranslationWordIndex] = useState<number | null>(null); // 显示翻译的单词
   const [wordTranslations, setWordTranslations] = useState<Record<string, string>>({}); // 单词翻译缓存
+  const [wordPhonetics, setWordPhonetics] = useState<Record<string, string>>({}); // 单词音标缓存
+  const [wordContextMeanings, setWordContextMeanings] = useState<Record<string, string>>({}); // 单词在句子中的意思缓存
 
   // 翻译显示
   const [showTranslation, setShowTranslation] = useState(false);
@@ -3579,49 +3581,43 @@ export default function SentencePracticeScreen() {
     // 记录用户活动（点击单词查看提示/翻译）
     recordActivity();
     
-    if (ws.revealed) {
-      // 已完成的单词：显示中文翻译
-      setTranslationWordIndex(ws.index);
-      
-      // 检查缓存
-      if (wordTranslations[ws.word]) {
-        // 已有缓存，直接显示
-        setTimeout(() => {
-          setTranslationWordIndex(null);
-        }, 1000);
-      } else {
-        // 获取翻译
-        fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: ws.displayText, type: 'word' }),
+    // 设置当前显示的单词索引
+    setTranslationWordIndex(ws.index);
+    
+    // 检查是否已有缓存
+    const hasCache = wordContextMeanings[ws.word] && wordPhonetics[ws.word];
+    
+    if (!hasCache && currentSentence) {
+      // 获取单词在句子中的意思和音标
+      fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate/word-context`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          word: ws.word, 
+          sentence: currentSentence.text 
+        }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.meaning) {
+            setWordContextMeanings(prev => ({
+              ...prev,
+              [ws.word]: data.meaning,
+            }));
+          }
+          if (data.phonetic) {
+            setWordPhonetics(prev => ({
+              ...prev,
+              [ws.word]: data.phonetic,
+            }));
+          }
         })
-          .then(res => res.json())
-          .then(data => {
-            if (data.translation) {
-              setWordTranslations(prev => ({
-                ...prev,
-                [ws.word]: data.translation,
-              }));
-            }
-          })
-          .catch(e => console.error('获取单词翻译失败:', e));
-        
-        setTimeout(() => {
-          setTranslationWordIndex(null);
-        }, 1000);
-      }
-    } else {
-      // 未完成的单词：显示提示（首字母 + 下划线）
+        .catch(e => console.error('获取单词信息失败:', e));
+    }
+    
+    if (!ws.revealed) {
+      // 未完成的单词：同时显示提示（完整单词）
       setHintWordIndex(ws.index);
-      setTimeout(() => {
-        setHintWordIndex(null);
-      }, 1000);
-      
-      // 恢复输入框焦点，方便用户继续输入
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
       
       // 记录错题：用户查看提示说明不知道这个单词
       if (isAuthenticated && user?.id && fileId && currentSentence) {
@@ -3638,7 +3634,20 @@ export default function SentencePracticeScreen() {
         }).catch(e => console.log('记录错题失败:', e));
       }
     }
-  }, [wordTranslations, isAuthenticated, user?.id, fileId, currentSentence, recordActivity]);
+    
+    // 延迟隐藏提示
+    setTimeout(() => {
+      setTranslationWordIndex(null);
+      setHintWordIndex(null);
+    }, 2000);
+    
+    // 恢复输入框焦点，方便用户继续输入
+    if (!ws.revealed) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [wordContextMeanings, wordPhonetics, isAuthenticated, user?.id, fileId, currentSentence, recordActivity]);
 
   // 跳转到上一句
   const goToPrevSentence = useCallback(() => {
@@ -4332,15 +4341,28 @@ export default function SentencePracticeScreen() {
                           );
                         })}
                       </View>
-                      {/* 已完成单词显示翻译 */}
-                      {ws.revealed && translationWordIndex === ws.index && (
-                        <ThemedText 
-                          variant="caption" 
-                          color={theme.textSecondary}
-                          style={styles.translationText}
-                        >
-                          {wordTranslations[ws.word] || '...'}
-                        </ThemedText>
+                      {/* 点击单词时显示音标和中文意思 */}
+                      {translationWordIndex === ws.index && (
+                        <View style={styles.wordInfoContainer}>
+                          {/* 音标 */}
+                          {wordPhonetics[ws.word] && (
+                            <ThemedText 
+                              variant="tiny" 
+                              color={theme.textMuted}
+                              style={styles.phoneticText}
+                            >
+                              {wordPhonetics[ws.word]}
+                            </ThemedText>
+                          )}
+                          {/* 中文意思 */}
+                          <ThemedText 
+                            variant="tiny" 
+                            color={theme.textSecondary}
+                            style={styles.meaningText}
+                          >
+                            {wordContextMeanings[ws.word] || '...'}
+                          </ThemedText>
+                        </View>
                       )}
                     </View>
                   )}

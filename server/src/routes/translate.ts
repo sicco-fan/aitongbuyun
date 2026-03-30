@@ -57,4 +57,78 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * 获取单词在句子中的意思和音标
+ * POST /api/v1/translate/word-context
+ * Body: { word: string, sentence: string }
+ * 返回: { meaning: string, phonetic: string }
+ */
+router.post('/word-context', async (req: Request, res: Response) => {
+  try {
+    const { word, sentence } = req.body;
+    
+    if (!word || !sentence) {
+      return res.status(400).json({ error: '缺少单词或句子' });
+    }
+
+    const customHeaders = HeaderUtils.extractForwardHeaders(
+      req.headers as Record<string, string>
+    );
+    
+    const config = new Config();
+    const client = new LLMClient(config, customHeaders);
+
+    const systemPrompt = `你是一个英语词典助手。用户会给你一个英语单词和包含这个单词的句子，你需要返回这个单词在该句子中的具体意思和音标。
+
+要求：
+1. 返回JSON格式：{"meaning": "中文意思", "phonetic": "音标"}
+2. meaning 只返回该单词在句子中的意思，不要列出其他意思
+3. phonetic 返回国际音标，格式如 /ˈwɜːrd/
+4. 只返回JSON，不要其他解释`;
+
+    const userPrompt = `单词：${word}
+句子：${sentence}
+
+请返回该单词在句子中的意思和音标。`;
+
+    const messages = [
+      { role: 'system' as const, content: systemPrompt },
+      { role: 'user' as const, content: userPrompt }
+    ];
+
+    const response = await client.invoke(messages, { 
+      temperature: 0.3,
+      model: 'doubao-seed-1-6-lite-251015'
+    });
+
+    // 解析JSON响应
+    let result;
+    try {
+      // 尝试提取JSON
+      const content = response.content.trim();
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        result = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('无法解析JSON');
+      }
+    } catch (parseError) {
+      // 如果解析失败，返回默认值
+      result = {
+        meaning: response.content.trim(),
+        phonetic: ''
+      };
+    }
+
+    res.json({ 
+      word,
+      meaning: result.meaning || '',
+      phonetic: result.phonetic || '',
+    });
+  } catch (error) {
+    console.error('获取单词信息失败:', error);
+    res.status(500).json({ error: '获取单词信息失败' });
+  }
+});
+
 export default router;

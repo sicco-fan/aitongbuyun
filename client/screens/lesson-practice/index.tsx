@@ -687,7 +687,7 @@ export default function LessonPracticeScreen() {
                 style={styles.infoButton}
                 onPress={() => setShowInfoModal(true)}
               >
-                <FontAwesome6 name="circle-info" size={18} color={theme.textMuted} />
+                <FontAwesome6 name="circle-info" size={16} color={theme.textMuted} />
               </TouchableOpacity>
             </View>
             {/* 快速学习入口 */}

@@ -201,6 +201,22 @@ export const createStyles = (theme: Theme) => {
     errorChar: {
       // 错误字符由 color 控制，无需额外样式
     },
+    // 单词信息容器（音标和中文意思）
+    wordInfoContainer: {
+      alignItems: 'center',
+      marginTop: 2,
+      minWidth: 40,
+    },
+    phoneticText: {
+      fontSize: 9,
+      lineHeight: 11,
+      fontStyle: 'italic',
+    },
+    meaningText: {
+      fontSize: 9,
+      lineHeight: 11,
+      textAlign: 'center',
+    },
     
     // Input Section - 紧跟句子区域
     inputSection: {

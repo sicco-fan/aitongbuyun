@@ -34,10 +34,6 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
       marginBottom: Spacing.xl,
     },
-    title: {
-      textAlign: 'center',
-      marginBottom: 8,
-    },
     subtitle: {
       textAlign: 'center',
     },
@@ -375,19 +371,27 @@ export const createStyles = (theme: Theme) => {
       justifyContent: 'space-between',
       alignItems: 'center',
       width: '100%',
+      gap: Spacing.sm,
     },
     headerTitleArea: {
       flexDirection: 'row',
       alignItems: 'center',
+      flex: 1,
+      minWidth: 0, // 允许收缩
+    },
+    title: {
+      textAlign: 'center',
+      marginBottom: 8,
+      flexShrink: 1, // 允许文字收缩
     },
     infoButton: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: theme.backgroundTertiary,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: 'transparent', // 透明背景，更淡化
       justifyContent: 'center',
       alignItems: 'center',
-      marginLeft: Spacing.sm,
+      marginLeft: Spacing.xs,
     },
     quickStartButton: {
       flexDirection: 'row',
@@ -396,6 +400,8 @@ export const createStyles = (theme: Theme) => {
       paddingVertical: Spacing.sm,
       paddingHorizontal: Spacing.md,
       borderRadius: BorderRadius.md,
+      flexShrink: 0, // 按钮不收缩，确保完整显示
+      minWidth: 80, // 最小宽度，确保按钮完整显示
     },
     
     // 功能说明弹窗样式
