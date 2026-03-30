@@ -41,6 +41,7 @@ export default function RootLayout() {
             <Stack.Screen name="lesson-learning" options={{ title: "课程学习" }} />
             <Stack.Screen name="learning-monitor" options={{ title: "学习监控" }} />
             <Stack.Screen name="profile-settings" options={{ title: "个人设置" }} />
+            <Stack.Screen name="perfect-voice-library" options={{ title: "完美发音库" }} />
           </Stack>
           <Toast />
         </GestureHandlerRootView>

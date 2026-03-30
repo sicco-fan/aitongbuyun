@@ -514,8 +514,8 @@ export const createStyles = (theme: Theme) => {
       position: 'absolute',
       top: 80,
       right: Spacing.lg,
-      width: 280,
-      maxHeight: 400,
+      width: 300,
+      maxHeight: 450,
       borderRadius: BorderRadius.lg,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 4 },
@@ -530,14 +530,32 @@ export const createStyles = (theme: Theme) => {
       padding: Spacing.md,
       borderBottomWidth: 1,
     },
+    perfectRecordingsTabs: {
+      flexDirection: 'row',
+      borderBottomWidth: 1,
+    },
+    perfectRecordingsTab: {
+      flex: 1,
+      paddingVertical: Spacing.sm,
+      alignItems: 'center',
+    },
+    perfectRecordingsTabActive: {
+      borderBottomWidth: 2,
+    },
     perfectRecordingsList: {
-      maxHeight: 340,
+      maxHeight: 350,
     },
     perfectRecordingItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
       padding: Spacing.md,
       borderBottomWidth: 1,
+    },
+    perfectRecordingItemFavorite: {
+      backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    },
+    perfectRecordingHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
     },
     perfectRecordingInfo: {
       flex: 1,
@@ -545,7 +563,38 @@ export const createStyles = (theme: Theme) => {
     },
     perfectRecordingActions: {
       flexDirection: 'row',
-      gap: Spacing.sm,
+      gap: Spacing.xs,
+    },
+    actionBtnSmall: {
+      width: 28,
+      height: 28,
+      borderRadius: BorderRadius.full,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    favoriteBtn: {
+      backgroundColor: 'rgba(255, 215, 0, 0.2)',
+    },
+    favoriteBtnActive: {
+      backgroundColor: '#FFD700',
+    },
+    shareBtn: {
+      backgroundColor: 'rgba(79, 70, 229, 0.15)',
+    },
+    shareBtnActive: {
+      backgroundColor: '#4F46E5',
+    },
+    playBtn: {
+      backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    },
+    deleteBtn: {
+      backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    },
+    perfectRecordingMeta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: Spacing.xs,
+      gap: Spacing.md,
     },
     playPerfectBtn: {
       width: 32,
@@ -565,6 +614,13 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
       justifyContent: 'center',
       padding: Spacing['2xl'],
+    },
+    // 公开分享发音的用户信息
+    sharedUserInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.xs,
+      marginBottom: Spacing.xs,
     },
   });
 };
