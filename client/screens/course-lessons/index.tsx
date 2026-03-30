@@ -41,6 +41,8 @@ interface Lesson {
   isDownloading?: boolean;
   downloadProgress?: number;
   webDownloadComplete?: boolean; // 网页端下载完成标记
+  // 存储状态：0=无, 1=已缓存(云端), 2=已下载(手机), 3=完成(云端已删除)
+  storageStatus?: 0 | 1 | 2 | 3;
 }
 
 interface Course {
@@ -204,6 +206,7 @@ export default function CourseLessonsScreen() {
       let totalSentences = 0;
       let currentProgress = 0;
       let cloudAudioKeys: string[] = []; // 收集云端文件key，下载完成后删除
+      let downloadedCount = 0; // 已下载到手机的句子数
       
       sse.addEventListener('message', async (event) => {
         try {
@@ -211,36 +214,46 @@ export default function CourseLessonsScreen() {
             sse.close();
             downloadingLessons.delete(lessonId);
             
-            // 删除云端临时文件
-            if (cloudAudioKeys.length > 0) {
-              try {
-                console.log(`[云端清理] 开始删除 ${cloudAudioKeys.length} 个临时文件...`);
-                await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/cloud-audio/cleanup`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ keys: cloudAudioKeys }),
-                });
-                console.log(`[云端清理] 删除完成`);
-              } catch (cleanupErr) {
-                console.error('[云端清理] 删除失败，将由定时任务清理:', cleanupErr);
-              }
-            }
-            
-            // 更新UI：下载完成
+            // 更新UI：已下载到手机（状态2）
             setLessons(prev => prev.map(l => {
               if (l.id === lessonId) {
                 return { 
                   ...l, 
                   isDownloading: false, 
-                  cached: l.total, 
-                  // 网页端保留 downloadProgress: 1 用于显示「已下载」状态
+                  cached: l.total,
+                  storageStatus: 2, // 已下载到手机
                   downloadProgress: isWeb ? 1 : undefined,
-                  // 网页端标记已下载
                   webDownloadComplete: isWeb ? true : undefined,
                 };
               }
               return l;
             }));
+            
+            // 删除云端临时文件
+            if (cloudAudioKeys.length > 0) {
+              try {
+                console.log(`[云端清理] 开始删除 ${cloudAudioKeys.length} 个临时文件...`);
+                const cleanupRes = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/cloud-audio/cleanup`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ keys: cloudAudioKeys }),
+                });
+                const cleanupData = await cleanupRes.json();
+                console.log(`[云端清理] 删除完成:`, cleanupData);
+                
+                // 更新UI：云端已删除（状态3 - ⭐⭐⭐）
+                if (cleanupData.success) {
+                  setLessons(prev => prev.map(l => {
+                    if (l.id === lessonId) {
+                      return { ...l, storageStatus: 3 };
+                    }
+                    return l;
+                  }));
+                }
+              } catch (cleanupErr) {
+                console.error('[云端清理] 删除失败，将由定时任务清理:', cleanupErr);
+              }
+            }
             
             console.log(`[后台下载] 课时 ${lessonId} 下载完成`);
             return;
@@ -274,6 +287,16 @@ export default function CourseLessonsScreen() {
             const cloudAudioKey = data.cloud_audio_key;
             
             if (cloudAudioUrl && cloudAudioKey) {
+              // 收到第一个云端URL时，更新状态为"已缓存"（状态1）
+              if (cloudAudioKeys.length === 0) {
+                setLessons(prev => prev.map(l => {
+                  if (l.id === lessonId) {
+                    return { ...l, storageStatus: 1 };
+                  }
+                  return l;
+                }));
+              }
+              
               try {
                 console.log(`[云端下载] 开始下载: ${cloudAudioKey}`);
                 
@@ -309,6 +332,7 @@ export default function CourseLessonsScreen() {
                 
                 // 收集云端key，稍后批量删除
                 cloudAudioKeys.push(cloudAudioKey);
+                downloadedCount++;
                 
               } catch (downloadErr) {
                 console.error(`[云端下载] 失败: ${cloudAudioKey}`, downloadErr);
@@ -454,8 +478,11 @@ export default function CourseLessonsScreen() {
             const isDownloading = lesson.isDownloading;
             const downloadProgress = lesson.downloadProgress || 0;
             
-            // 网页端：下载完成后显示「已下载」
-            const webDownloaded = isWeb && lesson.webDownloadComplete;
+            // 存储状态：1=已缓存(云端), 2=已下载(手机), 3=完成(云端已删除)
+            const storageStatus = lesson.storageStatus;
+            const showCloudCached = storageStatus === 1; // 已缓存到云端
+            const showLocalDownloaded = storageStatus === 2; // 已下载到手机
+            const showComplete = storageStatus === 3; // 云端已删除
             
             return (
               <TouchableOpacity
@@ -503,14 +530,38 @@ export default function CourseLessonsScreen() {
                         />
                       </View>
                       <ThemedText variant="tiny" color={theme.textMuted} style={styles.downloadProgressText}>
-                        {isWeb ? '下载中' : '缓存中'} {Math.round(downloadProgress * 100)}%
+                        {showCloudCached ? '转存手机中' : '下载中'} {Math.round(downloadProgress * 100)}%
                       </ThemedText>
                     </View>
-                  ) : allCached || webDownloaded ? (
+                  ) : showComplete ? (
+                    // 状态3：云端已删除，手机有文件
+                    <View style={[styles.statusBadge, { backgroundColor: '#FFD70020' }]}>
+                      <ThemedText variant="tiny" color="#FFD700" style={{ marginLeft: 0 }}>
+                        ⭐⭐⭐
+                      </ThemedText>
+                    </View>
+                  ) : showLocalDownloaded ? (
+                    // 状态2：已下载到手机
+                    <View style={[styles.statusBadge, { backgroundColor: theme.primary + '20' }]}>
+                      <FontAwesome6 name="mobile-screen" size={10} color={theme.primary} />
+                      <ThemedText variant="tiny" color={theme.primary} style={{ marginLeft: 4 }}>
+                        已下载
+                      </ThemedText>
+                    </View>
+                  ) : showCloudCached ? (
+                    // 状态1：已缓存到云端
+                    <View style={[styles.statusBadge, { backgroundColor: '#FF950020' }]}>
+                      <FontAwesome6 name="cloud" size={10} color="#FF9500" />
+                      <ThemedText variant="tiny" color="#FF9500" style={{ marginLeft: 4 }}>
+                        已缓存
+                      </ThemedText>
+                    </View>
+                  ) : allCached ? (
+                    // 兼容旧状态：本地有缓存
                     <View style={[styles.statusBadge, { backgroundColor: theme.success + '20' }]}>
                       <FontAwesome6 name="check-circle" size={10} color={theme.success} />
                       <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 4 }}>
-                        {isWeb ? '已下载' : '已缓存'}
+                        已缓存
                       </ThemedText>
                     </View>
                   ) : hasAudioCache ? (
@@ -540,7 +591,7 @@ export default function CourseLessonsScreen() {
                 {/* 右侧按钮区域 */}
                 {isDownloading ? (
                   <ActivityIndicator size="small" color={theme.primary} style={styles.arrowIcon} />
-                ) : allCached || webDownloaded ? (
+                ) : showComplete || showLocalDownloaded || allCached ? (
                   <FontAwesome6
                     name="chevron-right"
                     size={18}
