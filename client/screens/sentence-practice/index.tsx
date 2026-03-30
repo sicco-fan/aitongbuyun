@@ -2035,6 +2035,7 @@ export default function SentencePracticeScreen() {
   // 存档状态
   const [hasProgressToSave, setHasProgressToSave] = useState(false); // 是否有进度需要存档
   const isExitingRef = useRef(false); // 是否正在退出（防止重复处理）
+  const initialIndexRef = useRef<number | null>(null); // 初始句子索引（用于判断是否有进度变化）
 
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
@@ -2233,9 +2234,13 @@ export default function SentencePracticeScreen() {
         // 如果有传入指定的句子索引，直接跳转
         if (params.sentenceIndex !== undefined && params.sentenceIndex < loadedSentences.length) {
           setCurrentIndex(params.sentenceIndex);
+          initialIndexRef.current = params.sentenceIndex; // 记录初始索引
         } else {
           // 获取学习进度（只在首次进入时弹出提示）
-          if (isAuthenticated && user?.id && !errorPriority && !hasShownProgressAlert.current) {
+          // 课程模式使用 lessonId，句库模式使用 fileId
+          const progressId = sourceType === 'lesson' ? lessonId : fileId;
+          
+          if (isAuthenticated && user?.id && progressId && !errorPriority && !hasShownProgressAlert.current) {
             hasShownProgressAlert.current = true; // 标记已显示过弹窗
             try {
               /**
@@ -2244,7 +2249,7 @@ export default function SentencePracticeScreen() {
                * Query 参数：user_id: string
                */
               const progressResponse = await fetch(
-                `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${fileId}?user_id=${user.id}`
+                `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${progressId}?user_id=${user.id}`
               );
               const progressData = await progressResponse.json();
               
@@ -2261,6 +2266,7 @@ export default function SentencePracticeScreen() {
                         text: '从头开始', 
                         onPress: () => {
                           setCurrentIndex(0);
+                          initialIndexRef.current = 0;
                           setResumingFromProgress(false);
                         }
                       },
@@ -2268,16 +2274,27 @@ export default function SentencePracticeScreen() {
                         text: '继续学习', 
                         onPress: () => {
                           setCurrentIndex(savedIndex);
+                          initialIndexRef.current = savedIndex;
                           setResumingFromProgress(false);
                         }
                       }
                     ]
                   );
+                } else {
+                  // 没有进度记录，初始索引为0
+                  initialIndexRef.current = 0;
                 }
+              } else {
+                // 没有进度记录，初始索引为0
+                initialIndexRef.current = 0;
               }
             } catch (progressError) {
               console.log('[学习进度] 获取进度失败:', progressError);
+              initialIndexRef.current = 0;
             }
+          } else {
+            // 不需要检查进度，初始索引为0
+            initialIndexRef.current = 0;
           }
         }
       }
@@ -2344,7 +2361,11 @@ export default function SentencePracticeScreen() {
 
   // 保存学习进度
   const saveProgress = useCallback(async (sentenceIndex: number) => {
-    if (!isAuthenticated || !user?.id || !fileId) return;
+    if (!isAuthenticated || !user?.id) return;
+    
+    // 课程模式使用 lessonId，句库模式使用 fileId
+    const recordId = sourceType === 'lesson' ? lessonId : fileId;
+    if (!recordId) return;
     
     try {
       /**
@@ -2352,7 +2373,7 @@ export default function SentencePracticeScreen() {
        * 接口：POST /api/v1/learning-records/progress/:fileId
        * Body 参数：user_id: string, sentence_index: number
        */
-      await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${fileId}`, {
+      await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${recordId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2360,11 +2381,11 @@ export default function SentencePracticeScreen() {
           sentence_index: sentenceIndex,
         }),
       });
-      console.log(`[学习进度] 已保存进度: 第 ${sentenceIndex + 1} 句`);
+      console.log(`[学习进度] 已保存进度: 第 ${sentenceIndex + 1} 句 (ID: ${recordId})`);
     } catch (error) {
       console.error('[学习进度] 保存失败:', error);
     }
-  }, [fileId, isAuthenticated, user?.id]);
+  }, [fileId, lessonId, sourceType, isAuthenticated, user?.id]);
 
   // 同步 ref 值（用于 cleanup 中获取最新值）
   useEffect(() => {
@@ -2463,6 +2484,17 @@ export default function SentencePracticeScreen() {
       };
     }, [fetchSentences, fetchNextLesson, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId, user?.id, calculateEffectiveDuration])
   );
+
+  // 追踪用户是否有学习进度变化（用于退出时提示保存）
+  useEffect(() => {
+    // 如果初始索引已记录，且当前索引与初始索引不同，说明有进度变化
+    if (initialIndexRef.current !== null && currentIndex !== initialIndexRef.current) {
+      if (!hasProgressToSave) {
+        setHasProgressToSave(true);
+        console.log(`[进度追踪] 检测到进度变化: ${initialIndexRef.current} -> ${currentIndex}`);
+      }
+    }
+  }, [currentIndex, hasProgressToSave]);
 
   // 处理返回键/退出 - 注意：这个函数在 submitLearningData 之后定义
   // 所以 BackHandler 的 useEffect 需要在那些函数定义之后
