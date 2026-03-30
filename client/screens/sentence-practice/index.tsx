@@ -2171,6 +2171,8 @@ export default function SentencePracticeScreen() {
   // 音频源选择状态
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]); // 选中的音源ID列表
   const [currentPlayingSourceIndex, setCurrentPlayingSourceIndex] = useState(0); // 当前播放的音源索引
+  const selectedSourceIdsRef = useRef<string[]>([]); // 用于在回调中获取最新值
+  const currentPlayingSourceIndexRef = useRef(0); // 用于在回调中获取最新值
   const aiVoicesRef = useRef<Array<{id: string; name: string; voiceId: string}>>([
     { id: 'ai_weiwei', name: '薇薇（双语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
     { id: 'ai_xiaohe', name: '晓荷（中文女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
@@ -2178,13 +2180,32 @@ export default function SentencePracticeScreen() {
     { id: 'ai_xiaotian', name: '晓天（中文男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
   ]); // 四种AI音色
 
+  // 同步 ref 和 state
+  useEffect(() => {
+    selectedSourceIdsRef.current = selectedSourceIds;
+  }, [selectedSourceIds]);
+  
+  useEffect(() => {
+    currentPlayingSourceIndexRef.current = currentPlayingSourceIndex;
+  }, [currentPlayingSourceIndex]);
+
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
 
-  // 当切换句子时，重置跟随朗读和智能引导的进度
+  // 当切换句子时，重置跟随朗读和智能引导的进度，以及音源索引
   useEffect(() => {
     followAlongIndexRef.current = 0;
     smartGuideIndexRef.current = 0;
+    // 切换句子时重置音源索引
+    currentPlayingSourceIndexRef.current = 0;
+    setCurrentPlayingSourceIndex(0);
+    // 停止当前播放
+    if (soundRef.current) {
+      soundRef.current.stopAsync().catch(() => {});
+      soundRef.current.unloadAsync().catch(() => {});
+      soundRef.current = null;
+    }
+    setIsPlaying(false);
   }, [currentIndex]);
 
   // 初始化默认选中的音源（选中当前voiceId对应的AI音色）
@@ -2744,12 +2765,15 @@ export default function SentencePracticeScreen() {
 
   // 获取当前要播放的音源对应的voiceId
   const getCurrentPlayingVoiceId = useCallback((): string | null => {
-    if (selectedSourceIds.length === 0) {
+    const sources = selectedSourceIdsRef.current;
+    const index = currentPlayingSourceIndexRef.current;
+    
+    if (sources.length === 0) {
       return voiceId || null; // 没有选中音源，使用默认voiceId
     }
     
     // 获取当前播放索引对应的音源ID
-    const currentSourceId = selectedSourceIds[currentPlayingSourceIndex % selectedSourceIds.length];
+    const currentSourceId = sources[index % sources.length];
     
     // 如果是AI音色，返回对应的voiceId
     const aiVoice = aiVoicesRef.current.find(v => v.id === currentSourceId);
@@ -2759,7 +2783,110 @@ export default function SentencePracticeScreen() {
     
     // 其他音源类型（用户录音、社区分享）暂时返回null，需要单独处理
     return null;
-  }, [selectedSourceIds, currentPlayingSourceIndex, voiceId]);
+  }, [voiceId]);
+
+  // 播放下一个音源（在播放完成后的回调中调用）
+  const playNextSourceRef = useRef<(() => void) | null>(null);
+  
+  // 播放下一个音源的实际实现
+  const playNextSource = useCallback(async () => {
+    const sources = selectedSourceIdsRef.current;
+    const currentIndex = currentPlayingSourceIndexRef.current;
+    
+    console.log(`[playNextSource] 开始执行, 音源数量: ${sources.length}, 当前索引: ${currentIndex}`);
+    
+    if (sources.length === 0) {
+      console.log(`[playNextSource] 没有选中的音源，退出`);
+      return;
+    }
+    
+    // 计算下一个索引
+    const nextIndex = (currentIndex + 1) % sources.length;
+    
+    // 如果已经循环完一轮，检查是否需要继续循环
+    if (nextIndex === 0 && !isLoopingRef.current) {
+      console.log('[多音源播放] 已播放完所有音源，停止播放');
+      return;
+    }
+    
+    // 更新索引
+    currentPlayingSourceIndexRef.current = nextIndex;
+    setCurrentPlayingSourceIndex(nextIndex);
+    
+    console.log(`[多音源播放] 播放下一个音源，索引: ${nextIndex}, 音源ID: ${sources[nextIndex]}`);
+    
+    // 等待一小段时间后播放下一个
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // 获取下一个音源的 voiceId
+    const nextSourceId = sources[nextIndex];
+    const aiVoice = aiVoicesRef.current.find(v => v.id === nextSourceId);
+    
+    if (!aiVoice) {
+      console.log('[多音源播放] 非AI音色，暂不支持');
+      return;
+    }
+    
+    // 生成新的音频 key
+    const audioKey = generateCourseAudioKey(
+      parseInt(courseId!, 10),
+      parseInt(lessonId!, 10),
+      currentSentence!.sentence_index,
+      aiVoice.voiceId
+    );
+    
+    const localAudioUri = await getAudioFromLocal(audioKey);
+    
+    if (!localAudioUri) {
+      console.log(`[多音源播放] 音频不存在: ${audioKey}`);
+      // 尝试下一个音源
+      playNextSourceRef.current?.();
+      return;
+    }
+    
+    // 释放之前的音频
+    if (soundRef.current) {
+      try {
+        await soundRef.current.unloadAsync();
+      } catch (e) {
+        // ignore
+      }
+    }
+    
+    // 播放新的音频
+    const { sound } = await Audio.Sound.createAsync(
+      { uri: localAudioUri },
+      {
+        shouldPlay: true,
+        isLooping: false,
+        volume: volumeRef.current,
+        rate: playbackRateRef.current,
+        shouldCorrectPitch: true,
+      },
+      (status) => {
+        if (status.isLoaded) {
+          if (status.didJustFinish) {
+            setIsPlaying(false);
+            // 播放下一个音源
+            if (isMountedRef.current && playNextSourceRef.current) {
+              playNextSourceRef.current();
+            }
+          }
+        } else if (status.error) {
+          console.error('[播放错误]', status.error);
+          setIsPlaying(false);
+        }
+      }
+    );
+    
+    soundRef.current = sound;
+    setIsPlaying(true);
+  }, [courseId, lessonId, currentSentence]);
+  
+  // 更新 ref
+  useEffect(() => {
+    playNextSourceRef.current = playNextSource;
+  }, [playNextSource]);
 
   // 播放音频片段
   const playAudio = useCallback(async () => {
@@ -2820,13 +2947,16 @@ export default function SentencePracticeScreen() {
               if (status.isLoaded) {
                 if (status.didJustFinish) {
                   setIsPlaying(false);
-                  // 如果选中了多个音源，切换到下一个音源索引
-                  if (selectedSourceIds.length > 1 && isMountedRef.current) {
-                    const nextIndex = (currentPlayingSourceIndex + 1) % selectedSourceIds.length;
-                    setCurrentPlayingSourceIndex(nextIndex);
-                    console.log(`[多音源播放] 切换到下一个音源索引: ${nextIndex}`);
-                  } else if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
+                  // 检查是否有多个选中的音源
+                  const sources = selectedSourceIdsRef.current;
+                  console.log(`[播放完成] 选中的音源数量: ${sources.length}, 音源列表: ${JSON.stringify(sources)}`);
+                  if (sources.length > 1 && isMountedRef.current && playNextSourceRef.current) {
+                    // 多音源模式：播放下一个音源
+                    console.log(`[多音源播放-本地] 当前音源播放完成，准备播放下一个`);
+                    playNextSourceRef.current();
+                  } else if (isLoopingRef.current && isMountedRef.current) {
                     // 单音源循环播放
+                    console.log(`[单音源循环] 开始循环播放`);
                     setTimeout(async () => {
                       try {
                         await soundRef.current?.replayAsync();
@@ -2871,13 +3001,16 @@ export default function SentencePracticeScreen() {
               if (status.isLoaded) {
                 if (status.didJustFinish) {
                   setIsPlaying(false);
-                  // 如果选中了多个音源，切换到下一个音源索引
-                  if (selectedSourceIds.length > 1 && isMountedRef.current) {
-                    const nextIndex = (currentPlayingSourceIndex + 1) % selectedSourceIds.length;
-                    setCurrentPlayingSourceIndex(nextIndex);
-                    console.log(`[多音源播放-TTS] 切换到下一个音源索引: ${nextIndex}`);
-                  } else if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
+                  // 检查是否有多个选中的音源
+                  const sources = selectedSourceIdsRef.current;
+                  console.log(`[播放完成-TTS] 选中的音源数量: ${sources.length}, 音源列表: ${JSON.stringify(sources)}`);
+                  if (sources.length > 1 && isMountedRef.current && playNextSourceRef.current) {
+                    // 多音源模式：播放下一个音源
+                    console.log(`[多音源播放-TTS] 当前音源播放完成，准备播放下一个`);
+                    playNextSourceRef.current();
+                  } else if (isLoopingRef.current && isMountedRef.current) {
                     // 单音源循环播放
+                    console.log(`[单音源循环-TTS] 开始循环播放`);
                     setTimeout(async () => {
                       try {
                         await soundRef.current?.replayAsync();
