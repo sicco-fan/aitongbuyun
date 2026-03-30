@@ -499,8 +499,7 @@ async function parseSingleBatch(client: LLMClient, text: string, startLessonNumb
 }
 
 // 定义可用的音色
-// 注意：当前TTS服务仅支持中文音色，但部分音色支持双语（中英）
-// 对于英语学习，推荐使用双语音色
+// 注意：仅保留 TTS 服务实际支持的音色
 const AVAILABLE_VOICES = [
   // 英语学习推荐音色（双语）
   { 
@@ -512,12 +511,10 @@ const AVAILABLE_VOICES = [
     recommended: true 
   },
   
-  // 中文通用音色（也可朗读英语，但口音较重）
+  // 中文通用音色（也可朗读英语）
   { id: 'zh_female_xiaohe_uranus_bigtts', name: '晓荷', gender: 'female', style: 'general', description: '中文通用女声' },
   { id: 'zh_male_m191_uranus_bigtts', name: '云舟', gender: 'male', style: 'general', description: '中文通用男声' },
   { id: 'zh_male_taocheng_uranus_bigtts', name: '晓天', gender: 'male', style: 'general', description: '中文通用男声' },
-  { id: 'zh_female_tianmei_uranus_bigtts', name: '天美', gender: 'female', style: 'general', description: '温柔甜美女声' },
-  { id: 'zh_male_qingxinnansheng_uranus_bigtts', name: '清新', gender: 'male', style: 'general', description: '清新自然男声' },
 ];
 
 /**
