@@ -112,6 +112,38 @@ export async function hasAudioLocal(key: string): Promise<boolean> {
 }
 
 /**
+ * 检查课程句子的音频是否存在（支持任意音色）
+ * 检查 key 或 key_* 格式的文件是否存在
+ * @param baseKey 基础 key（不含 voiceId）
+ */
+export async function hasCourseAudioLocal(baseKey: string): Promise<boolean> {
+  if (!isLocalStorageSupported()) {
+    return false;
+  }
+  
+  const AUDIO_DIR = getAudioDir();
+  
+  try {
+    // 先检查精确匹配（旧格式，不带 voiceId）
+    const exactPath = `${AUDIO_DIR}${baseKey}.mp3`;
+    const exactInfo = await FS.getInfoAsync(exactPath);
+    if (exactInfo.exists) {
+      return true;
+    }
+    
+    // 检查是否有带 voiceId 的文件（新格式：baseKey_voiceId.mp3）
+    const files = await FS.readDirectoryAsync(AUDIO_DIR);
+    const prefix = `${baseKey}_`;
+    const hasMatchingFile = files.some(file => 
+      file.startsWith(prefix) && file.endsWith('.mp3')
+    );
+    return hasMatchingFile;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
  * 删除本地音频
  * @param key 音频唯一标识
  */
@@ -241,11 +273,15 @@ export async function checkLessonAudioStatus(
   lessonId: number,
   sentenceCount: number
 ): Promise<{ cached: number; total: number }> {
-  const keys: string[] = [];
+  let cached = 0;
   for (let i = 1; i <= sentenceCount; i++) {
-    keys.push(generateCourseAudioKey(courseId, lessonId, i));
+    // 使用基础 key（不含 voiceId），支持检查任意音色的缓存
+    const baseKey = `course_${courseId}_lesson_${lessonId}_sentence_${i}`;
+    if (await hasCourseAudioLocal(baseKey)) {
+      cached++;
+    }
   }
-  return checkAudiosExist(keys);
+  return { cached, total: sentenceCount };
 }
 
 /**
