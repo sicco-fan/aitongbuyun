@@ -183,25 +183,32 @@ export default function LessonPracticeScreen() {
         // 检查所有音色的状态
         const statuses: VoiceCacheStatus[] = [];
         for (const voice of data.available_voices) {
-          // 检查该音色是否有音频（从第一个句子判断）
+          // 检查该音色是否有音频（从 available_voices 判断）
           const sentencesWithVoice = data.sentences.filter(
             (s: Sentence) => s.available_voices && s.available_voices.includes(voice.id)
           );
-          const hasAudio = sentencesWithVoice.length > 0;
           
-          // 检查缓存状态
+          // 如果后端有该音色的音频，用那个数量；否则用所有句子数量来检查本地缓存
+          const sentenceCountToCheck = sentencesWithVoice.length > 0 
+            ? sentencesWithVoice.length 
+            : data.sentences.length;
+          
+          // 检查缓存状态（需要先检查才能判断 hasAudio）
           const status = await checkVoiceCacheStatus(
             lessonId, 
             voice.id, 
-            sentencesWithVoice.length,
+            sentenceCountToCheck,
             courseId  // 传入 courseId 以检查 audioStorage 本地文件
           );
+          
+          // 有后端音频 或 有本地缓存 都算有音频
+          const hasAudio = sentencesWithVoice.length > 0 || status.cached > 0;
           
           statuses.push({
             voiceId: voice.id,
             voiceName: voice.name,
             cached: status.cached,
-            total: status.total,
+            total: status.cached > 0 ? status.total : sentencesWithVoice.length, // 如果有缓存，用实际缓存数量
             hasAudio,
             isDownloading: false,
             description: voice.description,
