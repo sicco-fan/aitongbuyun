@@ -1268,11 +1268,19 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
           
         } catch (err: any) {
           failedCount++;
+          // 提取更有意义的错误信息
+          let errorMessage = '生成失败';
+          if (err.message?.includes('quota exceeded') || err.message?.includes('concurrency')) {
+            errorMessage = 'TTS服务繁忙，请稍后重试';
+          } else if (err.message) {
+            errorMessage = err.message;
+          }
           sendProgress({
             type: 'error',
             sentence_index: sentence.sentence_index,
             voice_name: voiceName,
-            error: err.message,
+            error: errorMessage,
+            message: errorMessage,
           });
           console.error(`生成失败: 句子${sentence.sentence_index}, 音色${voiceName}`, err);
         }

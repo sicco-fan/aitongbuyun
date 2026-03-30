@@ -242,13 +242,14 @@ export default function CourseLessonsScreen() {
               await saveAudioToLocal(audioKey, audioBase64);
             }
           } else if (data.type === 'error') {
-            console.error(`[后台下载] 错误: ${data.message}`);
+            const errorMsg = data.message || data.error || '未知错误';
+            console.error(`[后台下载] 错误: ${errorMsg}`);
             sse.close();
             downloadingLessons.delete(lessonId);
             setLessons(prev => prev.map(l => 
               l.id === lessonId ? { ...l, isDownloading: false, downloadProgress: undefined } : l
             ));
-            Alert.alert('下载失败', data.message || '未知错误');
+            Alert.alert('下载失败', errorMsg);
           }
         } catch (err) {
           console.error('解析SSE消息失败:', err);
@@ -424,7 +425,7 @@ export default function CourseLessonsScreen() {
                     </View>
                   ) : hasAudioCache ? (
                     <View style={[styles.statusBadge, { backgroundColor: theme.accent + '20' }]}>
-                      <FontAwesome6 name="down-arrow" size={10} color={theme.accent} />
+                      <FontAwesome6 name="arrow-down" size={10} color={theme.accent} />
                       <ThemedText variant="tiny" color={theme.accent} style={{ marginLeft: 4 }}>
                         缓存 {lesson.cached}/{lesson.total}
                       </ThemedText>
