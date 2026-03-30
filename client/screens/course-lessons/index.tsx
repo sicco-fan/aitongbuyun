@@ -295,33 +295,14 @@ export default function CourseLessonsScreen() {
     const allCached = lesson.cached === (lesson.total || 0) && (lesson.total || 0) > 0;
     
     if (allCached) {
-      // 已缓存：询问是学习还是重新下载
-      Alert.alert(
-        '音频已下载',
-        '该课时音频已缓存，您可以：',
-        [
-          {
-            text: '开始学习',
-            onPress: () => {
-              router.push('/lesson-practice', { 
-                lessonId: lessonId.toString(), 
-                title: lessonTitle,
-                courseId: course?.id?.toString(),
-                courseTitle: course?.title,
-                lessonNumber: lessonNumber.toString(),
-              });
-            }
-          },
-          {
-            text: '重新下载',
-            style: 'destructive',
-            onPress: () => {
-              startBackgroundDownload(lessonId, lessonTitle);
-            }
-          },
-          { text: '取消', style: 'cancel' }
-        ]
-      );
+      // 已缓存：直接进入学习，不弹窗
+      router.push('/lesson-practice', { 
+        lessonId: lessonId.toString(), 
+        title: lessonTitle,
+        courseId: course?.id?.toString(),
+        courseTitle: course?.title,
+        lessonNumber: lessonNumber.toString(),
+      });
     } else {
       // 未缓存或部分缓存：询问是否下载
       const message = lesson.cached && lesson.cached > 0
