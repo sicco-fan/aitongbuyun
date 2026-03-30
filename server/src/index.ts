@@ -18,6 +18,7 @@ import uploadRouter from "./routes/upload";
 import perfectRecordingsRouter from "./routes/perfect-recordings";
 import usersRouter from "./routes/users";
 import communityRouter from "./routes/community";
+import tasksRouter from "./routes/tasks";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -76,6 +77,9 @@ app.use('/api/v1/courses', coursesRouter);
 
 // 完美发音记录路由
 app.use('/api/v1/perfect-recordings', perfectRecordingsRouter);
+
+// 后台任务路由
+app.use('/api/v1/tasks', tasksRouter);
 
 // 社区路由
 app.use('/api/v1/community', communityRouter);

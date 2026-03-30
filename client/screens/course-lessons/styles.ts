@@ -10,7 +10,15 @@ export const createStyles = (theme: Theme) => {
       paddingBottom: Spacing['5xl'],
     },
     header: {
-      marginBottom: Spacing.xl,
+      marginBottom: Spacing.lg,
+    },
+    headerTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    headerContent: {
+      flex: 1,
     },
     title: {
       fontSize: 24,
@@ -21,6 +29,20 @@ export const createStyles = (theme: Theme) => {
     subtitle: {
       fontSize: 14,
       color: theme.textSecondary,
+    },
+    generateButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.primary + '15',
+      gap: Spacing.xs,
+    },
+    generateButtonText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: theme.primary,
     },
     lessonCard: {
       backgroundColor: theme.backgroundDefault,

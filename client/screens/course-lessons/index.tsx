@@ -9,8 +9,11 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/contexts/AuthContext';
+import { useTask } from '@/contexts/TaskContext';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
+import { TaskProgressBar } from '@/components/TaskProgressBar';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { getLastLearningPosition, LastLearningPosition } from '@/utils/learningStorage';
@@ -37,13 +40,20 @@ export default function CourseLessonsScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
   const params = useSafeSearchParams<{ courseId: string }>();
-  const courseId = params.courseId;
+  const courseId = params.courseId ? parseInt(params.courseId, 10) : null;
+  const { user } = useAuth();
+  const { createTask, activeTasks, startPolling, stopPolling } = useTask();
   
   const [course, setCourse] = useState<Course | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastLearningPosition, setLastLearningPosition] = useState<LastLearningPosition | null>(null);
+
+  // 检查当前课程是否有进行中的任务
+  const hasActiveTask = activeTasks.some(
+    t => t.resource_id === courseId && t.task_type === 'generate_course_audio'
+  );
 
   const fetchData = useCallback(async () => {
     if (!courseId) return;
@@ -58,7 +68,7 @@ export default function CourseLessonsScreen() {
       const courseData = await courseRes.json();
       
       if (courseData.courses) {
-        const foundCourse = courseData.courses.find((c: Course) => c.id === parseInt(courseId));
+        const foundCourse = courseData.courses.find((c: Course) => c.id === courseId);
         setCourse(foundCourse || null);
       }
       
@@ -80,7 +90,17 @@ export default function CourseLessonsScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchData();
-    }, [fetchData])
+      
+      // 开始轮询任务状态
+      if (user?.id) {
+        startPolling(user.id);
+      }
+      
+      return () => {
+        // 页面离开时停止轮询（但任务继续在后台执行）
+        stopPolling();
+      };
+    }, [fetchData, user?.id, startPolling, stopPolling])
   );
 
   const handleRefresh = useCallback(() => {
@@ -101,6 +121,20 @@ export default function CourseLessonsScreen() {
   const handleBack = useCallback(() => {
     router.back();
   }, [router]);
+
+  /**
+   * 生成全部音频
+   */
+  const handleGenerateAllAudio = useCallback(async () => {
+    if (!user?.id || !courseId || !course) return;
+    
+    await createTask(
+      user.id,
+      'generate_course_audio',
+      courseId,
+      course.title
+    );
+  }, [user?.id, courseId, course, createTask]);
 
   if (loading) {
     return (
@@ -135,13 +169,29 @@ export default function CourseLessonsScreen() {
         </TouchableOpacity>
 
         <View style={styles.header}>
-          <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
-            {course?.title || '课程'}
-          </ThemedText>
-          <ThemedText variant="small" color={theme.textSecondary} style={styles.subtitle}>
-            {course?.description || '选择一课开始学习'}
-          </ThemedText>
+          <View style={styles.headerTop}>
+            <View style={styles.headerContent}>
+              <ThemedText variant="h2" color={theme.textPrimary} style={styles.title}>
+                {course?.title || '课程'}
+              </ThemedText>
+              <ThemedText variant="small" color={theme.textSecondary} style={styles.subtitle}>
+                {course?.description || '选择一课开始学习'}
+              </ThemedText>
+            </View>
+            {!hasActiveTask && (
+              <TouchableOpacity 
+                style={styles.generateButton} 
+                onPress={handleGenerateAllAudio}
+              >
+                <FontAwesome6 name="wand-magic-sparkles" size={14} color={theme.primary} />
+                <ThemedText variant="smallMedium" color={theme.primary}>生成音频</ThemedText>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
+
+        {/* 任务进度条 */}
+        {courseId && <TaskProgressBar courseId={courseId} />}
 
         {lessons.length === 0 ? (
           <View style={styles.emptyContainer}>
