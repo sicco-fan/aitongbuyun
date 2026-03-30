@@ -440,15 +440,9 @@ export default function CourseLessonsScreen() {
   }, [lessons, course, router]);
 
   /**
-   * 点击下载按钮：开始下载课时音频
+   * 点击下载按钮：开始下载课时音频（支持同时下载多个）
    */
   const handleDownloadClick = useCallback((lessonId: number, lessonTitle: string) => {
-    // 检查是否已有其他下载任务
-    if (downloadingLessons.size > 0) {
-      Alert.alert('提示', '请等待当前下载任务完成后再试');
-      return;
-    }
-    
     // 检查是否已在下载中
     if (downloadingLessons.has(lessonId)) {
       Alert.alert('提示', '该课时正在下载中，请稍候');

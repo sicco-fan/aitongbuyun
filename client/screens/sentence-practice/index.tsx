@@ -2836,23 +2836,6 @@ export default function SentencePracticeScreen() {
       return;
     }
     
-    // 生成新的音频 key
-    const audioKey = generateCourseAudioKey(
-      parseInt(courseId!, 10),
-      parseInt(lessonId!, 10),
-      currentSentence!.sentence_index,
-      aiVoice.voiceId
-    );
-    
-    const localAudioUri = await getAudioFromLocal(audioKey);
-    
-    if (!localAudioUri) {
-      console.log(`[多音源播放] 音频不存在: ${audioKey}`);
-      // 尝试下一个音源
-      playNextSourceRef.current?.();
-      return;
-    }
-    
     // 释放之前的音频
     if (soundRef.current) {
       try {
@@ -2862,34 +2845,65 @@ export default function SentencePracticeScreen() {
       }
     }
     
-    // 播放新的音频
-    const { sound } = await Audio.Sound.createAsync(
-      { uri: localAudioUri },
-      {
-        shouldPlay: true,
-        isLooping: false,
-        volume: volumeRef.current,
-        rate: playbackRateRef.current,
-        shouldCorrectPitch: true,
-      },
-      (status) => {
-        if (status.isLoaded) {
-          if (status.didJustFinish) {
-            setIsPlaying(false);
-            // 播放下一个音源
-            if (isMountedRef.current && playNextSourceRef.current) {
-              playNextSourceRef.current();
-            }
-          }
-        } else if (status.error) {
-          console.error('[播放错误]', status.error);
-          setIsPlaying(false);
-        }
-      }
+    // 尝试从本地获取音频
+    const audioKey = generateCourseAudioKey(
+      parseInt(courseId!, 10),
+      parseInt(lessonId!, 10),
+      currentSentence!.sentence_index,
+      aiVoice.voiceId
     );
+    const localAudioUri = await getAudioFromLocal(audioKey);
     
-    soundRef.current = sound;
-    setIsPlaying(true);
+    // 播放完成后的回调
+    const onPlaybackComplete = (status: any) => {
+      if (status.isLoaded) {
+        if (status.didJustFinish) {
+          setIsPlaying(false);
+          // 播放下一个音源
+          if (isMountedRef.current && playNextSourceRef.current) {
+            playNextSourceRef.current();
+          }
+        }
+      } else if (status.error) {
+        console.error('[播放错误]', status.error);
+        setIsPlaying(false);
+      }
+    };
+    
+    if (localAudioUri) {
+      // 有本地缓存，播放本地音频
+      console.log(`[playNextSource] 播放本地音频: ${audioKey}`);
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: localAudioUri },
+        {
+          shouldPlay: true,
+          isLooping: false,
+          volume: volumeRef.current,
+          rate: playbackRateRef.current,
+          shouldCorrectPitch: true,
+        },
+        onPlaybackComplete
+      );
+      soundRef.current = sound;
+      setIsPlaying(true);
+    } else {
+      // 无本地缓存，使用在线 TTS（支持 Web 端）
+      console.log(`[playNextSource] 使用在线TTS, voiceId: ${aiVoice.voiceId}`);
+      const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence!.text)}&speaker=${aiVoice.voiceId}`;
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: ttsUrl },
+        {
+          shouldPlay: true,
+          isLooping: false,
+          volume: volumeRef.current,
+          rate: playbackRateRef.current,
+          shouldCorrectPitch: true,
+        },
+        onPlaybackComplete
+      );
+      soundRef.current = sound;
+      setIsPlaying(true);
+    }
   }, [courseId, lessonId, currentSentence]);
   
   // 更新 ref
