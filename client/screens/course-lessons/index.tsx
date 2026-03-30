@@ -24,6 +24,7 @@ interface Lesson {
   title: string;
   description: string;
   sentences_count: number;
+  learned?: boolean; // 是否学过
 }
 
 interface Course {
@@ -77,7 +78,35 @@ export default function CourseLessonsScreen() {
       const lessonsData = await lessonsRes.json();
       
       if (lessonsData.lessons) {
-        setLessons(lessonsData.lessons);
+        // 获取用户对每个课时的学习状态
+        let lessonsWithStatus = lessonsData.lessons;
+        
+        if (user?.id) {
+          const lessonIds = lessonsData.lessons.map((l: Lesson) => l.id);
+          
+          // 查询 file_learning_summary 表获取学习状态
+          const statsRes = await fetch(
+            `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/files?user_id=${user.id}`
+          );
+          const statsData = await statsRes.json();
+          
+          if (statsData.success && statsData.file_stats) {
+            // 创建已学习的课时ID集合
+            const learnedLessonIds = new Set(
+              statsData.file_stats
+                .filter((s: any) => s.sentence_files?.sourceType === 'course')
+                .map((s: any) => s.sentence_file_id)
+            );
+            
+            // 标记每个课时是否学过
+            lessonsWithStatus = lessonsData.lessons.map((l: Lesson) => ({
+              ...l,
+              learned: learnedLessonIds.has(l.id),
+            }));
+          }
+        }
+        
+        setLessons(lessonsWithStatus);
       }
     } catch (error) {
       console.error('获取课时列表失败:', error);
@@ -85,7 +114,7 @@ export default function CourseLessonsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [courseId]);
+  }, [courseId, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -205,28 +234,39 @@ export default function CourseLessonsScreen() {
             // 检查是否是上次学习的课时
             const isLastLearned = lastLearningPosition?.sourceType === 'lesson' && 
                                   lastLearningPosition.lessonId === lesson.id;
+            // 检查是否学过
+            const hasLearned = lesson.learned;
             
             return (
               <TouchableOpacity
                 key={lesson.id}
-                style={[styles.lessonCard, isLastLearned && styles.lastLearnedCard]}
+                style={[
+                  styles.lessonCard,
+                  isLastLearned && styles.lastLearnedCard,
+                  hasLearned && !isLastLearned && styles.learnedCard,
+                ]}
                 onPress={() => handleLessonClick(lesson.id, lesson.lesson_number, lesson.title)}
                 activeOpacity={0.7}
               >
-                <View style={styles.lessonNumber}>
-                  <ThemedText variant="h4" color={theme.primary} style={styles.lessonNumberText}>
+                <View style={[
+                  styles.lessonNumber,
+                  hasLearned && { backgroundColor: theme.success + '20' }
+                ]}>
+                  <ThemedText 
+                    variant="h4" 
+                    color={hasLearned ? theme.success : theme.primary} 
+                    style={styles.lessonNumberText}
+                  >
                     {lesson.lesson_number}
                   </ThemedText>
                 </View>
                 <View style={styles.lessonInfo}>
-                  <ThemedText variant="h4" color={theme.textPrimary} style={styles.lessonTitle}>
+                  <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.lessonTitle}>
                     {lesson.title}
-                  </ThemedText>
-                  <ThemedText variant="small" color={theme.textSecondary} style={styles.lessonSubtitle}>
-                    {lesson.description}
                   </ThemedText>
                   <ThemedText variant="caption" color={theme.textMuted} style={styles.lessonMeta}>
                     {lesson.sentences_count} 个句子
+                    {hasLearned && ' · 已学过'}
                   </ThemedText>
                   {/* 上次学习提示 */}
                   {isLastLearned && (
