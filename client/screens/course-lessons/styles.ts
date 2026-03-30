@@ -149,6 +149,15 @@ export const createStyles = (theme: Theme) => {
     arrowIcon: {
       marginLeft: Spacing.sm,
     },
+    downloadButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: theme.primary,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginLeft: Spacing.sm,
+    },
     loadingContainer: {
       flex: 1,
       justifyContent: 'center',

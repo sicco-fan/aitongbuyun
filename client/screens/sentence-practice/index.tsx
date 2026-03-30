@@ -2744,59 +2744,7 @@ export default function SentencePracticeScreen() {
           playThroughEarpieceAndroid: false,
         });
 
-        // Web 端：使用在线 TTS API 播放
-        if (Platform.OS === 'web') {
-          console.log('[playAudio-课程] Web端，使用在线TTS');
-          try {
-            /**
-             * 服务端文件：server/src/routes/tts.ts
-             * 接口：GET /api/v1/tts
-             * Query 参数：text: string, speaker?: string
-             */
-            const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=${voiceId}`;
-            
-            const { sound } = await Audio.Sound.createAsync(
-              { uri: ttsUrl },
-              {
-                shouldPlay: true,
-                isLooping: false,
-                volume: volumeRef.current,
-                rate: playbackRateRef.current,
-                shouldCorrectPitch: true,
-              },
-              (status) => {
-                if (status.isLoaded) {
-                  if (status.didJustFinish) {
-                    setIsPlaying(false);
-                    if (isLoopingRef.current && isMountedRef.current) {
-                      setTimeout(async () => {
-                        if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
-                          try {
-                            await soundRef.current.replayAsync();
-                            setIsPlaying(true);
-                          } catch (e) {
-                            console.log('[循环播放] 失败:', e);
-                          }
-                        }
-                      }, 500);
-                    }
-                  }
-                } else if (status.error) {
-                  console.error('[播放错误]', status.error);
-                  setIsPlaying(false);
-                }
-              }
-            );
-            soundRef.current = sound;
-            setIsPlaying(true);
-          } catch (webError) {
-            console.error('[playAudio-课程] Web端TTS失败:', webError);
-            Alert.alert('提示', 'Web端音频播放失败，请稍后重试');
-          }
-          return;
-        }
-
-        // 移动端：从本地获取音频
+        // Web 端或移动端无本地缓存：使用在线 TTS API 播放
         const audioKey = generateCourseAudioKey(
           parseInt(courseId, 10),
           parseInt(lessonId, 10),
@@ -2804,95 +2752,100 @@ export default function SentencePracticeScreen() {
         );
         const localAudioUri = await getAudioFromLocal(audioKey);
         
-        if (!localAudioUri) {
-          // 本地没有音频，尝试使用云端 URL（兼容旧数据）
-          if (currentSentence.audio_url) {
-            console.log(`[playAudio-课程] 本地无音频，使用云端URL`);
-            const { sound } = await Audio.Sound.createAsync(
-              { uri: currentSentence.audio_url },
-              {
-                shouldPlay: true,
-                isLooping: false,
-                volume: volumeRef.current,
-                rate: playbackRateRef.current,
-                shouldCorrectPitch: true,
-              },
-              (status) => {
-                if (status.isLoaded) {
-                  if (status.didJustFinish) {
-                    setIsPlaying(false);
-                    if (isLoopingRef.current && isMountedRef.current) {
-                      setTimeout(async () => {
-                        if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
-                          try {
-                            await soundRef.current.replayAsync();
-                            setIsPlaying(true);
-                          } catch (e) {
-                            console.log('[循环播放] 失败:', e);
-                          }
-                        }
-                      }, 500);
-                    }
-                  }
-                } else if (status.error) {
-                  console.error('[播放错误]', status.error);
+        if (localAudioUri) {
+          // 有本地缓存，播放本地音频
+          console.log(`[playAudio-课程] 播放本地音频: ${audioKey}`);
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: localAudioUri },
+            {
+              shouldPlay: true,
+              isLooping: false,
+              volume: volumeRef.current,
+              rate: playbackRateRef.current,
+              shouldCorrectPitch: true,
+            },
+            (status) => {
+              if (status.isLoaded) {
+                if (status.didJustFinish) {
                   setIsPlaying(false);
+                  if (isLoopingRef.current && isMountedRef.current) {
+                    setTimeout(async () => {
+                      if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
+                        try {
+                          await soundRef.current.replayAsync();
+                          setIsPlaying(true);
+                        } catch (e) {
+                          console.log('[循环播放] 失败:', e);
+                        }
+                      }
+                    }, 500);
+                  }
                 }
+              } else if (status.error) {
+                console.error('[播放错误]', status.error);
+                setIsPlaying(false);
               }
-            );
-            soundRef.current = sound;
-            setIsPlaying(true);
-          } else {
-            console.log(`[playAudio-课程] 本地无音频，请先生成`);
-            Alert.alert('提示', '请先在课程详情页生成音频');
-          }
+            }
+          );
+          soundRef.current = sound;
+          setIsPlaying(true);
           return;
         }
-
-        console.log(`[playAudio-课程] 播放本地音频: ${audioKey}`);
-
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: localAudioUri },
-          {
-            shouldPlay: true,
-            isLooping: false,
-            volume: volumeRef.current,
-            rate: playbackRateRef.current,
-            shouldCorrectPitch: true,
-          },
-          (status) => {
-            if (status.isLoaded) {
-              if (status.didJustFinish) {
-                setIsPlaying(false);
-                // 循环播放
-                if (isLoopingRef.current && isMountedRef.current) {
-                  setTimeout(async () => {
-                    if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
-                      try {
-                        await soundRef.current.replayAsync();
-                        setIsPlaying(true);
-                      } catch (e) {
-                        console.log('[循环播放] 失败:', e);
+        
+        // 无本地缓存，使用在线 TTS
+        console.log(`[playAudio-课程] 无本地缓存，使用在线TTS`);
+        try {
+          /**
+           * 服务端文件：server/src/routes/tts.ts
+           * 接口：GET /api/v1/tts
+           * Query 参数：text: string, speaker?: string
+           */
+          const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=${voiceId}`;
+          
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: ttsUrl },
+            {
+              shouldPlay: true,
+              isLooping: false,
+              volume: volumeRef.current,
+              rate: playbackRateRef.current,
+              shouldCorrectPitch: true,
+            },
+            (status) => {
+              if (status.isLoaded) {
+                if (status.didJustFinish) {
+                  setIsPlaying(false);
+                  if (isLoopingRef.current && isMountedRef.current) {
+                    setTimeout(async () => {
+                      if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
+                        try {
+                          await soundRef.current.replayAsync();
+                          setIsPlaying(true);
+                        } catch (e) {
+                          console.log('[循环播放] 失败:', e);
+                        }
                       }
-                    }
-                  }, 500);
+                    }, 500);
+                  }
                 }
+              } else if (status.error) {
+                console.error('[播放错误]', status.error);
+                setIsPlaying(false);
               }
-            } else if (status.error) {
-              console.error('[播放错误]', status.error);
-              setIsPlaying(false);
             }
-          }
-        );
-
-        soundRef.current = sound;
-        setIsPlaying(true);
+          );
+          soundRef.current = sound;
+          setIsPlaying(true);
+        } catch (ttsError) {
+          console.error('[playAudio-课程] 在线TTS失败:', ttsError);
+          Alert.alert('提示', '音频播放失败，请检查网络连接');
+        }
+        return;
       } catch (error) {
         console.error('[播放] 失败:', error);
       }
-      return;
     }
-    
+
     // 句库模式：从整体音频中切分播放
     if (!currentSentence || !file?.original_audio_signed_url) {
       console.log('[playAudio] 缺少音频或句子');

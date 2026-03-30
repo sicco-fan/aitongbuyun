@@ -290,41 +290,40 @@ export default function CourseLessonsScreen() {
   }, [courseId]);
 
   /**
-   * 点击课时：检查缓存状态，决定是下载还是学习
+   * 点击课时：直接进入学习（使用在线TTS或本地缓存）
    */
   const handleLessonClick = useCallback(async (lessonId: number, lessonNumber: number, lessonTitle: string) => {
     const lesson = lessons.find(l => l.id === lessonId);
     if (!lesson) return;
     
-    // Web 端：直接进入学习（使用在线TTS）
-    if (Platform.OS === 'web') {
-      router.push('/lesson-practice', { 
-        lessonId: lessonId.toString(), 
-        title: lessonTitle,
-        courseId: course?.id?.toString(),
-        courseTitle: course?.title,
-        lessonNumber: lessonNumber.toString(),
-      });
+    // 直接进入学习页面（Web和移动端都支持在线TTS）
+    router.push('/lesson-practice', { 
+      lessonId: lessonId.toString(), 
+      title: lessonTitle,
+      courseId: course?.id?.toString(),
+      courseTitle: course?.title,
+      lessonNumber: lessonNumber.toString(),
+    });
+  }, [lessons, course, router]);
+
+  /**
+   * 点击下载按钮：开始下载课时音频
+   */
+  const handleDownloadClick = useCallback((lessonId: number, lessonTitle: string) => {
+    // 检查是否已有其他下载任务
+    if (downloadingLessons.size > 0) {
+      Alert.alert('提示', '请等待当前下载任务完成后再试');
       return;
     }
     
-    // 检查是否已完全缓存
-    const allCached = lesson.cached === (lesson.total || 0) && (lesson.total || 0) > 0;
-    
-    // Web 端：直接进入学习（使用在线 TTS）
-    if (isWeb || allCached) {
-      router.push('/lesson-practice', { 
-        lessonId: lessonId.toString(), 
-        title: lessonTitle,
-        courseId: course?.id?.toString(),
-        courseTitle: course?.title,
-        lessonNumber: lessonNumber.toString(),
-      });
-    } else {
-      // 移动端未缓存：开始下载
-      startBackgroundDownload(lessonId, lessonTitle);
+    // 检查是否已在下载中
+    if (downloadingLessons.has(lessonId)) {
+      Alert.alert('提示', '该课时正在下载中，请稍候');
+      return;
     }
-  }, [lessons, course, router, startBackgroundDownload]);
+    
+    startBackgroundDownload(lessonId, lessonTitle);
+  }, [startBackgroundDownload]);
 
   if (loading) {
     return (
@@ -451,7 +450,11 @@ export default function CourseLessonsScreen() {
                         缓存 {lesson.cached}/{lesson.total}
                       </ThemedText>
                     </View>
-                  ) : null}
+                  ) : (
+                    <ThemedText variant="tiny" color={theme.textMuted} style={{ marginTop: 4 }}>
+                      点击进入学习
+                    </ThemedText>
+                  )}
                   
                   {/* 上次学习提示 */}
                   {isLastLearned && (
@@ -464,12 +467,31 @@ export default function CourseLessonsScreen() {
                   )}
                 </View>
                 
-                <FontAwesome6
-                  name={allCached ? "chevron-right" : "download"}
-                  size={18}
-                  color={isDownloading ? theme.textMuted : (allCached ? theme.textMuted : theme.accent)}
-                  style={styles.arrowIcon}
-                />
+                {/* 右侧按钮区域 */}
+                {isDownloading ? (
+                  <ActivityIndicator size="small" color={theme.primary} style={styles.arrowIcon} />
+                ) : allCached ? (
+                  <FontAwesome6
+                    name="chevron-right"
+                    size={18}
+                    color={theme.textMuted}
+                    style={styles.arrowIcon}
+                  />
+                ) : (
+                  <TouchableOpacity 
+                    style={styles.downloadButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleDownloadClick(lesson.id, lesson.title);
+                    }}
+                  >
+                    <FontAwesome6
+                      name="download"
+                      size={16}
+                      color={theme.buttonPrimaryText}
+                    />
+                  </TouchableOpacity>
+                )}
               </TouchableOpacity>
             );
           })
