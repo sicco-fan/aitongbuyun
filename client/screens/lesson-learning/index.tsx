@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
@@ -10,6 +10,9 @@ import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { createStyles } from './styles';
 import { hasAudioLocal, generateCourseAudioKey } from '@/utils/audioStorage';
+
+// 检测是否为 Web 端
+const isWeb = (Platform as any).OS === 'web';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
@@ -55,7 +58,26 @@ export default function LessonLearningScreen() {
       const data = await response.json();
       
       if (data.sentences) {
-        // 检查每个句子是否有音频（后端 audio_url 或 本地缓存）
+        // Web 端：直接使用所有句子（使用在线 TTS）
+        if (isWeb) {
+          setSentences(data.sentences);
+          if (data.sentences.length > 0) {
+            setTimeout(() => {
+              router.replace('/sentence-practice', {
+                sourceType: 'lesson',
+                lessonId: lessonId,
+                voiceId: voiceId,
+                title: title,
+                courseId: courseId,
+                courseTitle: courseTitle,
+                lessonNumber: lessonNumber,
+              });
+            }, 100);
+          }
+          return;
+        }
+        
+        // 移动端：检查每个句子是否有音频（后端 audio_url 或 本地缓存）
         const sentencesWithAudio: Sentence[] = [];
         
         for (const sentence of data.sentences) {

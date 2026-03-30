@@ -2753,7 +2753,7 @@ export default function SentencePracticeScreen() {
              * 接口：GET /api/v1/tts
              * Query 参数：text: string, speaker?: string
              */
-            const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=zh_female_xiaohe_uranus_bigtts`;
+            const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=${voiceId}`;
             
             const { sound } = await Audio.Sound.createAsync(
               { uri: ttsUrl },
