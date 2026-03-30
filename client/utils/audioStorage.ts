@@ -284,6 +284,101 @@ export async function checkLessonAudioStatus(
   return { cached, total: sentenceCount };
 }
 
+// 四种AI音色
+const AI_VOICE_IDS = [
+  'zh_female_vv_uranus_bigtts',    // 薇薇（双语女声）
+  'zh_female_xiaohe_uranus_bigtts', // 晓荷（中文女声）
+  'zh_male_m191_uranus_bigtts',     // 云舟（中文男声）
+  'zh_male_taocheng_uranus_bigtts', // 晓天（中文男声）
+];
+
+/**
+ * 检查课时每个音色的音频缓存状态
+ * @param courseId 课程ID
+ * @param lessonId 课时ID
+ * @param sentenceCount 句子数量
+ * @returns 每个音色的缓存状态和总体状态
+ */
+export async function checkLessonAudioStatusByVoice(
+  courseId: number,
+  lessonId: number,
+  sentenceCount: number
+): Promise<{ 
+  voiceStatus: Array<{ voiceId: string; voiceName: string; cached: number; total: number }>;
+  completedVoices: number; // 完全下载完成的音色数量
+  totalVoices: number;     // 总音色数量
+  isComplete: boolean;     // 是否全部音色都已下载完成
+}> {
+  const voiceNames: Record<string, string> = {
+    'zh_female_vv_uranus_bigtts': '薇薇',
+    'zh_female_xiaohe_uranus_bigtts': '晓荷',
+    'zh_male_m191_uranus_bigtts': '云舟',
+    'zh_male_taocheng_uranus_bigtts': '晓天',
+  };
+  
+  const voiceStatus: Array<{ voiceId: string; voiceName: string; cached: number; total: number }> = [];
+  let completedVoices = 0;
+  
+  for (const voiceId of AI_VOICE_IDS) {
+    let cached = 0;
+    for (let i = 1; i <= sentenceCount; i++) {
+      const key = `course_${courseId}_lesson_${lessonId}_sentence_${i}_${voiceId}`;
+      if (await hasAudioLocal(key)) {
+        cached++;
+      }
+    }
+    
+    voiceStatus.push({
+      voiceId,
+      voiceName: voiceNames[voiceId] || voiceId,
+      cached,
+      total: sentenceCount,
+    });
+    
+    if (cached === sentenceCount) {
+      completedVoices++;
+    }
+  }
+  
+  return {
+    voiceStatus,
+    completedVoices,
+    totalVoices: AI_VOICE_IDS.length,
+    isComplete: completedVoices === AI_VOICE_IDS.length,
+  };
+}
+
+/**
+ * 获取课时缺失音色的列表
+ * @param courseId 课程ID
+ * @param lessonId 课时ID
+ * @param sentenceCount 句子数量
+ * @returns 缺失的音色ID列表
+ */
+export async function getMissingVoicesForLesson(
+  courseId: number,
+  lessonId: number,
+  sentenceCount: number
+): Promise<string[]> {
+  const missingVoices: string[] = [];
+  
+  for (const voiceId of AI_VOICE_IDS) {
+    let cached = 0;
+    for (let i = 1; i <= sentenceCount; i++) {
+      const key = `course_${courseId}_lesson_${lessonId}_sentence_${i}_${voiceId}`;
+      if (await hasAudioLocal(key)) {
+        cached++;
+      }
+    }
+    // 如果该音色没有完全下载，加入缺失列表
+    if (cached < sentenceCount) {
+      missingVoices.push(voiceId);
+    }
+  }
+  
+  return missingVoices;
+}
+
 /**
  * 检查课程所有课时的音频缓存状态
  * @param courseId 课程ID

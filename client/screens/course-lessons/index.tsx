@@ -24,10 +24,19 @@ import {
   saveAudioToLocal, 
   generateCourseAudioKey,
   checkCourseAudioStatus,
+  checkLessonAudioStatusByVoice,
+  getMissingVoicesForLesson,
   isLocalStorageSupported,
   hasAudioLocal,
 } from '@/utils/audioStorage';
 import RNSSE from 'react-native-sse';
+
+interface VoiceStatus {
+  voiceId: string;
+  voiceName: string;
+  cached: number;
+  total: number;
+}
 
 interface Lesson {
   id: number;
@@ -41,6 +50,11 @@ interface Lesson {
   isDownloading?: boolean;
   downloadProgress?: number;
   webDownloadComplete?: boolean; // 网页端下载完成标记
+  // 新增：每个音色的状态
+  voiceStatus?: VoiceStatus[];
+  completedVoices?: number; // 完全下载完成的音色数量
+  totalVoices?: number;     // 总音色数量
+  isComplete?: boolean;     // 是否全部音色都已下载完成
 }
 
 interface Course {
@@ -55,6 +69,7 @@ const downloadingLessons = new Map<number, {
   controller: AbortController;
   progress: number;
   total: number;
+  voiceIds: string[]; // 正在下载的音色列表
 }>();
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
@@ -115,23 +130,27 @@ export default function CourseLessonsScreen() {
           }
         }
         
-        // 检查每个课时的本地音频缓存状态
+        // 检查每个课时的本地音频缓存状态（按音色检查）
         const lessonsWithCache = await Promise.all(
           lessonsWithStatus.map(async (l: Lesson) => {
             const sentencesCount = l.sentences_count || 0;
             if (sentencesCount > 0 && isLocalStorageSupported()) {
-              const status = await checkCourseAudioStatus(courseId, [{ 
-                id: l.id, 
-                sentences_count: sentencesCount 
-              }]);
+              // 检查每个音色的缓存状态
+              const voiceStatus = await checkLessonAudioStatusByVoice(courseId, l.id, sentencesCount);
               return {
                 ...l,
-                cached: status.cached,
-                total: status.total,
+                // 兼容旧逻辑：cached 表示有任意音色的句子数
+                cached: voiceStatus.voiceStatus[0]?.cached || 0,
+                total: sentencesCount,
                 isDownloading: downloadingLessons.has(l.id),
+                // 新增：音色详细状态
+                voiceStatus: voiceStatus.voiceStatus,
+                completedVoices: voiceStatus.completedVoices,
+                totalVoices: voiceStatus.totalVoices,
+                isComplete: voiceStatus.isComplete,
               };
             }
-            return { ...l, cached: 0, total: 0 };
+            return { ...l, cached: 0, total: 0, completedVoices: 0, totalVoices: 4, isComplete: false };
           })
         );
         
@@ -161,16 +180,17 @@ export default function CourseLessonsScreen() {
   }, [router]);
 
   /**
-   * 开始后台下载课时音频
+   * 开始后台下载课时音频（支持补齐缺失音色）
+   * @param lessonId 课时ID
+   * @param lessonTitle 课时标题
+   * @param forceAll 是否强制下载全部四个音色（默认只下载缺失的）
    */
-  const startBackgroundDownload = useCallback(async (lessonId: number, lessonTitle: string) => {
+  const startBackgroundDownload = useCallback(async (
+    lessonId: number, 
+    lessonTitle: string,
+    forceAll: boolean = false
+  ) => {
     if (!courseId || !isLocalStorageSupported()) return;
-    
-    // 检查是否已有其他下载任务（限制同时只能下载一个）
-    if (downloadingLessons.size > 0) {
-      Alert.alert('提示', '请等待当前下载任务完成后再试');
-      return;
-    }
     
     // 检查是否已在下载中
     if (downloadingLessons.has(lessonId)) {
@@ -178,25 +198,41 @@ export default function CourseLessonsScreen() {
       return;
     }
     
+    // 获取课时信息
+    const lesson = lessons.find(l => l.id === lessonId);
+    const sentenceCount = lesson?.sentences_count || 0;
+    
+    // 确定需要下载的音色
+    let voiceIds: string[];
+    if (forceAll || !lesson?.voiceStatus) {
+      // 强制下载全部四个音色
+      voiceIds = [
+        'zh_female_vv_uranus_bigtts',    // 薇薇（双语女声）
+        'zh_female_xiaohe_uranus_bigtts', // 晓荷（中文女声）
+        'zh_male_m191_uranus_bigtts',     // 云舟（中文男声）
+        'zh_male_taocheng_uranus_bigtts', // 晓天（中文男声）
+      ];
+    } else {
+      // 只下载缺失的音色
+      voiceIds = await getMissingVoicesForLesson(courseId, lessonId, sentenceCount);
+      if (voiceIds.length === 0) {
+        Alert.alert('提示', '该课时的所有音色已下载完成');
+        return;
+      }
+      console.log(`[后台下载] 课时 ${lessonId} 缺失 ${voiceIds.length} 个音色: ${voiceIds.join(', ')}`);
+    }
+    
     const controller = new AbortController();
-    downloadingLessons.set(lessonId, { controller, progress: 0, total: 0 });
+    downloadingLessons.set(lessonId, { controller, progress: 0, total: 0, voiceIds });
     
     // 更新UI状态
     setLessons(prev => prev.map(l => 
       l.id === lessonId ? { ...l, isDownloading: true, downloadProgress: 0 } : l
     ));
     
-    console.log(`[后台下载] 开始下载课时 ${lessonId} 的音频（四个音色）...`);
+    console.log(`[后台下载] 开始下载课时 ${lessonId} 的音频，音色: ${voiceIds.join(', ')}...`);
     
     try {
-      // 四个音色一起下载
-      const voiceIds = [
-        'zh_female_vv_uranus_bigtts',    // 薇薇（双语女声）
-        'zh_female_xiaohe_uranus_bigtts', // 晓荷（中文女声）
-        'zh_male_m191_uranus_bigtts',     // 云舟（中文男声）
-        'zh_male_taocheng_uranus_bigtts', // 晓天（中文男声）
-      ];
-      
       const sse = new RNSSE(
         `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/lessons/${lessonId}/generate-audio`,
         {
@@ -218,19 +254,42 @@ export default function CourseLessonsScreen() {
             sse.close();
             downloadingLessons.delete(lessonId);
             
-            // 更新UI：下载完成
-            setLessons(prev => prev.map(l => {
-              if (l.id === lessonId) {
-                return { 
-                  ...l, 
-                  isDownloading: false, 
-                  cached: l.total, // 标记为已缓存
-                  downloadProgress: undefined,
-                  webDownloadComplete: undefined,
-                };
-              }
-              return l;
-            }));
+            // 重新检查音色状态
+            const lesson = lessons.find(l => l.id === lessonId);
+            const sentenceCount = lesson?.sentences_count || 0;
+            if (courseId && sentenceCount > 0) {
+              const voiceStatus = await checkLessonAudioStatusByVoice(courseId, lessonId, sentenceCount);
+              setLessons(prev => prev.map(l => {
+                if (l.id === lessonId) {
+                  return { 
+                    ...l, 
+                    isDownloading: false, 
+                    cached: voiceStatus.voiceStatus[0]?.cached || 0,
+                    downloadProgress: undefined,
+                    webDownloadComplete: undefined,
+                    voiceStatus: voiceStatus.voiceStatus,
+                    completedVoices: voiceStatus.completedVoices,
+                    totalVoices: voiceStatus.totalVoices,
+                    isComplete: voiceStatus.isComplete,
+                  };
+                }
+                return l;
+              }));
+            } else {
+              // 无法检查，使用旧逻辑
+              setLessons(prev => prev.map(l => {
+                if (l.id === lessonId) {
+                  return { 
+                    ...l, 
+                    isDownloading: false, 
+                    cached: l.total,
+                    downloadProgress: undefined,
+                    webDownloadComplete: undefined,
+                  };
+                }
+                return l;
+              }));
+            }
             
             // 删除云端临时文件
             if (cloudAudioKeys.length > 0) {
@@ -457,10 +516,14 @@ export default function CourseLessonsScreen() {
             const isLastLearned = lastLearningPosition?.sourceType === 'lesson' && 
                                   lastLearningPosition.lessonId === lesson.id;
             const hasLearned = lesson.learned;
-            const hasAudioCache = lesson.cached && lesson.cached > 0;
-            const allCached = lesson.cached === (lesson.total || 0) && (lesson.total || 0) > 0;
             const isDownloading = lesson.isDownloading;
             const downloadProgress = lesson.downloadProgress || 0;
+            
+            // 使用新的音色状态
+            const completedVoices = lesson.completedVoices || 0;
+            const totalVoices = lesson.totalVoices || 4;
+            const isComplete = lesson.isComplete || false;
+            const hasPartialCache = completedVoices > 0 && !isComplete;
             
             return (
               <TouchableOpacity
@@ -496,7 +559,7 @@ export default function CourseLessonsScreen() {
                     {hasLearned && ' · 已学过'}
                   </ThemedText>
                   
-                  {/* 下载状态/缓存状态 - 简化版 */}
+                  {/* 下载状态/缓存状态 - 显示音色完成情况 */}
                   {isDownloading ? (
                     <View style={styles.downloadProgressContainer}>
                       <View style={styles.downloadProgressBar}>
@@ -511,19 +574,20 @@ export default function CourseLessonsScreen() {
                         下载中 {Math.round(downloadProgress * 100)}%
                       </ThemedText>
                     </View>
-                  ) : allCached ? (
-                    // 本地有音频 → 本地可用
+                  ) : isComplete ? (
+                    // 四个音色全部下载完成
                     <View style={[styles.statusBadge, { backgroundColor: theme.success + '20' }]}>
                       <FontAwesome6 name="check-circle" size={10} color={theme.success} />
                       <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 4 }}>
-                        本地可用
+                        全部可用 ({totalVoices}音色)
                       </ThemedText>
                     </View>
-                  ) : hasAudioCache ? (
+                  ) : hasPartialCache ? (
+                    // 部分音色已下载
                     <View style={[styles.statusBadge, { backgroundColor: theme.accent + '20' }]}>
                       <FontAwesome6 name="arrow-down" size={10} color={theme.accent} />
                       <ThemedText variant="tiny" color={theme.accent} style={{ marginLeft: 4 }}>
-                        缓存 {lesson.cached}/{lesson.total}
+                        {completedVoices}/{totalVoices} 音色可用
                       </ThemedText>
                     </View>
                   ) : (
@@ -546,14 +610,31 @@ export default function CourseLessonsScreen() {
                 {/* 右侧按钮区域 */}
                 {isDownloading ? (
                   <ActivityIndicator size="small" color={theme.primary} style={styles.arrowIcon} />
-                ) : allCached ? (
+                ) : isComplete ? (
+                  // 全部音色已下载完成
                   <FontAwesome6
                     name="chevron-right"
                     size={18}
                     color={theme.textMuted}
                     style={styles.arrowIcon}
                   />
+                ) : hasPartialCache ? (
+                  // 部分音色已下载，显示补齐按钮
+                  <TouchableOpacity 
+                    style={[styles.downloadButton, { backgroundColor: theme.accent }]}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleDownloadClick(lesson.id, lesson.title);
+                    }}
+                  >
+                    <FontAwesome6
+                      name="plus"
+                      size={16}
+                      color={theme.buttonPrimaryText}
+                    />
+                  </TouchableOpacity>
                 ) : (
+                  // 没有任何缓存，显示下载按钮
                   <TouchableOpacity 
                     style={styles.downloadButton}
                     onPress={(e) => {
