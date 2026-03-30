@@ -295,7 +295,7 @@ export default function CourseLessonsScreen() {
     const allCached = lesson.cached === (lesson.total || 0) && (lesson.total || 0) > 0;
     
     if (allCached) {
-      // 已缓存：直接进入学习，不弹窗
+      // 已缓存：直接进入学习
       router.push('/lesson-practice', { 
         lessonId: lessonId.toString(), 
         title: lessonTitle,
@@ -304,25 +304,8 @@ export default function CourseLessonsScreen() {
         lessonNumber: lessonNumber.toString(),
       });
     } else {
-      // 未缓存或部分缓存：询问是否下载
-      const message = lesson.cached && lesson.cached > 0
-        ? `已缓存 ${lesson.cached}/${lesson.total} 句，是否继续下载剩余音频？\n\n下载完成后可离线学习。`
-        : '该课时音频尚未下载，是否现在下载？\n\n下载完成后可离线学习，退出此页面不影响下载进度。';
-      
-      Alert.alert(
-        '下载音频',
-        message,
-        [
-          {
-            text: '下载',
-            onPress: () => startBackgroundDownload(lessonId, lessonTitle)
-          },
-          {
-            text: '取消',
-            style: 'cancel',
-          }
-        ]
-      );
+      // 未缓存：直接开始下载
+      startBackgroundDownload(lessonId, lessonTitle);
     }
   }, [lessons, course, router, startBackgroundDownload]);
 
