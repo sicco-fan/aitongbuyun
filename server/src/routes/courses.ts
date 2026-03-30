@@ -1177,8 +1177,8 @@ router.post('/:courseId/generate-audio', async (req: Request, res: Response) => 
 
 /**
  * POST /api/v1/courses/lessons/:lessonId/generate-audio
- * 为指定课时的所有句子生成AI语音（使用SSE流式返回进度）
- * 音频数据以Base64形式返回，由前端保存到本地（不占用云端空间）
+ * 为指定课时的所有句子生成AI语音（云端中转方案）
+ * 流程：TTS生成 → 上传云端 → 返回签名URL → 前端下载 → 删除云端文件
  */
 router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Response) => {
   const { lessonId } = req.params;
@@ -1208,7 +1208,6 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
   };
   
   try {
-    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
     const supabase = getSupabaseClient();
     const config = new Config();
     const ttsClient = new TTSClient(config, customHeaders);
@@ -1292,20 +1291,32 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
           });
           const audioBuffer = Buffer.from(audioResponse.data);
           
-          // 转换为Base64
-          const audioBase64 = audioBuffer.toString('base64');
-          
           // 计算音频时长
           const duration = Math.round((audioBuffer.length * 8) / (128 * 1000) * 1000);
           
-          // 标记为已生成（不存储URL，由前端管理本地缓存）
+          // 上传到云端对象存储（临时存储，前端下载后删除）
+          const cloudAudioKey = `temp-audio/lesson_${lessonId}/sentence_${sentence.id}_${voiceId}_${Date.now()}.mp3`;
+          await storage.uploadFile({
+            fileContent: audioBuffer,
+            fileName: cloudAudioKey,
+            contentType: 'audio/mpeg',
+          });
+          
+          // 生成签名URL（有效期1小时）
+          const signedUrl = await storage.generatePresignedUrl({
+            key: cloudAudioKey,
+            expireTime: 3600,
+          });
+          
+          // 记录到数据库：云端临时文件key + 标记为待下载
           await supabase
             .from('lesson_sentence_audio')
             .upsert({
               sentence_id: sentence.id,
               voice_id: voiceId,
               voice_name: voiceName,
-              audio_url: 'local', // 标记为本地存储
+              audio_url: 'pending_download', // 标记为待下载
+              cloud_audio_key: cloudAudioKey, // 记录云端文件key，用于后续删除
               duration: duration,
             }, {
               onConflict: 'sentence_id,voice_id'
@@ -1313,18 +1324,19 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
           
           generatedCount++;
           
-          // 发送音频数据给前端
+          // 发送云端URL给前端（前端从云端下载到本地）
           sendProgress({
-            type: 'audio',
+            type: 'audio_url',
             sentence_id: sentence.id,
             sentence_index: sentence.sentence_index,
             voice_id: voiceId,
             voice_name: voiceName,
-            audio_base64: audioBase64,
+            cloud_audio_url: signedUrl, // 云端签名URL
+            cloud_audio_key: cloudAudioKey, // 用于删除
             duration: duration,
           });
           
-          console.log(`生成音频: 课时${lessonId}, 句子${sentence.sentence_index}, 音色${voiceName}`);
+          console.log(`生成音频: 课时${lessonId}, 句子${sentence.sentence_index}, 音色${voiceName}, 云端key: ${cloudAudioKey}`);
           
           // 每个句子生成后等待500ms，避免TTS并发限制
           await delay(500);
@@ -2342,5 +2354,132 @@ function parseSentences(content: string): Array<{ english: string; chinese?: str
   
   return sentences;
 }
+
+/**
+ * POST /api/v1/courses/cloud-audio/cleanup
+ * 删除云端临时音频文件
+ * Body: { keys: string[] } 云端文件key列表
+ */
+router.post('/cloud-audio/cleanup', async (req: Request, res: Response) => {
+  try {
+    const { keys } = req.body;
+    
+    if (!keys || !Array.isArray(keys) || keys.length === 0) {
+      return res.status(400).json({ error: '请提供要删除的文件key列表' });
+    }
+    
+    console.log(`[云端清理] 开始删除 ${keys.length} 个临时音频文件`);
+    
+    const supabase = getSupabaseClient();
+    const deletedKeys: string[] = [];
+    const failedKeys: string[] = [];
+    
+    for (const key of keys) {
+      try {
+        // 从云端删除文件
+        await storage.deleteFile({ fileKey: key });
+        deletedKeys.push(key);
+        
+        // 更新数据库状态
+        await supabase
+          .from('lesson_sentence_audio')
+          .update({ 
+            audio_url: 'local', // 标记为本地存储
+            cloud_audio_key: null, // 清空云端key
+          })
+          .eq('cloud_audio_key', key);
+        
+        console.log(`[云端清理] 删除成功: ${key}`);
+      } catch (err: any) {
+        console.error(`[云端清理] 删除失败: ${key}`, err.message);
+        failedKeys.push(key);
+      }
+    }
+    
+    console.log(`[云端清理] 完成: 成功 ${deletedKeys.length}, 失败 ${failedKeys.length}`);
+    
+    res.json({
+      success: true,
+      deleted: deletedKeys.length,
+      failed: failedKeys.length,
+      deletedKeys,
+      failedKeys,
+    });
+    
+  } catch (error: any) {
+    console.error('[云端清理] 错误:', error);
+    res.status(500).json({ error: '删除失败', message: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/courses/cloud-audio/cleanup-expired
+ * 定时清理超过24小时的临时音频文件（兜底机制）
+ * 可由定时任务或手动调用
+ */
+router.post('/cloud-audio/cleanup-expired', async (req: Request, res: Response) => {
+  try {
+    const supabase = getSupabaseClient();
+    
+    // 查询超过24小时的临时文件
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    
+    const { data: expiredAudios, error } = await supabase
+      .from('lesson_sentence_audio')
+      .select('id, cloud_audio_key, updated_at')
+      .not('cloud_audio_key', 'is', null)
+      .lt('updated_at', twentyFourHoursAgo);
+    
+    if (error) {
+      throw new Error(error.message);
+    }
+    
+    if (!expiredAudios || expiredAudios.length === 0) {
+      console.log('[定时清理] 没有需要清理的临时文件');
+      return res.json({ success: true, deleted: 0, message: '没有需要清理的文件' });
+    }
+    
+    console.log(`[定时清理] 发现 ${expiredAudios.length} 个过期临时文件`);
+    
+    let deletedCount = 0;
+    let failedCount = 0;
+    
+    for (const audio of expiredAudios) {
+      try {
+        if (audio.cloud_audio_key) {
+          await storage.deleteFile({ fileKey: audio.cloud_audio_key });
+          
+          // 更新数据库状态
+          await supabase
+            .from('lesson_sentence_audio')
+            .update({
+              audio_url: 'expired', // 标记为已过期
+              cloud_audio_key: null,
+            })
+            .eq('id', audio.id);
+          
+          deletedCount++;
+          console.log(`[定时清理] 删除过期文件: ${audio.cloud_audio_key}`);
+        }
+      } catch (err: any) {
+        failedCount++;
+        console.error(`[定时清理] 删除失败: ${audio.cloud_audio_key}`, err.message);
+      }
+    }
+    
+    console.log(`[定时清理] 完成: 成功 ${deletedCount}, 失败 ${failedCount}`);
+    
+    res.json({
+      success: true,
+      deleted: deletedCount,
+      failed: failedCount,
+      message: `清理完成：成功 ${deletedCount} 个，失败 ${failedCount} 个`,
+    });
+    
+  } catch (error: any) {
+    console.error('[定时清理] 错误:', error);
+    res.status(500).json({ error: '清理失败', message: error.message });
+  }
+});
 
 export default router;

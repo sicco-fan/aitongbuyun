@@ -202,12 +202,28 @@ export default function CourseLessonsScreen() {
       
       let totalSentences = 0;
       let currentProgress = 0;
+      let cloudAudioKeys: string[] = []; // 收集云端文件key，下载完成后删除
       
       sse.addEventListener('message', async (event) => {
         try {
           if (!event.data || event.data === '[DONE]') {
             sse.close();
             downloadingLessons.delete(lessonId);
+            
+            // 删除云端临时文件
+            if (cloudAudioKeys.length > 0) {
+              try {
+                console.log(`[云端清理] 开始删除 ${cloudAudioKeys.length} 个临时文件...`);
+                await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/courses/cloud-audio/cleanup`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ keys: cloudAudioKeys }),
+                });
+                console.log(`[云端清理] 删除完成`);
+              } catch (cleanupErr) {
+                console.error('[云端清理] 删除失败，将由定时任务清理:', cleanupErr);
+              }
+            }
             
             // 更新UI：下载完成
             setLessons(prev => prev.map(l => {
@@ -248,6 +264,41 @@ export default function CourseLessonsScreen() {
                 ? { ...l, downloadProgress: currentProgress / totalSentences, cached: currentProgress }
                 : l
             ));
+          } else if (data.type === 'audio_url') {
+            // 云端中转方案：从云端URL下载到本地
+            const cloudAudioUrl = data.cloud_audio_url;
+            const cloudAudioKey = data.cloud_audio_key;
+            
+            if (cloudAudioUrl && cloudAudioKey) {
+              try {
+                console.log(`[云端下载] 开始下载: ${cloudAudioKey}`);
+                
+                // 从云端下载音频文件
+                const audioRes = await fetch(cloudAudioUrl);
+                if (!audioRes.ok) {
+                  throw new Error(`下载失败: ${audioRes.status}`);
+                }
+                
+                const audioBuffer = await audioRes.arrayBuffer();
+                const audioBase64 = btoa(
+                  new Uint8Array(audioBuffer).reduce(
+                    (data, byte) => data + String.fromCharCode(byte),
+                    ''
+                  )
+                );
+                
+                // 保存到本地
+                const audioKey = generateCourseAudioKey(courseId!, lessonId, data.sentence_index || data.sentenceIndex);
+                await saveAudioToLocal(audioKey, audioBase64);
+                
+                // 收集云端key，稍后批量删除
+                cloudAudioKeys.push(cloudAudioKey);
+                
+                console.log(`[云端下载] 保存成功: ${audioKey}`);
+              } catch (downloadErr) {
+                console.error(`[云端下载] 失败: ${cloudAudioKey}`, downloadErr);
+              }
+            }
           } else if (data.type === 'audio') {
             // 兼容后端返回的字段名 (audio_base64 或 audioBase64)
             const audioBase64 = data.audio_base64 || data.audioBase64;
