@@ -234,13 +234,15 @@ export async function checkVoiceCacheStatus(
       // 如果 lessonAudioCache 中没有，检查 audioStorage 本地文件
       if (!isCached && courseId) {
         try {
-          const audioKey = generateCourseAudioKey(
+          // 优先检查带 voiceId 的新格式 key
+          const audioKeyWithVoice = generateCourseAudioKey(
             typeof courseId === 'string' ? parseInt(courseId, 10) : courseId,
             typeof lessonId === 'string' ? parseInt(lessonId, 10) : lessonId,
-            i
+            i,
+            voiceId  // 传入 voiceId 以区分不同音色
           );
-          const hasLocal = await hasAudioLocal(audioKey);
-          if (hasLocal) {
+          const hasLocalWithVoice = await hasAudioLocal(audioKeyWithVoice);
+          if (hasLocalWithVoice) {
             isCached = true;
           }
         } catch {

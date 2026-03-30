@@ -422,11 +422,12 @@ export default function LessonPracticeScreen() {
             if ((data.audio_base64 || data.audioBase64) && data.sentence_index && data.voice_id) {
               const audioBase64 = data.audio_base64 || data.audioBase64;
               if (courseId && audioBase64) {
-                // 生成音频存储 key
+                // 生成音频存储 key（包含 voiceId 以区分不同音色）
                 const audioKey = generateCourseAudioKey(
                   parseInt(courseId, 10),
                   parseInt(lessonId, 10),
-                  data.sentence_index
+                  data.sentence_index,
+                  data.voice_id  // 传入 voiceId 以区分不同音色
                 );
                 
                 // 保存到本地

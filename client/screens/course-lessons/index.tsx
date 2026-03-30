@@ -324,8 +324,8 @@ export default function CourseLessonsScreen() {
                     )
                   );
                   
-                  // 保存到本地
-                  const audioKey = generateCourseAudioKey(courseId!, lessonId, data.sentence_index || data.sentenceIndex);
+                  // 保存到本地（使用下载时的音色）
+                  const audioKey = generateCourseAudioKey(courseId!, lessonId, data.sentence_index || data.sentenceIndex, 'zh_female_vv_uranus_bigtts');
                   await saveAudioToLocal(audioKey, audioBase64);
                   console.log(`[移动端下载] 保存成功: ${audioKey}`);
                 }
@@ -342,7 +342,8 @@ export default function CourseLessonsScreen() {
             // 兼容后端返回的字段名 (audio_base64 或 audioBase64)
             const audioBase64 = data.audio_base64 || data.audioBase64;
             if (audioBase64) {
-              const audioKey = generateCourseAudioKey(courseId, lessonId, data.sentence_index || data.sentenceIndex);
+              // 使用下载时的音色
+              const audioKey = generateCourseAudioKey(courseId, lessonId, data.sentence_index || data.sentenceIndex, 'zh_female_vv_uranus_bigtts');
               await saveAudioToLocal(audioKey, audioBase64);
             }
           } else if (data.type === 'error') {
@@ -535,9 +536,10 @@ export default function CourseLessonsScreen() {
                     </View>
                   ) : showComplete ? (
                     // 状态3：云端已删除，手机有文件
-                    <View style={[styles.statusBadge, { backgroundColor: '#FFD70020' }]}>
-                      <ThemedText variant="tiny" color="#FFD700" style={{ marginLeft: 0 }}>
-                        ⭐⭐⭐
+                    <View style={[styles.statusBadge, { backgroundColor: theme.success + '20' }]}>
+                      <FontAwesome6 name="check-circle" size={10} color={theme.success} />
+                      <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 4 }}>
+                        本地可用
                       </ThemedText>
                     </View>
                   ) : showLocalDownloaded ? (

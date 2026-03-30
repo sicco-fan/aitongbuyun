@@ -2745,10 +2745,12 @@ export default function SentencePracticeScreen() {
         });
 
         // Web 端或移动端无本地缓存：使用在线 TTS API 播放
+        // 生成音频存储 key（包含 voiceId 以区分不同音色）
         const audioKey = generateCourseAudioKey(
           parseInt(courseId, 10),
           parseInt(lessonId, 10),
-          currentSentence.sentence_index
+          currentSentence.sentence_index,
+          voiceId  // 传入 voiceId 以区分不同音色
         );
         const localAudioUri = await getAudioFromLocal(audioKey);
         

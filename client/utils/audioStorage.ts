@@ -186,8 +186,20 @@ export async function clearAudioCache(): Promise<void> {
 
 /**
  * 生成课程句子的音频存储key
+ * @param courseId 课程ID
+ * @param lessonId 课时ID
+ * @param sentenceIndex 句子索引
+ * @param voiceId 音色ID（可选，用于区分不同音色的缓存）
  */
-export function generateCourseAudioKey(courseId: number, lessonId: number, sentenceIndex: number): string {
+export function generateCourseAudioKey(
+  courseId: number,
+  lessonId: number,
+  sentenceIndex: number,
+  voiceId?: string
+): string {
+  if (voiceId) {
+    return `course_${courseId}_lesson_${lessonId}_sentence_${sentenceIndex}_${voiceId}`;
+  }
   return `course_${courseId}_lesson_${lessonId}_sentence_${sentenceIndex}`;
 }
 
