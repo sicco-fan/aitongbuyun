@@ -178,11 +178,20 @@ export default function StateDrivenLayout({
         </View>
 
         {/* 统一的学习资源区 */}
-        <View style={sharedStyles.sectionHeader}>
-          <ThemedText variant="h4" color={theme.textPrimary}>学习资源</ThemedText>
-          <ThemedText variant="caption" color={theme.textMuted}>
-            {aiTotalSentences + customSentenceFiles.reduce((sum, f) => sum + f.ready_sentences_count, 0)} 句可学
-          </ThemedText>
+        <View style={[sharedStyles.sectionHeader, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+          <View>
+            <ThemedText variant="h4" color={theme.textPrimary}>学习资源</ThemedText>
+            <ThemedText variant="caption" color={theme.textMuted}>
+              {aiTotalSentences + customSentenceFiles.reduce((sum, f) => sum + f.ready_sentences_count, 0)} 句可学
+            </ThemedText>
+          </View>
+          <TouchableOpacity 
+            onPress={() => router.push('/courses')}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+          >
+            <ThemedText variant="small" color={theme.primary}>管理</ThemedText>
+            <FontAwesome6 name="chevron-right" size={12} color={theme.primary} />
+          </TouchableOpacity>
         </View>
 
         {/* 资源列表 */}
