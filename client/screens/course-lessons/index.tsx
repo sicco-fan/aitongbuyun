@@ -318,17 +318,8 @@ export default function CourseLessonsScreen() {
             onPress: () => startBackgroundDownload(lessonId, lessonTitle)
           },
           {
-            text: '在线学习',
+            text: '取消',
             style: 'cancel',
-            onPress: () => {
-              router.push('/lesson-practice', { 
-                lessonId: lessonId.toString(), 
-                title: lessonTitle,
-                courseId: course?.id?.toString(),
-                courseTitle: course?.title,
-                lessonNumber: lessonNumber.toString(),
-              });
-            }
           }
         ]
       );
