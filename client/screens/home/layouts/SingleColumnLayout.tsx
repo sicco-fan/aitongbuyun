@@ -4,6 +4,7 @@ import {
   TouchableOpacity,
   View,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -64,7 +65,7 @@ export default function SingleColumnLayout({
 }: SingleColumnLayoutProps) {
   const { theme, isDark } = useTheme();
   const router = useSafeRouter();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const sharedStyles = createSharedStyles(theme);
 
   const formatDuration = (ms: number) => {
@@ -90,8 +91,14 @@ export default function SingleColumnLayout({
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
         {/* Header */}
-        <ThemedView level="root" style={{ marginBottom: Spacing.md }}>
+        <ThemedView level="root" style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
           <ThemedText variant="h3" color={theme.textPrimary}>AI听写云</ThemedText>
+          {isAuthenticated && user?.avatar_url && (
+            <Image 
+              source={{ uri: user.avatar_url }} 
+              style={{ width: 28, height: 28, borderRadius: 14 }}
+            />
+          )}
         </ThemedView>
 
         {/* 继续学习 */}

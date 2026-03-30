@@ -4,6 +4,7 @@ import {
   TouchableOpacity,
   View,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -94,8 +95,14 @@ export default function StateDrivenLayout({
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
         {/* Header */}
-        <ThemedView level="root" style={{ marginBottom: Spacing.md }}>
+        <ThemedView level="root" style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
           <ThemedText variant="h3" color={theme.textPrimary}>AI听写云</ThemedText>
+          {isAuthenticated && user?.avatar_url && (
+            <Image 
+              source={{ uri: user.avatar_url }} 
+              style={{ width: 28, height: 28, borderRadius: 14 }}
+            />
+          )}
         </ThemedView>
 
         {/* 学习状态卡片 - 根据用户状态动态显示 */}

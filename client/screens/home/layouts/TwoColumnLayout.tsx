@@ -5,6 +5,7 @@ import {
   View,
   RefreshControl,
   Dimensions,
+  Image,
 } from 'react-native';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -65,7 +66,7 @@ export default function TwoColumnLayout({
 }: TwoColumnLayoutProps) {
   const { theme, isDark } = useTheme();
   const router = useSafeRouter();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const sharedStyles = createSharedStyles(theme);
   const screenWidth = Dimensions.get('window').width;
   const cardWidth = (screenWidth - Spacing.lg * 2 - 8) / 2; // 8是卡片间距
@@ -96,8 +97,14 @@ export default function TwoColumnLayout({
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
         {/* Header */}
-        <ThemedView level="root" style={{ marginBottom: Spacing.md }}>
+        <ThemedView level="root" style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
           <ThemedText variant="h3" color={theme.textPrimary}>AI听写云</ThemedText>
+          {isAuthenticated && user?.avatar_url && (
+            <Image 
+              source={{ uri: user.avatar_url }} 
+              style={{ width: 28, height: 28, borderRadius: 14 }}
+            />
+          )}
         </ThemedView>
 
         {/* 快捷入口 - 双列 */}
