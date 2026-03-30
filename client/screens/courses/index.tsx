@@ -355,9 +355,9 @@ export default function CoursesScreen() {
           {/* 上次学习提示 */}
           {isLastLearned && (
             <View style={[styles.lastLearnedBadge, { backgroundColor: theme.success + '20' }]}>
-              <FontAwesome6 name="clock-rotate-left" size={12} color={theme.success} />
-              <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 4 }}>
-                上次学到 第{lastLearningPosition?.lessonNumber}课
+              <FontAwesome6 name="clock-rotate-left" size={10} color={theme.success} />
+              <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 2 }}>
+                第{lastLearningPosition?.lessonNumber}课
               </ThemedText>
             </View>
           )}
@@ -366,40 +366,23 @@ export default function CoursesScreen() {
             <View style={styles.courseIcon}>
               <FontAwesome6
                 name={getBookIcon(item.book_number)}
-                size={24}
+                size={18}
                 color={theme.primary}
               />
             </View>
             <View style={styles.courseInfo}>
-              <ThemedText variant="h4" color={theme.textPrimary} style={styles.courseTitle}>
+              <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.courseTitle}>
                 {item.title}
               </ThemedText>
-              <ThemedText variant="small" color={theme.textSecondary} style={styles.courseMeta}>
-                {item.description}
+              <ThemedText variant="tiny" color={theme.textMuted} style={styles.courseMeta}>
+                {item.total_lessons}课 · {item.total_sentences || item.total_lessons * 18}句
               </ThemedText>
             </View>
           </View>
+          
           <View style={styles.courseStats}>
-            <View style={styles.statItem}>
-              <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
-                {item.total_lessons}
-              </ThemedText>
-              <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
-                课程数
-              </ThemedText>
-            </View>
-            <View style={styles.statItem}>
-              <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
-                {item.total_sentences || item.total_lessons * 18}
-              </ThemedText>
-              <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
-                句子数
-              </ThemedText>
-            </View>
-            <View style={styles.statItem}>
-              <FontAwesome6 name="grip-vertical" size={16} color={theme.textMuted} style={{ marginRight: 8 }} />
-              <FontAwesome6 name="chevron-right" size={20} color={theme.textMuted} />
-            </View>
+            <FontAwesome6 name="grip-vertical" size={14} color={theme.textMuted} />
+            <FontAwesome6 name="chevron-right" size={14} color={theme.textMuted} />
           </View>
         </Pressable>
       </ScaleDecorator>
