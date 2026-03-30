@@ -1155,16 +1155,16 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
   const { voiceId, voiceIds } = req.body; // 支持单音色或多音色
   const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
   
-  // 确定要生成的音色列表
-  const targetVoiceIds: string[] = voiceIds || (voiceId ? [voiceId] : ['zh_female_xiaohe_uranus_bigtts']);
+  // 确定要生成的音色列表（默认使用双语音色）
+  const targetVoiceIds: string[] = voiceIds || (voiceId ? [voiceId] : ['zh_female_vv_uranus_bigtts']);
   
   // 音色名称映射
   const voiceNameMap: Record<string, string> = {
-    'zh_female_xiaohe_uranus_bigtts': '小何',
-    'zh_male_chunhoudahui_uranus_bigtts': '淳厚',
-    'zh_male_zhiboshuangkuai_uranus_bigtts': '主播',
-    'zh_female_tianmei_uranus_bigtts': '甜美',
-    'zh_female_wanwan_uranus_bigtts': '婉婉',
+    'zh_female_vv_uranus_bigtts': '薇薇',
+    'zh_female_xiaohe_uranus_bigtts': '晓荷',
+    'zh_male_m191_uranus_bigtts': '云舟',
+    'zh_male_taocheng_uranus_bigtts': '晓天',
+    'zh_female_tianmei_uranus_bigtts': '天美',
     'zh_male_qingxinnansheng_uranus_bigtts': '清新',
   };
   

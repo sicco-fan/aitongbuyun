@@ -187,7 +187,9 @@ export default function CourseLessonsScreen() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ 
+            voiceId: 'zh_female_vv_uranus_bigtts' // 使用双语音色
+          }),
           lineEndingCharacter: '\n', // 显式指定换行符，避免自动检测失败
         }
       );
@@ -246,6 +248,7 @@ export default function CourseLessonsScreen() {
             setLessons(prev => prev.map(l => 
               l.id === lessonId ? { ...l, isDownloading: false, downloadProgress: undefined } : l
             ));
+            Alert.alert('下载失败', data.message || '未知错误');
           }
         } catch (err) {
           console.error('解析SSE消息失败:', err);
@@ -258,14 +261,16 @@ export default function CourseLessonsScreen() {
         setLessons(prev => prev.map(l => 
           l.id === lessonId ? { ...l, isDownloading: false, downloadProgress: undefined } : l
         ));
+        Alert.alert('下载失败', '网络连接错误，请重试');
       });
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('[后台下载] 失败:', error);
       downloadingLessons.delete(lessonId);
       setLessons(prev => prev.map(l => 
         l.id === lessonId ? { ...l, isDownloading: false, downloadProgress: undefined } : l
       ));
+      Alert.alert('下载失败', error?.message || '未知错误');
     }
   }, [courseId]);
 
