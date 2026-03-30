@@ -67,12 +67,17 @@ const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL ||
  * 学习监控页面
  * 显示课程学习者的学习情况和错题分析
  * 支持课程筛选、学习趋势图表、导出报告
+ * 
+ * 权限要求：仅 admin 或 teacher 角色可访问
  */
 export default function LearningMonitorScreen() {
   const router = useSafeRouter();
   const { theme, isDark } = useTheme();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const styles = useMemo(() => createStyles(theme), [theme]);
+
+  // 权限检查：仅 admin 或 teacher 可访问
+  const canAccess = user?.role === 'admin' || user?.role === 'teacher';
 
   // 课程筛选
   const [courses, setCourses] = useState<Course[]>([]);
@@ -92,6 +97,16 @@ export default function LearningMonitorScreen() {
 
   // 导出状态
   const [exporting, setExporting] = useState(false);
+
+  // 无权限时返回上一页
+  useEffect(() => {
+    if (!canAccess) {
+      const timer = setTimeout(() => {
+        router.back();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [canAccess]);
 
   // 获取课程列表
   const fetchCourses = useCallback(async () => {
@@ -574,6 +589,26 @@ export default function LearningMonitorScreen() {
       </View>
     </Modal>
   );
+
+  // 无权限时显示提示
+  if (!canAccess) {
+    return (
+      <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
+        <View style={styles.permissionDenied}>
+          <FontAwesome6 name="lock" size={48} color={theme.textMuted} style={styles.emptyIcon} />
+          <ThemedText variant="h4" color={theme.textPrimary} style={{ marginTop: Spacing.lg }}>
+            无访问权限
+          </ThemedText>
+          <ThemedText variant="body" color={theme.textMuted} style={{ marginTop: Spacing.sm, textAlign: 'center' }}>
+            此功能仅限管理员和教师访问
+          </ThemedText>
+          <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: Spacing.md }}>
+            正在返回上一页...
+          </ThemedText>
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>

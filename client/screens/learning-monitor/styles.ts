@@ -191,6 +191,14 @@ export const createStyles = (theme: Theme) => {
       marginBottom: Spacing.md,
     },
     
+    // 无权限提示
+    permissionDenied: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: Spacing['2xl'],
+    },
+    
     // Modal
     modalOverlay: {
       flex: 1,
