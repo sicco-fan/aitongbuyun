@@ -134,7 +134,7 @@ export async function hasCourseAudioLocal(baseKey: string): Promise<boolean> {
     // 检查是否有带 voiceId 的文件（新格式：baseKey_voiceId.mp3）
     const files = await FS.readDirectoryAsync(AUDIO_DIR);
     const prefix = `${baseKey}_`;
-    const hasMatchingFile = files.some(file => 
+    const hasMatchingFile = files.some((file: string) => 
       file.startsWith(prefix) && file.endsWith('.mp3')
     );
     return hasMatchingFile;

@@ -46,6 +46,7 @@ import {
   getAudioFromLocal, 
   generateCourseAudioKey,
   hasAudioLocal,
+  hasCourseAudioLocal,
 } from '@/utils/audioStorage';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
@@ -2156,17 +2157,26 @@ export default function SentencePracticeScreen() {
   const [remainingWordsCount, setRemainingWordsCount] = useState(0); // 剩余未完成单词数
   const [recognizedWordMatches, setRecognizedWordMatches] = useState<Array<{ word: string; isMatch: boolean }>>([]); // 识别结果中每个词的匹配状态
   
-  // 完美发音记录
-  const [showPerfectRecordings, setShowPerfectRecordings] = useState(false); // 显示完美发音列表
+  // 完美发音记录 & 音频源选择
+  const [showAudioSourcePanel, setShowAudioSourcePanel] = useState(false); // 显示音频源选择面板
   const [perfectRecordings, setPerfectRecordings] = useState<Array<any>>([]); // 完美发音列表
-  const [perfectRecordingsTab, setPerfectRecordingsTab] = useState<'mine' | 'others'>('mine'); // Tab切换
   const [publicRecordings, setPublicRecordings] = useState<Array<any>>([]); // 其他用户分享的发音
   const lastRecordingUriRef = useRef<string | null>(null); // 最后一次录音的URI
   const sentenceStartedWithVoiceRef = useRef(false); // 当前句子是否以语音模式开始
   const sentenceHadTypingRef = useRef(false); // 当前句子是否有过打字输入
   const sentenceHadVoiceErrorRef = useRef(false); // 当前句子是否有过语音识别错误
-  const wasPlayingBeforePerfectRef = useRef(false); // 打开完美发音面板前是否在播放
-  const perfectSoundRef = useRef<Audio.Sound | null>(null); // 完美发音播放器
+  const wasPlayingBeforePanelRef = useRef(false); // 打开面板前是否在播放
+  const previewSoundRef = useRef<Audio.Sound | null>(null); // 预览音频播放器
+  
+  // 音频源选择状态
+  const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]); // 选中的音源ID列表
+  const [currentPlayingSourceIndex, setCurrentPlayingSourceIndex] = useState(0); // 当前播放的音源索引
+  const aiVoicesRef = useRef<Array<{id: string; name: string; voiceId: string}>>([
+    { id: 'ai_weiwei', name: '薇薇（双语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
+    { id: 'ai_xiaohe', name: '晓荷（中文女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
+    { id: 'ai_yunzhou', name: '云舟（中文男声）', voiceId: 'zh_male_m191_uranus_bigtts' },
+    { id: 'ai_xiaotian', name: '晓天（中文男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
+  ]); // 四种AI音色
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -2176,6 +2186,22 @@ export default function SentencePracticeScreen() {
     followAlongIndexRef.current = 0;
     smartGuideIndexRef.current = 0;
   }, [currentIndex]);
+
+  // 初始化默认选中的音源（选中当前voiceId对应的AI音色）
+  useEffect(() => {
+    if (selectedSourceIds.length === 0 && voiceId) {
+      // 根据当前voiceId找到对应的AI音色ID
+      const matchedVoice = aiVoicesRef.current.find(v => v.voiceId === voiceId);
+      if (matchedVoice) {
+        setSelectedSourceIds([matchedVoice.id]);
+        console.log(`[音源初始化] 默认选中AI音色: ${matchedVoice.name}`);
+      } else {
+        // 如果没有匹配，默认选中第一个AI音色
+        setSelectedSourceIds([aiVoicesRef.current[0].id]);
+        console.log(`[音源初始化] 默认选中第一个AI音色: ${aiVoicesRef.current[0].name}`);
+      }
+    }
+  }, [voiceId, selectedSourceIds.length]);
 
   // 初始化录音权限
   useEffect(() => {
@@ -2716,6 +2742,25 @@ export default function SentencePracticeScreen() {
     return result;
   }, []);
 
+  // 获取当前要播放的音源对应的voiceId
+  const getCurrentPlayingVoiceId = useCallback((): string | null => {
+    if (selectedSourceIds.length === 0) {
+      return voiceId || null; // 没有选中音源，使用默认voiceId
+    }
+    
+    // 获取当前播放索引对应的音源ID
+    const currentSourceId = selectedSourceIds[currentPlayingSourceIndex % selectedSourceIds.length];
+    
+    // 如果是AI音色，返回对应的voiceId
+    const aiVoice = aiVoicesRef.current.find(v => v.id === currentSourceId);
+    if (aiVoice) {
+      return aiVoice.voiceId;
+    }
+    
+    // 其他音源类型（用户录音、社区分享）暂时返回null，需要单独处理
+    return null;
+  }, [selectedSourceIds, currentPlayingSourceIndex, voiceId]);
+
   // 播放音频片段
   const playAudio = useCallback(async () => {
     // 课程模式：从本地存储读取音频
@@ -2744,19 +2789,24 @@ export default function SentencePracticeScreen() {
           playThroughEarpieceAndroid: false,
         });
 
-        // Web 端或移动端无本地缓存：使用在线 TTS API 播放
+        // 根据选中的音源列表，获取当前要播放的voiceId
+        const playingVoiceId = getCurrentPlayingVoiceId() || voiceId;
+        
         // 生成音频存储 key（包含 voiceId 以区分不同音色）
         const audioKey = generateCourseAudioKey(
           parseInt(courseId, 10),
           parseInt(lessonId, 10),
           currentSentence.sentence_index,
-          voiceId  // 传入 voiceId 以区分不同音色
+          playingVoiceId  // 使用当前播放的voiceId
         );
         const localAudioUri = await getAudioFromLocal(audioKey);
         
+        // 播放完成后的处理：切换到下一个音源或循环播放
+        // 注意：不在此处调用playAudio以避免循环引用
+        
         if (localAudioUri) {
           // 有本地缓存，播放本地音频
-          console.log(`[playAudio-课程] 播放本地音频: ${audioKey}`);
+          console.log(`[playAudio-课程] 播放本地音频: ${audioKey}, voiceId: ${playingVoiceId}`);
           const { sound } = await Audio.Sound.createAsync(
             { uri: localAudioUri },
             {
@@ -2770,15 +2820,19 @@ export default function SentencePracticeScreen() {
               if (status.isLoaded) {
                 if (status.didJustFinish) {
                   setIsPlaying(false);
-                  if (isLoopingRef.current && isMountedRef.current) {
+                  // 如果选中了多个音源，切换到下一个音源索引
+                  if (selectedSourceIds.length > 1 && isMountedRef.current) {
+                    const nextIndex = (currentPlayingSourceIndex + 1) % selectedSourceIds.length;
+                    setCurrentPlayingSourceIndex(nextIndex);
+                    console.log(`[多音源播放] 切换到下一个音源索引: ${nextIndex}`);
+                  } else if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
+                    // 单音源循环播放
                     setTimeout(async () => {
-                      if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
-                        try {
-                          await soundRef.current.replayAsync();
-                          setIsPlaying(true);
-                        } catch (e) {
-                          console.log('[循环播放] 失败:', e);
-                        }
+                      try {
+                        await soundRef.current?.replayAsync();
+                        setIsPlaying(true);
+                      } catch (e) {
+                        console.log('[循环播放] 失败:', e);
                       }
                     }, 500);
                   }
@@ -2795,14 +2849,14 @@ export default function SentencePracticeScreen() {
         }
         
         // 无本地缓存，使用在线 TTS
-        console.log(`[playAudio-课程] 无本地缓存，使用在线TTS`);
+        console.log(`[playAudio-课程] 无本地缓存，使用在线TTS, voiceId: ${playingVoiceId}`);
         try {
           /**
            * 服务端文件：server/src/routes/tts.ts
            * 接口：GET /api/v1/tts
            * Query 参数：text: string, speaker?: string
            */
-          const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=${voiceId}`;
+          const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=${playingVoiceId}`;
           
           const { sound } = await Audio.Sound.createAsync(
             { uri: ttsUrl },
@@ -2817,15 +2871,19 @@ export default function SentencePracticeScreen() {
               if (status.isLoaded) {
                 if (status.didJustFinish) {
                   setIsPlaying(false);
-                  if (isLoopingRef.current && isMountedRef.current) {
+                  // 如果选中了多个音源，切换到下一个音源索引
+                  if (selectedSourceIds.length > 1 && isMountedRef.current) {
+                    const nextIndex = (currentPlayingSourceIndex + 1) % selectedSourceIds.length;
+                    setCurrentPlayingSourceIndex(nextIndex);
+                    console.log(`[多音源播放-TTS] 切换到下一个音源索引: ${nextIndex}`);
+                  } else if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
+                    // 单音源循环播放
                     setTimeout(async () => {
-                      if (isLoopingRef.current && isMountedRef.current && soundRef.current) {
-                        try {
-                          await soundRef.current.replayAsync();
-                          setIsPlaying(true);
-                        } catch (e) {
-                          console.log('[循环播放] 失败:', e);
-                        }
+                      try {
+                        await soundRef.current?.replayAsync();
+                        setIsPlaying(true);
+                      } catch (e) {
+                        console.log('[循环播放] 失败:', e);
                       }
                     }, 500);
                   }
@@ -3351,19 +3409,42 @@ export default function SentencePracticeScreen() {
     }
   }, [wordStatuses, currentSentence, savePerfectRecording]);
 
-  // 关闭完美发音面板
-  const closePerfectRecordings = useCallback(() => {
-    setShowPerfectRecordings(false);
-    // 停止完美发音播放
-    if (perfectSoundRef.current) {
-      perfectSoundRef.current.unloadAsync();
-      perfectSoundRef.current = null;
+  // 关闭音频源选择面板
+  const closeAudioSourcePanel = useCallback(() => {
+    setShowAudioSourcePanel(false);
+    // 停止预览播放
+    if (previewSoundRef.current) {
+      previewSoundRef.current.unloadAsync();
+      previewSoundRef.current = null;
     }
     // 恢复循环播放
-    if (wasPlayingBeforePerfectRef.current) {
+    if (wasPlayingBeforePanelRef.current) {
       playAudio();
     }
   }, [playAudio]);
+
+  // 播放预览音频（用于面板中的试听）
+  const playPreviewAudio = useCallback(async (audioUrl: string) => {
+    try {
+      // 停止之前的预览播放
+      if (previewSoundRef.current) {
+        await previewSoundRef.current.unloadAsync();
+      }
+      // 播放新的录音
+      const { sound } = await Audio.Sound.createAsync({ uri: audioUrl });
+      previewSoundRef.current = sound;
+      await sound.playAsync();
+      // 播放完成后自动释放
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+          previewSoundRef.current = null;
+        }
+      });
+    } catch (error) {
+      console.error('播放预览音频失败:', error);
+    }
+  }, []);
 
   // 切换收藏状态
   const toggleRecordingFavorite = useCallback(async (record: any) => {
@@ -3424,29 +3505,6 @@ export default function SentencePracticeScreen() {
       console.error('切换分享失败:', error);
     }
   }, [user?.id]);
-
-  // 播放完美发音录音
-  const playPerfectRecording = useCallback(async (audioUrl: string) => {
-    try {
-      // 停止之前的完美发音播放
-      if (perfectSoundRef.current) {
-        await perfectSoundRef.current.unloadAsync();
-      }
-      // 播放新的录音
-      const { sound } = await Audio.Sound.createAsync({ uri: audioUrl });
-      perfectSoundRef.current = sound;
-      await sound.playAsync();
-      // 播放完成后自动释放
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          sound.unloadAsync();
-          perfectSoundRef.current = null;
-        }
-      });
-    } catch (error) {
-      console.error('播放完美发音失败:', error);
-    }
-  }, []);
 
   // 处理返回键/退出
   const handleBackPress = useCallback((): boolean => {
@@ -4596,29 +4654,27 @@ export default function SentencePracticeScreen() {
         </View>
         {/* 右侧小控制按钮 */}
         <View style={styles.headerControls}>
-          {/* 完美发音按钮 - 只在有当前句子的完美发音记录时显示 */}
-          {perfectRecordings.length > 0 && (
-            <TouchableOpacity
-              style={[styles.smallControlBtn, showPerfectRecordings && styles.smallControlBtnActive]}
-              onPress={() => {
-                if (!showPerfectRecordings) {
-                  // 打开面板：暂停循环播放
-                  wasPlayingBeforePerfectRef.current = isPlaying;
-                  if (isPlaying) {
-                    pauseAudio();
-                  }
-                } else {
-                  // 关闭面板：恢复播放
-                  if (wasPlayingBeforePerfectRef.current) {
-                    playAudio();
-                  }
+          {/* 音频源选择按钮 - 点击打开音源选择面板 */}
+          <TouchableOpacity
+            style={[styles.smallControlBtn, showAudioSourcePanel && styles.smallControlBtnActive]}
+            onPress={() => {
+              if (!showAudioSourcePanel) {
+                // 打开面板：暂停循环播放
+                wasPlayingBeforePanelRef.current = isPlaying;
+                if (isPlaying) {
+                  pauseAudio();
                 }
-                setShowPerfectRecordings(prev => !prev);
-              }}
-            >
-              <FontAwesome6 name="star" size={14} color={showPerfectRecordings ? theme.accent : theme.textMuted} />
-            </TouchableOpacity>
-          )}
+              } else {
+                // 关闭面板：恢复播放
+                if (wasPlayingBeforePanelRef.current) {
+                  playAudio();
+                }
+              }
+              setShowAudioSourcePanel(prev => !prev);
+            }}
+          >
+            <FontAwesome6 name="star" size={14} color={showAudioSourcePanel ? theme.accent : theme.textMuted} />
+          </TouchableOpacity>
           {/* 编辑此句按钮 */}
           <TouchableOpacity
             style={styles.smallControlBtn}
@@ -5256,231 +5312,226 @@ export default function SentencePracticeScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* 完美发音列表 Modal */}
-      {showPerfectRecordings && (
+      {/* 音频源选择面板 */}
+      {showAudioSourcePanel && (
         <View style={styles.perfectRecordingsOverlay}>
           <TouchableOpacity 
             style={styles.perfectRecordingsBackdrop}
-            onPress={closePerfectRecordings}
+            onPress={() => {
+              setShowAudioSourcePanel(false);
+              // 恢复播放
+              if (wasPlayingBeforePanelRef.current) {
+                playAudio();
+              }
+            }}
             activeOpacity={1}
           />
-          <View style={[styles.perfectRecordingsPanel, { backgroundColor: theme.backgroundDefault }]}>
+          <View style={[styles.perfectRecordingsPanel, { backgroundColor: theme.backgroundDefault, maxHeight: '70%' }]}>
             <View style={[styles.perfectRecordingsHeader, { borderBottomColor: theme.border }]}>
-              <ThemedText variant="h4" color={theme.textPrimary}>完美发音</ThemedText>
-              <TouchableOpacity onPress={closePerfectRecordings}>
+              <ThemedText variant="h4" color={theme.textPrimary}>选择播放音源</ThemedText>
+              <TouchableOpacity onPress={() => {
+                setShowAudioSourcePanel(false);
+                if (wasPlayingBeforePanelRef.current) {
+                  playAudio();
+                }
+              }}>
                 <FontAwesome6 name="times" size={18} color={theme.textMuted} />
               </TouchableOpacity>
             </View>
             
-            {/* Tab 切换 */}
-            <View style={[styles.perfectRecordingsTabs, { borderBottomColor: theme.border }]}>
-              <TouchableOpacity 
-                style={[
-                  styles.perfectRecordingsTab, 
-                  perfectRecordingsTab === 'mine' && { borderBottomColor: theme.primary }
-                ]}
-                onPress={() => setPerfectRecordingsTab('mine')}
-              >
-                <ThemedText 
-                  variant="body" 
-                  color={perfectRecordingsTab === 'mine' ? theme.primary : theme.textMuted}
-                >
-                  我的 ({perfectRecordings.length})
-                </ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[
-                  styles.perfectRecordingsTab, 
-                  perfectRecordingsTab === 'others' && { borderBottomColor: theme.primary }
-                ]}
-                onPress={() => setPerfectRecordingsTab('others')}
-              >
-                <ThemedText 
-                  variant="body" 
-                  color={perfectRecordingsTab === 'others' ? theme.primary : theme.textMuted}
-                >
-                  大家的 ({publicRecordings.length})
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
-            
             <ScrollView style={styles.perfectRecordingsList}>
-              {/* 我的发音列表 */}
-              {perfectRecordingsTab === 'mine' && (
-                <>
-                  {perfectRecordings.map((record: any, idx: number) => (
-                    <View 
-                      key={record.id || idx} 
-                      style={[
-                        styles.perfectRecordingItem, 
-                        { borderBottomColor: theme.borderLight },
-                        record.is_favorite && styles.perfectRecordingItemFavorite,
-                      ]}
+              {/* AI 音色 */}
+              <View style={{ paddingVertical: Spacing.sm }}>
+                <ThemedText variant="caption" color={theme.textMuted} style={{ paddingHorizontal: Spacing.md, marginBottom: Spacing.xs }}>
+                  AI 音色
+                </ThemedText>
+                {aiVoicesRef.current.map((voice) => {
+                  const isSelected = selectedSourceIds.includes(voice.id);
+                  const isCurrentlyPlaying = selectedSourceIds[currentPlayingSourceIndex] === voice.id;
+                  return (
+                    <TouchableOpacity
+                      key={voice.id}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingVertical: Spacing.md,
+                        paddingHorizontal: Spacing.md,
+                        backgroundColor: isSelected ? theme.primary + '10' : 'transparent',
+                        borderBottomWidth: 1,
+                        borderBottomColor: theme.borderLight,
+                      }}
+                      onPress={() => {
+                        setSelectedSourceIds(prev => {
+                          if (prev.includes(voice.id)) {
+                            // 取消选中，但至少保留一个
+                            if (prev.length <= 1) return prev;
+                            return prev.filter(id => id !== voice.id);
+                          } else {
+                            return [...prev, voice.id];
+                          }
+                        });
+                        setCurrentPlayingSourceIndex(0);
+                      }}
                     >
-                      <View style={styles.perfectRecordingHeader}>
-                        <View style={styles.perfectRecordingInfo}>
-                          <ThemedText variant="body" color={theme.textPrimary} numberOfLines={2}>
-                            {record.sentence_text || currentSentence?.text}
-                          </ThemedText>
-                          <View style={styles.perfectRecordingMeta}>
-                            <ThemedText variant="caption" color={theme.textMuted}>
-                              {new Date(record.created_at).toLocaleDateString()}
-                            </ThemedText>
-                            {record.is_shared && (
-                              <ThemedText variant="caption" color={theme.primary}>
-                                已公开
-                              </ThemedText>
-                            )}
-                          </View>
-                        </View>
+                      <FontAwesome6 
+                        name={isSelected ? "check-square" : "square"} 
+                        size={20} 
+                        color={isSelected ? theme.primary : theme.textMuted} 
+                      />
+                      <View style={{ flex: 1, marginLeft: Spacing.md }}>
+                        <ThemedText variant="body" color={theme.textPrimary}>{voice.name}</ThemedText>
                       </View>
-                      <View style={styles.perfectRecordingActions}>
-                        {/* 收藏按钮 */}
+                      {isCurrentlyPlaying && isPlaying && (
+                        <FontAwesome6 name="volume-high" size={14} color={theme.primary} />
+                      )}
+                      {voice.id === 'ai_weiwei' && (
+                        <View style={{ backgroundColor: theme.accent + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: Spacing.xs }}>
+                          <ThemedText variant="tiny" color={theme.accent}>推荐</ThemedText>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              
+              {/* 我的发音 */}
+              {perfectRecordings.length > 0 && (
+                <View style={{ paddingVertical: Spacing.sm }}>
+                  <ThemedText variant="caption" color={theme.textMuted} style={{ paddingHorizontal: Spacing.md, marginBottom: Spacing.xs }}>
+                    我的发音 ({perfectRecordings.length})
+                  </ThemedText>
+                  {perfectRecordings.slice(0, 3).map((record: any, idx: number) => {
+                    const sourceId = `mine_${record.id}`;
+                    const isSelected = selectedSourceIds.includes(sourceId);
+                    const isCurrentlyPlaying = selectedSourceIds[currentPlayingSourceIndex] === sourceId;
+                    return (
+                      <TouchableOpacity
+                        key={sourceId}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          paddingVertical: Spacing.md,
+                          paddingHorizontal: Spacing.md,
+                          backgroundColor: isSelected ? theme.primary + '10' : 'transparent',
+                          borderBottomWidth: 1,
+                          borderBottomColor: theme.borderLight,
+                        }}
+                        onPress={() => {
+                          setSelectedSourceIds(prev => {
+                            if (prev.includes(sourceId)) {
+                              if (prev.length <= 1) return prev;
+                              return prev.filter(id => id !== sourceId);
+                            } else {
+                              return [...prev, sourceId];
+                            }
+                          });
+                          setCurrentPlayingSourceIndex(0);
+                        }}
+                      >
+                        <FontAwesome6 
+                          name={isSelected ? "check-square" : "square"} 
+                          size={20} 
+                          color={isSelected ? theme.primary : theme.textMuted} 
+                        />
+                        <View style={{ flex: 1, marginLeft: Spacing.md }}>
+                          <ThemedText variant="body" color={theme.textPrimary}>我的一遍过 #{idx + 1}</ThemedText>
+                          <ThemedText variant="caption" color={theme.textMuted}>
+                            {new Date(record.created_at).toLocaleDateString()}
+                          </ThemedText>
+                        </View>
+                        {isCurrentlyPlaying && isPlaying && (
+                          <FontAwesome6 name="volume-high" size={14} color={theme.primary} />
+                        )}
                         <TouchableOpacity
-                          style={[
-                            styles.actionBtnSmall, 
-                            styles.favoriteBtn,
-                            record.is_favorite && styles.favoriteBtnActive,
-                          ]}
-                          onPress={() => toggleRecordingFavorite(record)}
-                        >
-                          <FontAwesome6 
-                            name="star" 
-                            size={12} 
-                            color={record.is_favorite ? '#FFF' : '#FFD700'} 
-                          />
-                        </TouchableOpacity>
-                        
-                        {/* 分享按钮 */}
-                        <TouchableOpacity
-                          style={[
-                            styles.actionBtnSmall, 
-                            styles.shareBtn,
-                            record.is_shared && styles.shareBtnActive,
-                          ]}
-                          onPress={() => toggleRecordingShare(record)}
-                        >
-                          <FontAwesome6 
-                            name="share" 
-                            size={12} 
-                            color={record.is_shared ? '#FFF' : theme.primary} 
-                          />
-                        </TouchableOpacity>
-                        
-                        {/* 播放按钮 */}
-                        <TouchableOpacity
-                          style={[styles.actionBtnSmall, styles.playBtn]}
-                          onPress={() => {
+                          style={{ padding: Spacing.xs }}
+                          onPress={(e) => {
+                            e.stopPropagation();
                             if (record.audio_url) {
-                              playPerfectRecording(record.audio_url);
+                              playPreviewAudio(record.audio_url);
                             }
                           }}
                         >
-                          <FontAwesome6 name="play" size={12} color={theme.success} />
+                          <FontAwesome6 name="play" size={14} color={theme.success} />
                         </TouchableOpacity>
-                        
-                        {/* 删除按钮 */}
-                        <TouchableOpacity
-                          style={[styles.actionBtnSmall, styles.deleteBtn]}
-                          onPress={async () => {
-                            Alert.alert('删除确认', '确定要删除这条完美发音吗？', [
-                              { text: '取消', style: 'cancel' },
-                              { 
-                                text: '删除', 
-                                style: 'destructive',
-                                onPress: async () => {
-                                  try {
-                                    await fetch(
-                                      `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/perfect-recordings/${record.id}?userId=${user?.id}`,
-                                      { method: 'DELETE' }
-                                    );
-                                    setPerfectRecordings(prev => prev.filter((r: any) => r.id !== record.id));
-                                  } catch (e) {
-                                    console.error('删除完美发音失败:', e);
-                                  }
-                                }
-                              }
-                            ]);
-                          }}
-                        >
-                          <FontAwesome6 name="trash" size={12} color={theme.error} />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))}
-                  {perfectRecordings.length === 0 && (
-                    <View style={styles.emptyPerfectRecordings}>
-                      <FontAwesome6 name="microphone-slash" size={32} color={theme.textMuted} />
-                      <ThemedText variant="body" color={theme.textMuted} style={{ marginTop: Spacing.md }}>
-                        暂无完美发音记录
-                      </ThemedText>
-                      <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: Spacing.sm }}>
-                        用语音模式一次性答对整句即可记录
-                      </ThemedText>
-                    </View>
-                  )}
-                </>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               )}
               
-              {/* 其他用户的分享发音 */}
-              {perfectRecordingsTab === 'others' && (
-                <>
-                  {publicRecordings.map((record: any, idx: number) => (
-                    <View 
-                      key={record.id || idx} 
-                      style={[styles.perfectRecordingItem, { borderBottomColor: theme.borderLight }]}
-                    >
-                      <View style={styles.sharedUserInfo}>
-                        <View style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: 12,
-                          backgroundColor: theme.primary + '20',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                        }}>
-                          <FontAwesome6 name="user" size={10} color={theme.primary} />
-                        </View>
-                        <ThemedText variant="small" color={theme.textSecondary}>
-                          {record.user_nickname || '匿名用户'}
-                        </ThemedText>
-                      </View>
-                      <View style={styles.perfectRecordingMeta}>
-                        <ThemedText variant="caption" color={theme.textMuted}>
-                          {record.duration_seconds > 0 ? `${record.duration_seconds}秒` : '未知时长'}
-                        </ThemedText>
-                        <ThemedText variant="caption" color={theme.textMuted}>
-                          {new Date(record.created_at).toLocaleDateString()}
-                        </ThemedText>
-                      </View>
+              {/* 社区分享 */}
+              {publicRecordings.length > 0 && (
+                <View style={{ paddingVertical: Spacing.sm }}>
+                  <ThemedText variant="caption" color={theme.textMuted} style={{ paddingHorizontal: Spacing.md, marginBottom: Spacing.xs }}>
+                    社区分享 ({publicRecordings.length})
+                  </ThemedText>
+                  {publicRecordings.slice(0, 3).map((record: any, idx: number) => {
+                    const sourceId = `community_${record.id}`;
+                    const isSelected = selectedSourceIds.includes(sourceId);
+                    const isCurrentlyPlaying = selectedSourceIds[currentPlayingSourceIndex] === sourceId;
+                    return (
                       <TouchableOpacity
-                        style={[styles.actionBtnSmall, styles.playBtn, { alignSelf: 'flex-start', marginTop: Spacing.sm }]}
+                        key={sourceId}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          paddingVertical: Spacing.md,
+                          paddingHorizontal: Spacing.md,
+                          backgroundColor: isSelected ? theme.primary + '10' : 'transparent',
+                          borderBottomWidth: 1,
+                          borderBottomColor: theme.borderLight,
+                        }}
                         onPress={() => {
-                          if (record.audio_url) {
-                            playPerfectRecording(record.audio_url);
-                          }
+                          setSelectedSourceIds(prev => {
+                            if (prev.includes(sourceId)) {
+                              if (prev.length <= 1) return prev;
+                              return prev.filter(id => id !== sourceId);
+                            } else {
+                              return [...prev, sourceId];
+                            }
+                          });
+                          setCurrentPlayingSourceIndex(0);
                         }}
                       >
-                        <FontAwesome6 name="play" size={12} color={theme.success} />
-                        <ThemedText variant="small" color={theme.success} style={{ marginLeft: 4 }}>
-                          播放
-                        </ThemedText>
+                        <FontAwesome6 
+                          name={isSelected ? "check-square" : "square"} 
+                          size={20} 
+                          color={isSelected ? theme.primary : theme.textMuted} 
+                        />
+                        <View style={{ flex: 1, marginLeft: Spacing.md }}>
+                          <ThemedText variant="body" color={theme.textPrimary}>
+                            {record.user_nickname || '匿名用户'}的发音
+                          </ThemedText>
+                          <ThemedText variant="caption" color={theme.textMuted}>
+                            {record.duration_seconds > 0 ? `${record.duration_seconds}秒` : ''}
+                          </ThemedText>
+                        </View>
+                        {isCurrentlyPlaying && isPlaying && (
+                          <FontAwesome6 name="volume-high" size={14} color={theme.primary} />
+                        )}
+                        <TouchableOpacity
+                          style={{ padding: Spacing.xs }}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            if (record.audio_url) {
+                              playPreviewAudio(record.audio_url);
+                            }
+                          }}
+                        >
+                          <FontAwesome6 name="play" size={14} color={theme.success} />
+                        </TouchableOpacity>
                       </TouchableOpacity>
-                    </View>
-                  ))}
-                  {publicRecordings.length === 0 && (
-                    <View style={styles.emptyPerfectRecordings}>
-                      <FontAwesome6 name="users" size={32} color={theme.textMuted} />
-                      <ThemedText variant="body" color={theme.textMuted} style={{ marginTop: Spacing.md }}>
-                        暂无其他用户的分享
-                      </ThemedText>
-                      <ThemedText variant="small" color={theme.textMuted} style={{ marginTop: Spacing.sm }}>
-                        分享你的完美发音，让大家听到吧
-                      </ThemedText>
-                    </View>
-                  )}
-                </>
+                    );
+                  })}
+                </View>
               )}
+              
+              {/* 提示 */}
+              <View style={{ padding: Spacing.md, alignItems: 'center' }}>
+                <ThemedText variant="caption" color={theme.textMuted}>
+                  选中多个音源将轮流播放
+                </ThemedText>
+              </View>
             </ScrollView>
           </View>
         </View>
