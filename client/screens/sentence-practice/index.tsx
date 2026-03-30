@@ -893,6 +893,17 @@ const generateVariants = (word: string): string[] => {
     }
   }
   
+  // 19. 空格分隔的单词 -> 连字符版本
+  // 语音识别出 "old fashioned"，原文是 "old-fashioned"
+  // 检测两个或三个单词的组合，生成连字符版本
+  const words = w.split(/\s+/).filter(p => p.length > 0);
+  if (words.length >= 2 && words.length <= 3) {
+    // 生成连字符版本
+    results.push(words.join('-'));
+    // 也生成无分隔符版本
+    results.push(words.join(''));
+  }
+  
   // 去重并返回
   return [...new Set(results.map(r => r.toLowerCase()))];
 };
@@ -977,74 +988,129 @@ const expandContraction = (word: string): string[] => {
   const results: string[] = [];
   const w = word.toLowerCase().trim();
   
-  // 缩写词映射表
+  // 缩写词映射表（双向映射）
   const contractionMap: Record<string, string[]> = {
     // 's = is (主谓一致)
     "it's": ["it is", "its", "it s"],
+    "it is": ["it's", "its", "it s"],
     "he's": ["he is", "hes", "he s"],
+    "he is": ["he's", "hes", "he s"],
     "she's": ["she is", "shes", "she s"],
+    "she is": ["she's", "shes", "she s"],
     "that's": ["that is", "thats", "that s"],
+    "that is": ["that's", "thats", "that s"],
     "what's": ["what is", "whats", "what s"],
+    "what is": ["what's", "whats", "what s"],
     "who's": ["who is", "whos", "who s"],
+    "who is": ["who's", "whos", "who s"],
     "where's": ["where is", "wheres", "where s"],
+    "where is": ["where's", "wheres", "where s"],
     "when's": ["when is", "whens", "when s"],
+    "when is": ["when's", "whens", "when s"],
     "why's": ["why is", "whys", "why s"],
+    "why is": ["why's", "whys", "why s"],
     "how's": ["how is", "hows", "how s"],
+    "how is": ["how's", "hows", "how s"],
     "there's": ["there is", "theres", "there s"],
+    "there is": ["there's", "theres", "there s"],
     "here's": ["here is", "heres", "here s"],
+    "here is": ["here's", "heres", "here s"],
     
     // 'm = am
     "i'm": ["i am", "im", "i m"],
+    "i am": ["i'm", "im", "i m"],
     
     // 're = are
     "you're": ["you are", "youre", "you re"],
+    "you are": ["you're", "youre", "you re"],
     "we're": ["we are", "were", "we re"],
+    "we are": ["we're", "were", "we re"],
     "they're": ["they are", "theyre", "they re"],
+    "they are": ["they're", "theyre", "they re"],
     
     // 've = have
     "i've": ["i have", "ive", "i ve"],
+    "i have": ["i've", "ive", "i ve"],
     "you've": ["you have", "youve", "you ve"],
+    "you have": ["you've", "youve", "you ve"],
     "we've": ["we have", "weve", "we ve"],
+    "we have": ["we've", "weve", "we ve"],
     "they've": ["they have", "theyve", "they ve"],
+    "they have": ["they've", "theyve", "they ve"],
     
     // 'd = would/had
     "i'd": ["i would", "i had", "id", "i d"],
+    "i would": ["i'd", "id", "i d"],
+    "i had": ["i'd", "id", "i d"],
     "you'd": ["you would", "you had", "youd", "you d"],
+    "you would": ["you'd", "youd", "you d"],
+    "you had": ["you'd", "youd", "you d"],
     "he'd": ["he would", "he had", "hed", "he d"],
+    "he would": ["he'd", "hed", "he d"],
+    "he had": ["he'd", "hed", "he d"],
     "she'd": ["she would", "she had", "shed", "she d"],
+    "she would": ["she'd", "shed", "she d"],
+    "she had": ["she'd", "shed", "she d"],
     "we'd": ["we would", "we had", "wed", "we d"],
+    "we would": ["we'd", "wed", "we d"],
+    "we had": ["we'd", "wed", "we d"],
     "they'd": ["they would", "they had", "theyd", "they d"],
+    "they would": ["they'd", "theyd", "they d"],
+    "they had": ["they'd", "theyd", "they d"],
     
     // 'll = will
     "i'll": ["i will", "ill", "i ll"],
+    "i will": ["i'll", "ill", "i ll"],
     "you'll": ["you will", "youll", "you ll"],
+    "you will": ["you'll", "youll", "you ll"],
     "he'll": ["he will", "hell", "he ll"],
+    "he will": ["he'll", "hell", "he ll"],
     "she'll": ["she will", "shell", "she ll"],
+    "she will": ["she'll", "shell", "she ll"],
     "we'll": ["we will", "well", "we ll"],
+    "we will": ["we'll", "well", "we ll"],
     "they'll": ["they will", "theyll", "they ll"],
+    "they will": ["they'll", "theyll", "they ll"],
     
     // n't = not
     "don't": ["do not", "dont", "don t"],
+    "do not": ["don't", "dont", "don t"],
     "doesn't": ["does not", "doesnt", "doesn t"],
+    "does not": ["doesn't", "doesnt", "doesn t"],
     "didn't": ["did not", "didnt", "didn t"],
+    "did not": ["didn't", "didnt", "didn t"],
     "won't": ["will not", "wont", "won t"],
+    "will not": ["won't", "wont", "won t"],
     "wouldn't": ["would not", "wouldnt", "wouldn t"],
+    "would not": ["wouldn't", "wouldnts", "wouldn t"],
     "shouldn't": ["should not", "shouldnt", "shouldn t"],
+    "should not": ["shouldn't", "shouldnt", "shouldn t"],
     "couldn't": ["could not", "couldnt", "couldn t"],
+    "could not": ["couldn't", "couldnt", "couldn t"],
     "can't": ["cannot", "can not", "cant", "can t"],
+    "cannot": ["can't", "cant", "can t"],
+    "can not": ["can't", "cannot", "cant", "can t"],
     "isn't": ["is not", "isnt", "isn t"],
+    "is not": ["isn't", "isnt", "isn t"],
     "aren't": ["are not", "arent", "aren t"],
+    "are not": ["aren't", "arent", "aren t"],
     "wasn't": ["was not", "wasnt", "wasn t"],
+    "was not": ["wasn't", "wasnt", "wasn t"],
     "weren't": ["were not", "werent", "weren t"],
+    "were not": ["weren't", "werent", "weren t"],
     "hasn't": ["has not", "hasnt", "hasn t"],
+    "has not": ["hasn't", "hasnt", "hasn t"],
     "haven't": ["have not", "havent", "haven t"],
+    "have not": ["haven't", "havent", "haven t"],
     "hadn't": ["had not", "hadnt", "hadn t"],
+    "had not": ["hadn't", "hadnt", "hadn t"],
     
     // let's = let us
     "let's": ["let us", "lets", "let s"],
+    "let us": ["let's", "lets", "let s"],
   };
   
-  // 检查是否是已知的缩写词
+  // 检查是否是已知的缩写词（双向）
   if (contractionMap[w]) {
     results.push(...contractionMap[w]);
   }
