@@ -5,11 +5,28 @@
 
 import { Router, type Request, type Response } from 'express';
 import { Pool } from 'pg';
+import multer from 'multer';
+import { S3Storage, Config } from 'coze-coding-dev-sdk';
 import { getUserMiddleware, requireAdmin, requireAuth } from '../middleware/auth';
 
 const router = Router();
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+});
+
+// 配置 multer 用于处理头像上传
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+});
+
+// 初始化对象存储
+const storage = new S3Storage({
+  endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
+  accessKey: '',
+  secretKey: '',
+  bucketName: process.env.COZE_BUCKET_NAME,
+  region: 'cn-beijing',
 });
 
 // 应用中间件
@@ -91,10 +108,94 @@ router.get('/me', requireAuth, async (req: Request, res: Response) => {
       return res.status(404).json({ error: '用户不存在' });
     }
     
-    res.json({ user: result.rows[0] });
+    const user = result.rows[0];
+    
+    // 如果有头像 key，生成签名 URL
+    if (user.avatar_url && !user.avatar_url.startsWith('http')) {
+      try {
+        user.avatar_url = await storage.generatePresignedUrl({ 
+          key: user.avatar_url, 
+          expireTime: 7 * 24 * 60 * 60 
+        });
+      } catch (e) {
+        console.error('[用户管理] 生成头像URL失败:', e);
+      }
+    }
+    
+    res.json({ success: true, user });
   } catch (error) {
     console.error('[用户管理] 获取用户信息失败:', error);
     res.status(500).json({ error: '获取用户信息失败' });
+  }
+});
+
+/**
+ * PATCH /api/v1/users/me
+ * 更新当前用户信息
+ * Body 参数：username?: string
+ */
+router.patch('/me', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { username } = req.body;
+    
+    if (!username || !username.trim()) {
+      return res.status(400).json({ error: '用户名不能为空' });
+    }
+    
+    const result = await pool.query(
+      'UPDATE users SET username = $1, updated_at = NOW() WHERE id = $2 RETURNING id, phone, nickname, username, role, avatar_url',
+      [username.trim(), req.user!.id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+    
+    res.json({ success: true, user: result.rows[0] });
+  } catch (error) {
+    console.error('[用户管理] 更新用户信息失败:', error);
+    res.status(500).json({ error: '更新用户信息失败' });
+  }
+});
+
+/**
+ * POST /api/v1/users/avatar
+ * 上传头像
+ * FormData: file (图片), user_id (用户ID)
+ */
+router.post('/avatar', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    const userId = req.body.user_id;
+    
+    if (!userId) {
+      return res.status(400).json({ error: '缺少用户ID' });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({ error: '请选择图片' });
+    }
+    
+    // 上传到对象存储
+    const key = `avatars/${userId}/${Date.now()}-${req.file.originalname}`;
+    await storage.putObject({
+      key,
+      body: req.file.buffer,
+      contentType: req.file.mimetype,
+    });
+    
+    // 更新数据库
+    await pool.query(
+      'UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2',
+      [key, userId]
+    );
+    
+    // 生成签名 URL（有效期 7 天）
+    const avatarUrl = await storage.generatePresignedUrl({ key, expireTime: 7 * 24 * 60 * 60 });
+    
+    res.json({ success: true, avatar_url: avatarUrl });
+  } catch (error: any) {
+    console.error('[用户管理] 上传头像失败:', error);
+    res.status(500).json({ error: error.message || '上传头像失败' });
   }
 });
 

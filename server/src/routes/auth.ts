@@ -262,7 +262,7 @@ router.get('/me', async (req, res) => {
     
     const { data: user, error } = await client
       .from('users')
-      .select('id, phone, nickname, device_id, role, created_at')
+      .select('id, phone, nickname, device_id, role, created_at, username, avatar_url')
       .eq('id', user_id)
       .maybeSingle();
     
@@ -272,10 +272,32 @@ router.get('/me', async (req, res) => {
       return res.status(404).json({ error: '用户不存在' });
     }
     
+    // 如果有头像 key，生成签名 URL
+    let avatarUrl = user.avatar_url;
+    if (avatarUrl && !avatarUrl.startsWith('http')) {
+      try {
+        const { S3Storage } = await import('coze-coding-dev-sdk');
+        const storage = new S3Storage({
+          endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
+          accessKey: '',
+          secretKey: '',
+          bucketName: process.env.COZE_BUCKET_NAME,
+          region: 'cn-beijing',
+        });
+        avatarUrl = await storage.generatePresignedUrl({ 
+          key: avatarUrl, 
+          expireTime: 7 * 24 * 60 * 60 
+        });
+      } catch (e) {
+        console.error('[认证] 生成头像URL失败:', e);
+      }
+    }
+    
     res.json({ 
       success: true, 
       user: {
         ...user,
+        avatar_url: avatarUrl,
         is_guest: !user.phone
       }
     });

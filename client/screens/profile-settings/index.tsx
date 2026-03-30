@@ -45,7 +45,7 @@ export default function ProfileSettingsScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, refreshUser } = useAuth();
   
   const [username, setUsername] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -133,6 +133,8 @@ export default function ProfileSettingsScreen() {
       const data = await res.json();
       if (data.success && data.avatar_url) {
         setAvatarUrl(data.avatar_url);
+        // 刷新全局用户信息（确保头像在个人中心等页面也更新）
+        await refreshUser();
         Alert.alert('成功', '头像已更新');
       } else {
         throw new Error(data.error || '上传失败');
