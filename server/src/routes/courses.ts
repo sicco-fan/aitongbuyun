@@ -516,8 +516,8 @@ const AVAILABLE_VOICES = [
   { id: 'zh_female_xiaohe_uranus_bigtts', name: '晓荷', gender: 'female', style: 'general', description: '中文通用女声' },
   { id: 'zh_male_m191_uranus_bigtts', name: '云舟', gender: 'male', style: 'general', description: '中文通用男声' },
   { id: 'zh_male_taocheng_uranus_bigtts', name: '晓天', gender: 'male', style: 'general', description: '中文通用男声' },
-  { id: 'zh_female_xueayi_saturn_bigtts', name: '雪阿姨', gender: 'female', style: 'audiobook', description: '儿童有声书' },
-  { id: 'zh_male_dayi_saturn_bigtts', name: '大义', gender: 'male', style: 'video', description: '视频配音' },
+  { id: 'zh_female_tianmei_uranus_bigtts', name: '天美', gender: 'female', style: 'general', description: '温柔甜美女声' },
+  { id: 'zh_male_qingxinnansheng_uranus_bigtts', name: '清新', gender: 'male', style: 'general', description: '清新自然男声' },
 ];
 
 /**
