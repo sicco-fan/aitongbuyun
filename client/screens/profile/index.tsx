@@ -494,25 +494,6 @@ export default function ProfileScreen() {
           <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
         </TouchableOpacity>
 
-        {/* 完美发音库 */}
-        <TouchableOpacity 
-          style={styles.adminCard}
-          onPress={() => router.push('/perfect-voice-library')}
-        >
-          <View style={[styles.adminIcon, { backgroundColor: '#FFD700' + '20' }]}>
-            <FontAwesome6 name="star" size={24} color="#FFD700" />
-          </View>
-          <View style={styles.adminContent}>
-            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-              完美发音库
-            </ThemedText>
-            <ThemedText variant="small" color={theme.textMuted}>
-              一遍过记录，收藏、分享你的完美发音
-            </ThemedText>
-          </View>
-          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
-        </TouchableOpacity>
-
         {/* 用户管理 - 仅管理员可见 */}
         {user?.role === 'admin' && (
           <TouchableOpacity 
