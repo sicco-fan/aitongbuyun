@@ -85,48 +85,33 @@ export const createStyles = (theme: Theme) => {
       padding: Spacing['2xl'],
       alignItems: 'center',
     },
-    // 句库卡片
-    fileCard: {
+    // 句库列表卡片（简洁版）
+    fileListCard: {
       backgroundColor: theme.backgroundDefault,
       borderRadius: BorderRadius.lg,
-      padding: Spacing.lg,
-      marginBottom: Spacing.md,
+      overflow: 'hidden',
     },
-    fileCardHeader: {
+    fileItem: {
       flexDirection: 'row',
       alignItems: 'center',
+      paddingVertical: Spacing.md,
+      paddingHorizontal: Spacing.lg,
     },
-    fileIconContainer: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+    fileItemBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: theme.borderLight,
+    },
+    fileIconSmall: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
       backgroundColor: theme.primary + '15',
       justifyContent: 'center',
       alignItems: 'center',
     },
-    fileInfo: {
+    fileItemInfo: {
       flex: 1,
       marginLeft: Spacing.md,
-    },
-    fileCardStats: {
-      flexDirection: 'row',
-      marginTop: Spacing.md,
-      paddingTop: Spacing.md,
-      borderTopWidth: 1,
-      borderTopColor: theme.borderLight,
-    },
-    fileStatItem: {
-      flex: 1,
-      alignItems: 'center',
-    },
-    fileStatValue: {
-      fontSize: 16,
-      fontWeight: '700',
-    },
-    fileStatLabel: {
-      fontSize: 11,
-      color: theme.textMuted,
-      marginTop: Spacing.xs,
     },
   });
 };

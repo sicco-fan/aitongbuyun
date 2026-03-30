@@ -220,57 +220,34 @@ export default function StatsScreen() {
             <ThemedText variant="body" color={theme.textMuted}>暂无学习记录</ThemedText>
           </View>
         ) : (
-          fileStats.map((stat, index) => (
-            <View key={stat.id || index} style={styles.fileCard}>
-              <View style={styles.fileCardHeader}>
+          <View style={styles.fileListCard}>
+            {fileStats.map((stat, index) => (
+              <View key={stat.id || index} style={[
+                styles.fileItem,
+                index < fileStats.length - 1 && styles.fileItemBorder
+              ]}>
                 <View style={[
-                  styles.fileIconContainer,
+                  styles.fileIconSmall,
                   stat.sentence_files?.sourceType === 'lesson' && { backgroundColor: theme.accent + '15' }
                 ]}>
                   <FontAwesome6 
                     name={stat.sentence_files?.sourceType === 'lesson' ? 'graduation-cap' : 'book'} 
-                    size={18} 
+                    size={14} 
                     color={stat.sentence_files?.sourceType === 'lesson' ? theme.accent : theme.primary} 
                   />
                 </View>
-                <View style={styles.fileInfo}>
-                  {stat.sentence_files?.sourceType === 'lesson' && stat.sentence_files?.courseTitle && (
-                    <ThemedText variant="caption" color={theme.accent} style={{ marginBottom: 2 }}>
-                      {stat.sentence_files.courseTitle}
-                      {stat.sentence_files.lessonNumber && ` · 第${stat.sentence_files.lessonNumber}课`}
-                    </ThemedText>
-                  )}
+                <View style={styles.fileItemInfo}>
                   <ThemedText variant="bodyMedium" color={theme.textPrimary} numberOfLines={1}>
                     {stat.sentence_files?.title || '未知句库'}
                   </ThemedText>
-                  <ThemedText variant="small" color={theme.textMuted}>
-                    最近学习: {formatDate(stat.last_learned_at)}
+                  <ThemedText variant="caption" color={theme.textMuted}>
+                    已学{stat.learn_count}次 · {formatDate(stat.last_learned_at)}
                   </ThemedText>
                 </View>
+                <FontAwesome6 name="chevron-right" size={12} color={theme.textMuted} />
               </View>
-              
-              <View style={styles.fileCardStats}>
-                <View style={styles.fileStatItem}>
-                  <Text style={[styles.fileStatValue, { color: theme.primary }]}>
-                    {stat.learn_count}
-                  </Text>
-                  <Text style={styles.fileStatLabel}>学习次数</Text>
-                </View>
-                <View style={styles.fileStatItem}>
-                  <Text style={[styles.fileStatValue, { color: theme.success }]}>
-                    {formatDuration(stat.total_duration)}
-                  </Text>
-                  <Text style={styles.fileStatLabel}>总时长</Text>
-                </View>
-                <View style={styles.fileStatItem}>
-                  <Text style={[styles.fileStatValue, { color: theme.accent }]}>
-                    {formatScore(stat.total_score)}
-                  </Text>
-                  <Text style={styles.fileStatLabel}>总分数</Text>
-                </View>
-              </View>
-            </View>
-          ))
+            ))}
+          </View>
         )}
       </ScrollView>
     </Screen>
