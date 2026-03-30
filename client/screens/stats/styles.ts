@@ -113,5 +113,14 @@ export const createStyles = (theme: Theme) => {
       flex: 1,
       marginLeft: Spacing.md,
     },
+    fileItemRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.xs,
+    },
+    fileItemCount: {
+      fontSize: 13,
+      fontWeight: '600',
+    },
   });
 };

@@ -240,11 +240,13 @@ export default function StatsScreen() {
                   <ThemedText variant="bodyMedium" color={theme.textPrimary} numberOfLines={1}>
                     {stat.sentence_files?.title || '未知句库'}
                   </ThemedText>
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    已学{stat.learn_count}次 · {formatDate(stat.last_learned_at)}
-                  </ThemedText>
                 </View>
-                <FontAwesome6 name="chevron-right" size={12} color={theme.textMuted} />
+                <View style={styles.fileItemRight}>
+                  <Text style={[styles.fileItemCount, { color: theme.primary }]}>
+                    {stat.learn_count}次
+                  </Text>
+                  <FontAwesome6 name="chevron-right" size={12} color={theme.textMuted} />
+                </View>
               </View>
             ))}
           </View>
