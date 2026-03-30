@@ -29,6 +29,7 @@ import {
   checkVoiceCacheStatus,
   DownloadProgress 
 } from '@/utils/lessonAudioCache';
+import { hasAudioLocal, generateCourseAudioKey } from '@/utils/audioStorage';
 
 interface GenerateProgressData {
   type: 'start' | 'progress' | 'complete' | 'error';
@@ -192,7 +193,8 @@ export default function LessonPracticeScreen() {
           const status = await checkVoiceCacheStatus(
             lessonId, 
             voice.id, 
-            sentencesWithVoice.length
+            sentencesWithVoice.length,
+            courseId  // 传入 courseId 以检查 audioStorage 本地文件
           );
           
           statuses.push({
@@ -296,7 +298,7 @@ export default function LessonPracticeScreen() {
       );
       
       const sentencesWithAudio = data.sentences.filter((s: Sentence) => s.audio_url);
-      const status = await checkVoiceCacheStatus(lessonId, voiceStatus.voiceId, sentencesWithAudio.length);
+      const status = await checkVoiceCacheStatus(lessonId, voiceStatus.voiceId, sentencesWithAudio.length, courseId);
       setVoiceCacheStatuses(prev => 
         prev.map(s => 
           s.voiceId === voiceStatus.voiceId ? { 
@@ -317,7 +319,7 @@ export default function LessonPracticeScreen() {
         );
         const data = await response.json();
         const sentencesWithAudio = data.sentences.filter((s: Sentence) => s.audio_url);
-        const status = await checkVoiceCacheStatus(lessonId, voiceStatus.voiceId, sentencesWithAudio.length);
+        const status = await checkVoiceCacheStatus(lessonId, voiceStatus.voiceId, sentencesWithAudio.length, courseId);
         setVoiceCacheStatuses(prev => 
           prev.map(s => 
             s.voiceId === voiceStatus.voiceId ? { 
@@ -639,7 +641,10 @@ export default function LessonPracticeScreen() {
     }
   };
 
-  const hasAudio = sentences.some(s => s.audio_url);
+  // 检查是否有音频（后端数据库 或 本地缓存）
+  const hasAudioFromDb = sentences.some(s => s.audio_url);
+  const hasLocalCache = voiceCacheStatuses.some(s => s.cached > 0);
+  const hasAudio = hasAudioFromDb || hasLocalCache;
   const selectedVoiceStatus = voiceCacheStatuses.find(s => s.voiceId === selectedVoice);
   const allDownloaded = voiceCacheStatuses.length > 0 && 
     voiceCacheStatuses.filter(s => s.hasAudio).every(s => s.cached === s.total && s.total > 0);

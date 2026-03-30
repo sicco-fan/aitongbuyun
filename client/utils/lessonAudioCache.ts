@@ -10,6 +10,7 @@ import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Paths, Directory } from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { hasAudioLocal, generateCourseAudioKey } from './audioStorage';
 
 // 缓存索引存储键
 const CACHE_INDEX_KEY = 'lesson_audio_cache_index';
@@ -181,11 +182,13 @@ export async function getCachedAudio(audioKey: string, remoteUrl: string): Promi
 
 /**
  * 检查某个音色的缓存状态
+ * 同时检查 lessonAudioCache 索引和 audioStorage 本地文件
  */
 export async function checkVoiceCacheStatus(
   lessonId: string,
   voiceId: string,
-  sentenceCount: number
+  sentenceCount: number,
+  courseId?: string | number
 ): Promise<{ cached: number; total: number }> {
   // Web 端：检查浏览器缓存
   if (isWeb) {
@@ -213,16 +216,40 @@ export async function checkVoiceCacheStatus(
     let cached = 0;
     
     for (let i = 1; i <= sentenceCount; i++) {
+      // 先检查 lessonAudioCache 索引
       const key = `lesson_${lessonId}_sentence_${i}_${voiceId}`;
+      let isCached = false;
+      
       if (index[key]) {
         try {
           const localInfo = await FileSystem.getInfoAsync(index[key].localUri);
           if ((localInfo as any).exists) {
-            cached++;
+            isCached = true;
           }
         } catch {
-          // 文件不存在，不计入
+          // 文件不存在，继续检查 audioStorage
         }
+      }
+      
+      // 如果 lessonAudioCache 中没有，检查 audioStorage 本地文件
+      if (!isCached && courseId) {
+        try {
+          const audioKey = generateCourseAudioKey(
+            typeof courseId === 'string' ? parseInt(courseId, 10) : courseId,
+            typeof lessonId === 'string' ? parseInt(lessonId, 10) : lessonId,
+            i
+          );
+          const hasLocal = await hasAudioLocal(audioKey);
+          if (hasLocal) {
+            isCached = true;
+          }
+        } catch {
+          // 检查失败，忽略
+        }
+      }
+      
+      if (isCached) {
+        cached++;
       }
     }
     
