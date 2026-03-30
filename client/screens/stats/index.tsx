@@ -24,7 +24,7 @@ interface StatsOverview {
 }
 
 interface FileStat {
-  id: number;
+  id: number | string;
   user_id: string;
   sentence_file_id: number;
   learn_count: number;
@@ -34,7 +34,7 @@ interface FileStat {
   sentence_files: {
     title: string;
     description: string | null;
-    sourceType?: 'sentence_file' | 'lesson' | 'unknown';
+    sourceType?: 'sentence_file' | 'course' | 'unknown';
     courseTitle?: string;
     lessonNumber?: number;
   } | null;
@@ -228,12 +228,12 @@ export default function StatsScreen() {
               ]}>
                 <View style={[
                   styles.fileIconSmall,
-                  stat.sentence_files?.sourceType === 'lesson' && { backgroundColor: theme.accent + '15' }
+                  stat.sentence_files?.sourceType === 'course' && { backgroundColor: theme.accent + '15' }
                 ]}>
                   <FontAwesome6 
-                    name={stat.sentence_files?.sourceType === 'lesson' ? 'graduation-cap' : 'book'} 
+                    name={stat.sentence_files?.sourceType === 'course' ? 'graduation-cap' : 'book'} 
                     size={14} 
-                    color={stat.sentence_files?.sourceType === 'lesson' ? theme.accent : theme.primary} 
+                    color={stat.sentence_files?.sourceType === 'course' ? theme.accent : theme.primary} 
                   />
                 </View>
                 <View style={styles.fileItemInfo}>

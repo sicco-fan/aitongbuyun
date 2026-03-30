@@ -404,6 +404,7 @@ router.get('/daily', async (req, res) => {
 /**
  * GET /api/v1/stats/files
  * 获取句库学习统计（包括自制句库和精品课程）
+ * 精品课程按课程级别聚合显示，不显示课时级别
  * Query: user_id
  */
 router.get('/files', async (req, res) => {
@@ -475,42 +476,86 @@ router.get('/files', async (req, res) => {
       courses.map(c => [c.id, c])
     );
     
-    // 组装结果
-    const enrichedStats = fileStats.map(stat => {
+    // 分类：自制句库 vs 精品课程
+    const selfMadeStats: any[] = [];
+    const courseStatsMap = new Map<number, {
+      course_id: number;
+      course_title: string;
+      learn_count: number;
+      total_duration: number;
+      total_score: number;
+      last_learned_at: string | null;
+    }>();
+    
+    fileStats.forEach(stat => {
       const sentenceFile = sentenceFileMap.get(stat.sentence_file_id);
       const lesson = lessonMap.get(stat.sentence_file_id);
       
-      let title = '未知句库';
-      let description = '';
-      let sourceType = 'unknown';
-      let courseTitle = '';
-      let lessonNumber = null;
-      
       if (sentenceFile) {
-        // 自制句库
-        title = sentenceFile.title;
-        description = sentenceFile.description || '';
-        sourceType = 'sentence_file';
+        // 自制句库，直接添加
+        selfMadeStats.push({
+          ...stat,
+          sentence_files: {
+            title: sentenceFile.title,
+            description: sentenceFile.description || '',
+            sourceType: 'sentence_file',
+          },
+        });
       } else if (lesson) {
-        // 精品课程课时
-        const course = courseMap.get(lesson.course_id);
-        title = lesson.title;
-        description = '';
-        sourceType = 'lesson';
-        courseTitle = course?.title || '';
-        lessonNumber = lesson.lesson_number;
+        // 精品课程课时，按课程聚合
+        const courseId = lesson.course_id;
+        const course = courseMap.get(courseId);
+        
+        if (!course) return;
+        
+        const existing = courseStatsMap.get(courseId) || {
+          course_id: courseId,
+          course_title: course.title,
+          learn_count: 0,
+          total_duration: 0,
+          total_score: 0,
+          last_learned_at: null,
+        };
+        
+        existing.learn_count += stat.learn_count || 0;
+        existing.total_duration += stat.total_duration || 0;
+        existing.total_score += stat.total_score || 0;
+        
+        // 取最近的学习时间
+        if (stat.last_learned_at) {
+          if (!existing.last_learned_at || stat.last_learned_at > existing.last_learned_at) {
+            existing.last_learned_at = stat.last_learned_at;
+          }
+        }
+        
+        courseStatsMap.set(courseId, existing);
       }
-      
-      return {
-        ...stat,
-        sentence_files: {
-          title,
-          description,
-          sourceType,
-          courseTitle,
-          lessonNumber,
-        },
-      };
+    });
+    
+    // 将课程统计转换为结果格式
+    const courseStats = Array.from(courseStatsMap.values()).map(course => ({
+      id: `course_${course.course_id}`,
+      user_id: user_id as string,
+      sentence_file_id: course.course_id,
+      learn_count: course.learn_count,
+      total_duration: course.total_duration,
+      total_score: course.total_score,
+      last_learned_at: course.last_learned_at,
+      sentence_files: {
+        title: course.course_title,
+        description: '',
+        sourceType: 'course',
+      },
+    }));
+    
+    // 合并结果：自制句库 + 课程级别统计
+    const enrichedStats = [...selfMadeStats, ...courseStats];
+    
+    // 按最后学习时间排序
+    enrichedStats.sort((a, b) => {
+      const timeA = a.last_learned_at || '';
+      const timeB = b.last_learned_at || '';
+      return timeB.localeCompare(timeA);
     });
     
     res.json({ 
