@@ -1296,17 +1296,33 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
           
           // 上传到云端对象存储（临时存储，前端下载后删除）
           const cloudAudioKey = `temp-audio/lesson_${lessonId}/sentence_${sentence.id}_${voiceId}_${Date.now()}.mp3`;
-          await storage.uploadFile({
-            fileContent: audioBuffer,
-            fileName: cloudAudioKey,
-            contentType: 'audio/mpeg',
-          });
+          
+          let actualCloudKey: string;
+          try {
+            const uploadResult = await storage.uploadFile({
+              fileContent: audioBuffer,
+              fileName: cloudAudioKey,
+              contentType: 'audio/mpeg',
+            });
+            actualCloudKey = uploadResult || cloudAudioKey;
+            console.log(`[云端上传] 上传成功，原始key: ${cloudAudioKey}, 返回key: ${actualCloudKey}`);
+          } catch (uploadErr: any) {
+            console.error(`[云端上传] 上传失败: ${cloudAudioKey}`, uploadErr.message);
+            throw new Error(`云端上传失败: ${uploadErr.message}`);
+          }
           
           // 生成签名URL（有效期1小时）
-          const signedUrl = await storage.generatePresignedUrl({
-            key: cloudAudioKey,
-            expireTime: 3600,
-          });
+          let signedUrl: string;
+          try {
+            signedUrl = await storage.generatePresignedUrl({
+              key: actualCloudKey,
+              expireTime: 3600,
+            });
+            console.log(`[云端URL] 生成签名URL成功，key: ${actualCloudKey}`);
+          } catch (urlErr: any) {
+            console.error(`[云端URL] 生成签名URL失败: ${actualCloudKey}`, urlErr.message);
+            throw new Error(`生成签名URL失败: ${urlErr.message}`);
+          }
           
           // 记录到数据库：云端临时文件key + 标记为待下载
           await supabase
@@ -1316,7 +1332,7 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
               voice_id: voiceId,
               voice_name: voiceName,
               audio_url: 'pending_download', // 标记为待下载
-              cloud_audio_key: cloudAudioKey, // 记录云端文件key，用于后续删除
+              cloud_audio_key: actualCloudKey, // 记录云端文件key，用于后续删除
               duration: duration,
             }, {
               onConflict: 'sentence_id,voice_id'
@@ -1332,11 +1348,11 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
             voice_id: voiceId,
             voice_name: voiceName,
             cloud_audio_url: signedUrl, // 云端签名URL
-            cloud_audio_key: cloudAudioKey, // 用于删除
+            cloud_audio_key: actualCloudKey, // 用于删除
             duration: duration,
           });
           
-          console.log(`生成音频: 课时${lessonId}, 句子${sentence.sentence_index}, 音色${voiceName}, 云端key: ${cloudAudioKey}`);
+          console.log(`生成音频: 课时${lessonId}, 句子${sentence.sentence_index}, 音色${voiceName}, 云端key: ${actualCloudKey}`);
           
           // 每个句子生成后等待500ms，避免TTS并发限制
           await delay(500);
