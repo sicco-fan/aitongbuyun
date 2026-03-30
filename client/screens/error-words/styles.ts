@@ -79,6 +79,20 @@ export const createStyles = (theme: Theme) => {
     sentenceText: {
       lineHeight: 24,
     },
+    sentenceFooter: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: Spacing.sm,
+    },
+    miniPracticeBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.primary + '15',
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: Spacing.xs,
+      borderRadius: BorderRadius.sm,
+    },
     sentenceHint: {
       color: theme.textMuted,
       marginTop: Spacing.xs,

@@ -178,20 +178,18 @@ export default function StateDrivenLayout({
         </View>
 
         {/* 统一的学习资源区 */}
-        <View style={[sharedStyles.sectionHeader, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
-          <View>
-            <ThemedText variant="h4" color={theme.textPrimary}>学习资源</ThemedText>
-            <ThemedText variant="caption" color={theme.textMuted}>
-              {aiTotalSentences + customSentenceFiles.reduce((sum, f) => sum + f.ready_sentences_count, 0)} 句可学
-            </ThemedText>
-          </View>
+        <View style={sharedStyles.sectionHeader}>
           <TouchableOpacity 
             onPress={() => router.push('/courses')}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 2, opacity: 0.3 }}
+            style={{ flexDirection: 'row', alignItems: 'baseline' }}
+            activeOpacity={0.7}
           >
-            <ThemedText variant="tiny" color={theme.textMuted}>管理</ThemedText>
-            <FontAwesome6 name="chevron-right" size={8} color={theme.textMuted} />
+            <ThemedText variant="h4" color={theme.textPrimary}>学习资源</ThemedText>
+            <FontAwesome6 name="chevron-right" size={12} color={theme.textMuted} style={{ marginLeft: 4, opacity: 0.4 }} />
           </TouchableOpacity>
+          <ThemedText variant="caption" color={theme.textMuted}>
+            {aiTotalSentences + customSentenceFiles.reduce((sum, f) => sum + f.ready_sentences_count, 0)} 句可学
+          </ThemedText>
         </View>
 
         {/* 资源列表 */}

@@ -2017,6 +2017,7 @@ export default function SentencePracticeScreen() {
   // 薄弱词汇练习：目标单词追踪
   const targetWord = params.targetWord ? (params.targetWord as string).toLowerCase() : null;
   const targetCorrectCount = params.targetCorrectCount ? Number(params.targetCorrectCount) : 0;
+  const singleSentenceMode = params.singleSentenceMode === 'true' || params.singleSentenceMode === true;
   const targetWordCorrectRef = useRef(0); // 目标单词已正确次数
   const shouldReturnAfterSentenceRef = useRef(false); // 是否在句子完成后返回
 
@@ -4004,6 +4005,13 @@ export default function SentencePracticeScreen() {
 
   // 跳转到下一句
   const goToNextSentence = useCallback(() => {
+    // 单句模式：直接返回上一页
+    if (singleSentenceMode) {
+      stopPlayback();
+      router.back();
+      return;
+    }
+    
     if (currentIndex < sentences.length - 1) {
       // 记录用户活动（切换句子）
       recordActivity();
@@ -4026,7 +4034,7 @@ export default function SentencePracticeScreen() {
       // 播放成功音效
       playSuccessSound();
     }
-  }, [currentIndex, sentences.length, stopPlayback, recordActivity, calculateEffectiveDuration]);
+  }, [singleSentenceMode, currentIndex, sentences.length, stopPlayback, recordActivity, calculateEffectiveDuration, router]);
 
   // 播放成功音效（使用简短的在线音效）
   const playSuccessSound = useCallback(async () => {

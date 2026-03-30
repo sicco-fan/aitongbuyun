@@ -74,19 +74,25 @@ export default function ErrorWordsScreen() {
     }, [fetchErrorWords])
   );
 
+  const handlePracticeSentence = useCallback((sentence: ErrorWordItem['sentences'][0], word: string, errorCount: number) => {
+    // 跳转到指定的句子进行练习
+    router.push('/sentence-practice', {
+      fileId: sentence.sentence_file_id,
+      sentenceIndex: sentence.sentence_index,
+      errorPriority: true,
+      targetWord: word.toLowerCase(),
+      targetCorrectCount: errorCount, // 需要正确输入的次数 = 该句子的错误次数
+      singleSentenceMode: true, // 单句模式：只练这一句
+    });
+  }, [router]);
+
   const handlePracticeWord = useCallback((item: ErrorWordItem) => {
-    // 跳转到第一个包含该错题的句子
+    // 跳转到第一个包含该错题的句子（保留原逻辑作为兼容）
     const firstSentence = item.sentences[0];
     if (firstSentence) {
-      router.push('/sentence-practice', {
-        fileId: firstSentence.sentence_file_id,
-        sentenceIndex: firstSentence.sentence_index,
-        errorPriority: true,
-        targetWord: item.word.toLowerCase(),
-        targetCorrectCount: item.totalCount, // 需要正确输入的次数
-      });
+      handlePracticeSentence(firstSentence, item.word, firstSentence.error_count);
     }
-  }, [router]);
+  }, [handlePracticeSentence]);
 
   const handleClearWord = useCallback((word: string) => {
     Alert.alert(
@@ -218,14 +224,23 @@ export default function ErrorWordsScreen() {
               {/* Expanded Content */}
               {selectedWord === item.word && (
                 <>
-                  {item.sentences.slice(0, 3).map((sentence, idx) => (
+                  {item.sentences.slice(0, 5).map((sentence, idx) => (
                     <View key={idx} style={styles.sentenceContainer}>
                       <ThemedText variant="body" color={theme.textPrimary} style={styles.sentenceText}>
                         {sentence.sentence_text || '（无句子内容）'}
                       </ThemedText>
-                      <ThemedText variant="caption" color={theme.textMuted} style={styles.sentenceHint}>
-                        句库 #{sentence.sentence_file_id} · 第 {sentence.sentence_index + 1} 句
-                      </ThemedText>
+                      <View style={styles.sentenceFooter}>
+                        <ThemedText variant="caption" color={theme.textMuted}>
+                          错误 {sentence.error_count} 次
+                        </ThemedText>
+                        <TouchableOpacity
+                          style={styles.miniPracticeBtn}
+                          onPress={() => handlePracticeSentence(sentence, item.word, sentence.error_count)}
+                        >
+                          <FontAwesome6 name="play" size={10} color={theme.primary} />
+                          <ThemedText variant="tiny" color={theme.primary} style={{ marginLeft: 4 }}>练习</ThemedText>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   ))}
                   
@@ -235,14 +250,7 @@ export default function ErrorWordsScreen() {
                       onPress={() => handleClearWord(item.word)}
                     >
                       <FontAwesome6 name="trash" size={14} color={theme.textMuted} />
-                      <ThemedText variant="small" style={styles.clearBtnText}>清除</ThemedText>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.actionBtn, styles.practiceBtn]}
-                      onPress={() => handlePracticeWord(item)}
-                    >
-                      <FontAwesome6 name="play" size={14} color={theme.primary} />
-                      <ThemedText variant="smallMedium" style={styles.practiceBtnText}>去练习</ThemedText>
+                      <ThemedText variant="small" style={styles.clearBtnText}>清除全部</ThemedText>
                     </TouchableOpacity>
                   </View>
                 </>
