@@ -491,4 +491,301 @@ router.get('/file/:file_id', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/v1/stats/course-learners/:courseId
+ * 获取课程的学习者列表（管理员功能）
+ * 返回：学习者名单、积分、学习时长、完成句子数、今日进度等
+ * 
+ * 注意：由于当前数据库结构限制，此API返回的是所有用户的学习统计
+ * 课程ID参数暂时仅用于标识调用来源
+ */
+router.get('/course-learners/:courseId', async (req, res) => {
+  try {
+    const courseId = parseInt(req.params.courseId, 10);
+    if (isNaN(courseId)) {
+      return res.status(400).json({ error: '无效的课程ID' });
+    }
+
+    const client = getSupabaseClient();
+    
+    // 1. 获取课程总句子数（用于计算进度）
+    const { data: lessons, error: lessonsError } = await client
+      .from('lessons')
+      .select('id')
+      .eq('course_id', courseId);
+    
+    if (lessonsError) throw lessonsError;
+    
+    const lessonIds = lessons?.map(l => l.id) || [];
+    let totalSentences = 0;
+    
+    if (lessonIds.length > 0) {
+      const { count, error: countError } = await client
+        .from('lesson_sentences')
+        .select('*', { count: 'exact', head: true })
+        .in('lesson_id', lessonIds);
+      
+      if (!countError) {
+        totalSentences = count || 0;
+      }
+    }
+    
+    // 2. 获取所有用户的每日统计（汇总）
+    const { data: dailyStats, error: dailyError } = await client
+      .from('daily_stats')
+      .select('user_id, total_score, total_duration, sentences_completed, date')
+      .order('date', { ascending: false });
+    
+    if (dailyError) throw dailyError;
+    
+    // 3. 汇总每个用户的学习数据
+    const learnerMap = new Map<string, {
+      user_id: string;
+      total_score: number;
+      total_duration: number;
+      sentences_completed: number;
+      learning_days: number;
+      today_score: number;
+      today_duration: number;
+      today_sentences: number;
+      last_learned_at: string | null;
+    }>();
+    
+    const today = getTodayString();
+    
+    if (dailyStats && dailyStats.length > 0) {
+      dailyStats.forEach(stat => {
+        if (!stat.user_id) return;
+        
+        const existing = learnerMap.get(stat.user_id) || {
+          user_id: stat.user_id,
+          total_score: 0,
+          total_duration: 0,
+          sentences_completed: 0,
+          learning_days: 0,
+          today_score: 0,
+          today_duration: 0,
+          today_sentences: 0,
+          last_learned_at: null,
+        };
+        
+        existing.total_score += stat.total_score || 0;
+        existing.total_duration += stat.total_duration || 0;
+        existing.sentences_completed += stat.sentences_completed || 0;
+        existing.learning_days += 1;
+        
+        // 今日统计
+        if (stat.date === today) {
+          existing.today_score = stat.total_score || 0;
+          existing.today_duration = stat.total_duration || 0;
+          existing.today_sentences = stat.sentences_completed || 0;
+        }
+        
+        // 最近学习时间
+        if (!existing.last_learned_at || stat.date > existing.last_learned_at) {
+          existing.last_learned_at = stat.date;
+        }
+        
+        learnerMap.set(stat.user_id, existing);
+      });
+    }
+    
+    // 4. 获取用户昵称（使用 user_id 的后6位作为昵称）
+    const learners = Array.from(learnerMap.values()).map(learner => ({
+      ...learner,
+      nickname: `学习者_${learner.user_id.slice(-6)}`,
+      total_score: Math.round(learner.total_score * 100) / 100,
+      total_duration_minutes: Math.round(learner.total_duration / 60),
+      progress_percent: totalSentences > 0 
+        ? Math.min(Math.round((learner.sentences_completed / totalSentences) * 100), 100) 
+        : 0,
+    }));
+    
+    // 按总积分排序
+    learners.sort((a, b) => b.total_score - a.total_score);
+    
+    res.json({ 
+      success: true, 
+      learners,
+      total_sentences: totalSentences,
+      total_learners: learners.length,
+    });
+  } catch (error) {
+    console.error('获取课程学习者失败:', error);
+    res.status(500).json({ error: '获取课程学习者失败' });
+  }
+});
+
+/**
+ * GET /api/v1/stats/user-errors/:userId
+ * 获取用户的错题分析
+ * Query: course_id (可选，筛选特定课程的错题)
+ */
+router.get('/user-errors/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { course_id } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({ error: '缺少用户ID' });
+    }
+    
+    const client = getSupabaseClient();
+    
+    // 获取错题记录
+    let query = client
+      .from('error_words')
+      .select('word, error_count, last_error_at, sentence_text, sentence_file_id')
+      .eq('user_id', userId)
+      .order('error_count', { ascending: false })
+      .limit(50);
+    
+    const { data: errorWords, error } = await query;
+    
+    if (error) throw error;
+    
+    // 按错误次数分组统计
+    const wordStats = new Map<string, { count: number; sentences: string[] }>();
+    
+    if (errorWords) {
+      errorWords.forEach(record => {
+        const existing = wordStats.get(record.word) || { count: 0, sentences: [] };
+        existing.count += record.error_count;
+        if (record.sentence_text && !existing.sentences.includes(record.sentence_text)) {
+          existing.sentences.push(record.sentence_text);
+        }
+        wordStats.set(record.word, existing);
+      });
+    }
+    
+    // 转换为数组并排序
+    const weakWords = Array.from(wordStats.entries())
+      .map(([word, data]) => ({
+        word,
+        error_count: data.count,
+        example_sentences: data.sentences.slice(0, 3), // 最多显示3个例句
+      }))
+      .sort((a, b) => b.error_count - a.error_count)
+      .slice(0, 20); // 最多返回20个薄弱单词
+    
+    res.json({ 
+      success: true, 
+      weak_words: weakWords,
+      total_errors: weakWords.reduce((sum, w) => sum + w.error_count, 0),
+    });
+  } catch (error) {
+    console.error('获取错题分析失败:', error);
+    res.status(500).json({ error: '获取错题分析失败' });
+  }
+});
+
+/**
+ * GET /api/v1/stats/course-progress/:courseId
+ * 获取用户在某课程的学习进度
+ * Query: user_id
+ */
+router.get('/course-progress/:courseId', async (req, res) => {
+  try {
+    const courseId = parseInt(req.params.courseId, 10);
+    const { user_id } = req.query;
+    
+    if (isNaN(courseId)) {
+      return res.status(400).json({ error: '无效的课程ID' });
+    }
+    
+    if (!user_id) {
+      return res.status(400).json({ error: '缺少用户ID' });
+    }
+    
+    const client = getSupabaseClient();
+    
+    // 1. 获取课程所有课时
+    const { data: lessons, error: lessonsError } = await client
+      .from('lessons')
+      .select('id, lesson_number, title')
+      .eq('course_id', courseId)
+      .order('lesson_number', { ascending: true });
+    
+    if (lessonsError) throw lessonsError;
+    
+    if (!lessons || lessons.length === 0) {
+      return res.json({ success: true, lessons: [], total_progress: 0 });
+    }
+    
+    const lessonIds = lessons.map(l => l.id);
+    
+    // 2. 获取每个课时的句子数
+    const { data: sentenceCounts, error: countError } = await client
+      .from('lesson_sentences')
+      .select('lesson_id, id')
+      .in('lesson_id', lessonIds);
+    
+    if (countError) throw countError;
+    
+    // 统计每个课时的句子数
+    const lessonSentenceCounts = new Map<number, number>();
+    const sentenceLessonMap = new Map<number, number>();
+    if (sentenceCounts) {
+      sentenceCounts.forEach(s => {
+        lessonSentenceCounts.set(s.lesson_id, (lessonSentenceCounts.get(s.lesson_id) || 0) + 1);
+        sentenceLessonMap.set(s.id, s.lesson_id);
+      });
+    }
+    
+    // 3. 获取用户的学习记录
+    const sentenceIds = sentenceCounts?.map(s => s.id) || [];
+    const { data: records, error: recordsError } = await client
+      .from('learning_records')
+      .select('sentence_id, is_completed')
+      .eq('user_id', user_id as string)
+      .in('sentence_id', sentenceIds);
+    
+    if (recordsError) throw recordsError;
+    
+    // 统计每个课时的完成句子数
+    const lessonCompletedCounts = new Map<number, number>();
+    if (records) {
+      records.forEach(r => {
+        if (r.is_completed && r.sentence_id) {
+          const lessonId = sentenceLessonMap.get(r.sentence_id);
+          if (lessonId) {
+            lessonCompletedCounts.set(lessonId, (lessonCompletedCounts.get(lessonId) || 0) + 1);
+          }
+        }
+      });
+    }
+    
+    // 4. 组装返回数据
+    let totalSentences = 0;
+    let totalCompleted = 0;
+    
+    const lessonsProgress = lessons.map(lesson => {
+      const total = lessonSentenceCounts.get(lesson.id) || 0;
+      const completed = lessonCompletedCounts.get(lesson.id) || 0;
+      totalSentences += total;
+      totalCompleted += completed;
+      
+      return {
+        lesson_id: lesson.id,
+        lesson_number: lesson.lesson_number,
+        title: lesson.title,
+        total_sentences: total,
+        completed_sentences: completed,
+        progress_percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+      };
+    });
+    
+    res.json({ 
+      success: true, 
+      lessons: lessonsProgress,
+      total_sentences: totalSentences,
+      total_completed: totalCompleted,
+      total_progress: totalSentences > 0 ? Math.round((totalCompleted / totalSentences) * 100) : 0,
+    });
+  } catch (error) {
+    console.error('获取课程进度失败:', error);
+    res.status(500).json({ error: '获取课程进度失败' });
+  }
+});
+
 export default router;

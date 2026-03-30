@@ -110,5 +110,26 @@ export const createStyles = (theme: Theme) => {
       color: theme.primary,
       marginLeft: Spacing.sm,
     },
+    // 学习监控按钮
+    monitorButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: Spacing.md,
+      borderRadius: BorderRadius.lg,
+      borderWidth: 1,
+      marginBottom: Spacing.lg,
+    },
+    monitorIconContainer: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: theme.primary + '20',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    monitorInfo: {
+      flex: 1,
+      marginLeft: Spacing.md,
+    },
   });
 };

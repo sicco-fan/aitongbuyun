@@ -39,6 +39,7 @@ export default function RootLayout() {
             <Stack.Screen name="course-lessons" options={{ title: "课时列表" }} />
             <Stack.Screen name="lesson-practice" options={{ title: "课时详情" }} />
             <Stack.Screen name="lesson-learning" options={{ title: "课程学习" }} />
+            <Stack.Screen name="learning-monitor" options={{ title: "学习监控" }} />
             <Stack.Screen name="profile-settings" options={{ title: "个人设置" }} />
           </Stack>
           <Toast />
