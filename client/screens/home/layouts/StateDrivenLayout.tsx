@@ -65,7 +65,7 @@ export default function StateDrivenLayout({
 }: StateDrivenLayoutProps) {
   const { theme, isDark } = useTheme();
   const router = useSafeRouter();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const sharedStyles = createSharedStyles(theme);
 
   const formatDuration = (ms: number) => {
