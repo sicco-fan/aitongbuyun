@@ -97,6 +97,10 @@ export const createStyles = (theme: Theme) => {
     learnerName: {
       marginBottom: 2,
     },
+    learnerContact: {
+      marginBottom: 2,
+      fontSize: 12,
+    },
     learnerMeta: {
       flexDirection: 'row',
       alignItems: 'center',

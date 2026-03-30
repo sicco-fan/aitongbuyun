@@ -565,33 +565,47 @@ router.get('/learners', async (req, res) => {
       });
     }
     
-    // 4. 获取用户昵称
+    // 4. 获取用户信息（昵称、用户名、手机号）
     const userIds = Array.from(learnerMap.keys());
-    let userNicknames = new Map<string, string>();
+    let userInfoMap = new Map<string, { nickname: string; username: string; phone: string }>();
     
     if (userIds.length > 0) {
       const { data: users, error: usersError } = await client
         .from('users')
-        .select('id, nickname, username')
+        .select('id, nickname, username, phone')
         .in('id', userIds);
       
       if (!usersError && users) {
         users.forEach(u => {
-          userNicknames.set(u.id, u.nickname || u.username || `学习者_${u.id.slice(-6)}`);
+          userInfoMap.set(u.id, {
+            nickname: u.nickname || u.username || `学习者_${u.id.slice(-6)}`,
+            username: u.username || '',
+            phone: u.phone || '',
+          });
         });
       }
     }
     
     // 5. 组装返回数据
-    const learners = Array.from(learnerMap.values()).map(learner => ({
-      ...learner,
-      nickname: userNicknames.get(learner.user_id) || `学习者_${learner.user_id.slice(-6)}`,
-      total_score: Math.round(learner.total_score * 100) / 100,
-      total_duration_minutes: Math.round(learner.total_duration / 60),
-      progress_percent: (totalSentences || 0) > 0 
-        ? Math.min(Math.round((learner.sentences_completed / totalSentences) * 100), 100) 
-        : 0,
-    }));
+    const learners = Array.from(learnerMap.values()).map(learner => {
+      const userInfo = userInfoMap.get(learner.user_id) || {
+        nickname: `学习者_${learner.user_id.slice(-6)}`,
+        username: '',
+        phone: '',
+      };
+      
+      return {
+        ...learner,
+        nickname: userInfo.nickname,
+        username: userInfo.username,
+        phone: userInfo.phone,
+        total_score: Math.round(learner.total_score * 100) / 100,
+        total_duration_minutes: Math.round(learner.total_duration / 60),
+        progress_percent: (totalSentences || 0) > 0 
+          ? Math.min(Math.round((learner.sentences_completed / totalSentences) * 100), 100) 
+          : 0,
+      };
+    });
     
     learners.sort((a, b) => b.total_score - a.total_score);
     
@@ -776,16 +790,47 @@ router.get('/course-learners/:courseId', async (req, res) => {
       });
     }
     
-    // 4. 获取用户昵称（使用 user_id 的后6位作为昵称）
-    const learners = Array.from(learnerMap.values()).map(learner => ({
-      ...learner,
-      nickname: `学习者_${learner.user_id.slice(-6)}`,
-      total_score: Math.round(learner.total_score * 100) / 100,
-      total_duration_minutes: Math.round(learner.total_duration / 60),
-      progress_percent: totalSentences > 0 
-        ? Math.min(Math.round((learner.sentences_completed / totalSentences) * 100), 100) 
-        : 0,
-    }));
+    // 4. 获取用户信息（昵称、用户名、手机号）
+    const userIds = Array.from(learnerMap.keys());
+    let userInfoMap = new Map<string, { nickname: string; username: string; phone: string }>();
+    
+    if (userIds.length > 0) {
+      const { data: users, error: usersError } = await client
+        .from('users')
+        .select('id, nickname, username, phone')
+        .in('id', userIds);
+      
+      if (!usersError && users) {
+        users.forEach(u => {
+          userInfoMap.set(u.id, {
+            nickname: u.nickname || u.username || `学习者_${u.id.slice(-6)}`,
+            username: u.username || '',
+            phone: u.phone || '',
+          });
+        });
+      }
+    }
+    
+    // 5. 组装返回数据
+    const learners = Array.from(learnerMap.values()).map(learner => {
+      const userInfo = userInfoMap.get(learner.user_id) || {
+        nickname: `学习者_${learner.user_id.slice(-6)}`,
+        username: '',
+        phone: '',
+      };
+      
+      return {
+        ...learner,
+        nickname: userInfo.nickname,
+        username: userInfo.username,
+        phone: userInfo.phone,
+        total_score: Math.round(learner.total_score * 100) / 100,
+        total_duration_minutes: Math.round(learner.total_duration / 60),
+        progress_percent: totalSentences > 0 
+          ? Math.min(Math.round((learner.sentences_completed / totalSentences) * 100), 100) 
+          : 0,
+      };
+    });
     
     // 按总积分排序
     learners.sort((a, b) => b.total_score - a.total_score);

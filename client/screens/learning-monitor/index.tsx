@@ -31,6 +31,8 @@ interface Course {
 interface Learner {
   user_id: string;
   nickname: string;
+  username: string;
+  phone: string;
   total_score: number;
   total_duration_minutes: number;
   sentences_completed: number;
@@ -222,6 +224,10 @@ export default function LearningMonitorScreen() {
       
       learners.forEach((learner, index) => {
         reportContent += `\n${index + 1}. ${learner.nickname}\n`;
+        // 显示用户名和手机号
+        if (learner.username || learner.phone) {
+          reportContent += `   账号信息: ${learner.username || '未设置用户名'} | ${learner.phone || '未绑定手机'}\n`;
+        }
         reportContent += `   总积分: ${Math.round(learner.total_score)}\n`;
         reportContent += `   学习时长: ${learner.total_duration_minutes}分钟\n`;
         reportContent += `   完成句子: ${learner.sentences_completed}\n`;
@@ -354,6 +360,14 @@ export default function LearningMonitorScreen() {
             <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.learnerName}>
               {learner.nickname}
             </ThemedText>
+            {/* 显示用户名和手机号 */}
+            {(learner.username || learner.phone) && (
+              <ThemedText variant="small" color={theme.textMuted} style={styles.learnerContact}>
+                {learner.username && learner.phone 
+                  ? `${learner.username} | ${learner.phone}`
+                  : learner.username || learner.phone}
+              </ThemedText>
+            )}
             <View style={styles.learnerMeta}>
               <View style={[styles.learnerRank, { backgroundColor: getRankColor(rank) + '20' }]}>
                 <ThemedText variant="small" color={getRankColor(rank)}>
