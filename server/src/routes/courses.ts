@@ -1088,6 +1088,38 @@ router.post('/:courseId/generate-audio', async (req: Request, res: Response) => 
     });
 
     let currentIndex = 0;
+    
+    // 辅助函数：延迟
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    
+    // 辅助函数：带重试的TTS生成
+    const synthesizeWithRetry = async (uid: string, text: string, speaker: string, maxRetries = 3): Promise<any> => {
+      let lastError: any;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          return await ttsClient.synthesize({
+            uid,
+            text,
+            speaker,
+            audioFormat: 'mp3',
+            sampleRate: 24000,
+          });
+        } catch (err: any) {
+          lastError = err;
+          // 检查是否为并发限制错误
+          if (err.message?.includes('quota exceeded') || err.message?.includes('concurrency')) {
+            // 等待后重试，每次等待时间递增（2s, 4s, 6s）
+            const waitTime = 2000 * (attempt + 1);
+            console.log(`[课程音频生成] TTS并发限制，等待 ${waitTime}ms 后重试 (第${attempt + 1}次)`);
+            await delay(waitTime);
+          } else {
+            // 其他错误直接抛出
+            throw err;
+          }
+        }
+      }
+      throw lastError;
+    };
 
     for (const sentence of sentences) {
       try {
@@ -1105,13 +1137,11 @@ router.post('/:courseId/generate-audio', async (req: Request, res: Response) => 
           englishText: sentence.english_text
         });
 
-        const ttsResponse = await ttsClient.synthesize({
-          uid: `course_${courseId}_lesson_${sentence.lesson_id}_sentence_${sentence.sentence_index}`,
-          text: sentence.english_text,
-          speaker: targetVoiceId,
-          audioFormat: 'mp3',
-          sampleRate: 24000,
-        });
+        const ttsResponse = await synthesizeWithRetry(
+          `course_${courseId}_lesson_${sentence.lesson_id}_sentence_${sentence.sentence_index}`,
+          sentence.english_text,
+          targetVoiceId
+        );
         
         const audioResponse = await axios.get(ttsResponse.audioUri, { 
           responseType: 'arraybuffer' 
@@ -1126,7 +1156,7 @@ router.post('/:courseId/generate-audio', async (req: Request, res: Response) => 
           audioBase64
         });
 
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
       } catch (error: any) {
         console.error(`[课程音频生成] 句子生成失败:`, error.message);
@@ -1230,8 +1260,8 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
           lastError = err;
           // 检查是否为并发限制错误
           if (err.message?.includes('quota exceeded') || err.message?.includes('concurrency')) {
-            // 等待后重试，每次等待时间递增
-            const waitTime = 1000 * (attempt + 1); // 1s, 2s, 3s
+            // 等待后重试，每次等待时间递增（2s, 4s, 6s）
+            const waitTime = 2000 * (attempt + 1);
             console.log(`TTS并发限制，等待 ${waitTime}ms 后重试 (第${attempt + 1}次)`);
             await delay(waitTime);
           } else {
@@ -1295,6 +1325,9 @@ router.post('/lessons/:lessonId/generate-audio', async (req: Request, res: Respo
           });
           
           console.log(`生成音频: 课时${lessonId}, 句子${sentence.sentence_index}, 音色${voiceName}`);
+          
+          // 每个句子生成后等待500ms，避免TTS并发限制
+          await delay(500);
           
         } catch (err: any) {
           failedCount++;
