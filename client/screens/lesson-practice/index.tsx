@@ -759,18 +759,6 @@ export default function LessonPracticeScreen() {
             <ThemedText variant="h4" color={theme.textPrimary} style={styles.sectionTitle}>
               选择音色
             </ThemedText>
-            <TouchableOpacity 
-              style={styles.generateAllButton}
-              onPress={() => {
-                setSelectedVoicesToGenerate(voices.map(v => v.id));
-                setShowGenerateModal(true);
-              }}
-            >
-              <FontAwesome6 name="wand-magic-sparkles" size={14} color={theme.buttonPrimaryText} />
-              <ThemedText variant="small" color={theme.buttonPrimaryText} style={{ marginLeft: 4 }}>
-                生成音频
-              </ThemedText>
-            </TouchableOpacity>
           </View>
           
           <View style={styles.voiceList}>
