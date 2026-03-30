@@ -857,10 +857,15 @@ router.get('/lessons/:lessonId', async (req: Request, res: Response) => {
         let availableVoices: string[] = [];
         
         if (targetAudio) {
-          audioUrl = await storage.generatePresignedUrl({ 
-            key: targetAudio.audio_url, 
-            expireTime: 86400 
-          });
+          // 如果是本地存储标记，直接返回标记让前端知道音频已生成
+          if (targetAudio.audio_url === 'local') {
+            audioUrl = 'local';
+          } else {
+            audioUrl = await storage.generatePresignedUrl({ 
+              key: targetAudio.audio_url, 
+              expireTime: 86400 
+            });
+          }
           duration = targetAudio.duration;
           availableVoices = audios.map(a => a.voice_id);
         }
