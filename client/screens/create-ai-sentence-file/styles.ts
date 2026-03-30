@@ -165,6 +165,11 @@ export const createStyles = (theme: Theme) => {
     existingCourseItemLast: {
       borderBottomWidth: 0,
     },
+    courseNumberBadge: {
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: 2,
+      borderRadius: BorderRadius.sm,
+    },
     // 冲突警告
     conflictWarning: {
       flexDirection: 'row',

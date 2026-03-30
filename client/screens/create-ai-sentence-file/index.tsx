@@ -435,9 +435,16 @@ export default function CreateAISentenceFileScreen() {
                           index === Math.min(existingCourses.length - 1, 4) && styles.existingCourseItemLast
                         ]}
                       >
-                        <ThemedText variant="tiny" color={theme.textSecondary}>
-                          {course.book_number}. {course.title}
-                        </ThemedText>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                          <View style={[styles.courseNumberBadge, { backgroundColor: theme.primary + '20' }]}>
+                            <ThemedText variant="tiny" color={theme.primary} style={{ fontWeight: '600' }}>
+                              #{course.book_number}
+                            </ThemedText>
+                          </View>
+                          <ThemedText variant="small" color={theme.textSecondary} style={{ marginLeft: 8 }} numberOfLines={1}>
+                            {course.title}
+                          </ThemedText>
+                        </View>
                         <ThemedText variant="tiny" color={theme.textMuted}>
                           {course.total_lessons || 0}课
                         </ThemedText>
