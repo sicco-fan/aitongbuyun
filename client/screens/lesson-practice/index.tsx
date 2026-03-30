@@ -344,7 +344,7 @@ export default function LessonPracticeScreen() {
         );
         
         if (status.cached > 0) {
-          Alert.alert('下载完成', `已缓存 ${status.cached}/${status.total} 个音频`);
+          Alert.alert('下载完成', `本地可用 ${status.cached}/${status.total} 个音频`);
         } else {
           Alert.alert('下载失败', '请检查网络连接后重试');
         }
@@ -821,7 +821,7 @@ export default function LessonPracticeScreen() {
                           <View style={styles.cachedBadge}>
                             <FontAwesome6 name="check-circle" size={12} color={theme.success} />
                             <ThemedText variant="caption" color={theme.success} style={{ marginLeft: 4 }}>
-                              已缓存
+                              本地可用
                             </ThemedText>
                           </View>
                         ) : isPartiallyCached ? (
