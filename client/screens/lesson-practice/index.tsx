@@ -681,11 +681,16 @@ export default function LessonPracticeScreen() {
     }
   };
 
-  // 检查是否有音频（后端数据库 或 本地缓存）
-  // Web 端：始终使用在线 TTS，不需要缓存
+  // 检查是否有音频
+  // 所有平台都支持在线 TTS，有句子就能学
+  // 本地缓存是可选的优化（离线可用、播放更快）
   const hasAudioFromDb = sentences.some(s => s.audio_url);
   const hasLocalCache = voiceCacheStatuses.some(s => s.cached > 0);
-  const hasAudio = Platform.OS === 'web' ? sentences.length > 0 : (hasAudioFromDb || hasLocalCache);
+  const hasSentences = sentences.length > 0;
+  // 有句子就可以开始学习（在线TTS），有缓存更好
+  const hasAudio = hasSentences;
+  // 是否有本地缓存（用于显示提示）
+  const hasLocalAudio = hasAudioFromDb || hasLocalCache;
   const selectedVoiceStatus = voiceCacheStatuses.find(s => s.voiceId === selectedVoice);
   const allDownloaded = voiceCacheStatuses.length > 0 && 
     voiceCacheStatuses.filter(s => s.hasAudio).every(s => s.cached === s.total && s.total > 0);
@@ -738,14 +743,14 @@ export default function LessonPracticeScreen() {
               </TouchableOpacity>
             </View>
             {/* 快速学习入口 */}
-            {hasAudio && (
+            {hasSentences && (
               <TouchableOpacity
                 style={styles.quickStartButton}
                 onPress={handleStartPractice}
               >
                 <FontAwesome6 name="headphones" size={14} color={theme.buttonPrimaryText} />
                 <ThemedText variant="smallMedium" color={theme.buttonPrimaryText} style={{ marginLeft: 4 }}>
-                  开始学习
+                  {hasLocalAudio ? '开始学习' : '在线学习'}
                 </ThemedText>
               </TouchableOpacity>
             )}
@@ -896,11 +901,11 @@ export default function LessonPracticeScreen() {
             </ThemedText>
           </View>
           <View style={styles.statItem}>
-            <ThemedText variant="h3" color={hasAudio ? theme.success : theme.textMuted} style={styles.statValue}>
-              {hasAudio ? '✓' : '○'}
+            <ThemedText variant="h3" color={hasLocalAudio ? theme.success : theme.primary} style={styles.statValue}>
+              {hasLocalAudio ? '✓' : '☁'}
             </ThemedText>
             <ThemedText variant="caption" color={theme.textMuted} style={styles.statLabel}>
-              可学习
+              {hasLocalAudio ? '本地可用' : '在线学习'}
             </ThemedText>
           </View>
         </View>
@@ -944,7 +949,9 @@ export default function LessonPracticeScreen() {
         >
           <FontAwesome6 name="headphones" size={18} color={theme.buttonPrimaryText} style={{ marginRight: 8 }} />
           <ThemedText variant="body" color={theme.buttonPrimaryText} style={styles.startButtonText}>
-            {hasAudio ? '开始听写练习' : '请先生成音频'}
+            {hasAudio 
+              ? (hasLocalAudio ? '开始听写练习' : '在线学习 (无需下载)') 
+              : '暂无内容'}
           </ThemedText>
         </TouchableOpacity>
       </ScrollView>
