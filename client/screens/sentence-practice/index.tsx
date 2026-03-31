@@ -2320,6 +2320,7 @@ export default function SentencePracticeScreen() {
   const sentenceStartedWithVoiceRef = useRef(false); // 当前句子是否以语音模式开始
   const sentenceHadTypingRef = useRef(false); // 当前句子是否有过打字输入
   const sentenceHadVoiceErrorRef = useRef(false); // 当前句子是否有过语音识别错误
+  const sentenceUsedHintRef = useRef(false); // 当前句子是否使用过提示
   const wasPlayingBeforePanelRef = useRef(false); // 打开面板前是否在播放
   const previewSoundRef = useRef<Audio.Sound | null>(null); // 预览音频播放器
   
@@ -2548,6 +2549,7 @@ export default function SentencePracticeScreen() {
         }
         
         setSentences(loadedSentences);
+        statsRef.current.totalSentences = loadedSentences.length; // 记录总句子数
         
         // 如果有传入指定的句子索引，直接跳转
         if (params.sentenceIndex !== undefined && params.sentenceIndex < loadedSentences.length) {
@@ -2573,9 +2575,8 @@ export default function SentencePracticeScreen() {
               
               if (progressData.success && progressData.progress) {
                 const savedIndex = progressData.progress.lastSentenceIndex;
-                // 如果有进度且不是第一句，且不是最后一句（课程未学完），才询问是否继续
-                // 如果学到了最后一句（savedIndex === loadedSentences.length - 1），说明课程已学完，直接从头开始
-                if (savedIndex > 0 && savedIndex < loadedSentences.length - 1) {
+                // 只要有进度（savedIndex >= 0），就询问是否继续
+                if (savedIndex >= 0 && savedIndex < loadedSentences.length) {
                   setResumingFromProgress(true);
                   Alert.alert(
                     '继续学习',
@@ -2600,7 +2601,7 @@ export default function SentencePracticeScreen() {
                     ]
                   );
                 } else {
-                  // 课程已学完或没有有效进度，从头开始
+                  // 进度超出范围，从头开始
                   initialIndexRef.current = 0;
                 }
               } else {
@@ -3482,6 +3483,7 @@ export default function SentencePracticeScreen() {
     sentenceStartedWithVoiceRef.current = false;
     sentenceHadTypingRef.current = false;
     sentenceHadVoiceErrorRef.current = false;
+    sentenceUsedHintRef.current = false;
     lastRecordingUriRef.current = null;
 
     const tokens = extractWords(currentSentence.text);
@@ -4614,6 +4616,9 @@ export default function SentencePracticeScreen() {
       // 未完成的单词：同时显示提示（完整单词）
       setHintWordIndex(ws.index);
       
+      // 标记使用了提示
+      sentenceUsedHintRef.current = true;
+      
       // 记录错题：用户查看提示说明不知道这个单词
       if (isAuthenticated && user?.id && fileId && currentSentence) {
         fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/error-words`, {
@@ -4673,8 +4678,15 @@ export default function SentencePracticeScreen() {
       // 记录用户活动（切换句子）
       recordActivity();
       
-      // 显示短情绪价值
-      showSentencePraise();
+      // 只有一遍过（没有打字错误、没有语音错误、没有使用提示）才显示情绪价值
+      const isFirstTry = !sentenceHadTypingRef.current && 
+                         !sentenceHadVoiceErrorRef.current && 
+                         !sentenceUsedHintRef.current;
+      if (isFirstTry) {
+        showSentencePraise();
+        // 记录首次正确
+        statsRef.current.firstTryCorrect += 1;
+      }
       
       stopPlayback();
       currentSentencePointsRef.current = 0; // 重置句子积分
@@ -4772,16 +4784,25 @@ export default function SentencePracticeScreen() {
     // 记录用户活动（语音输入）
     recordActivity();
 
-    // 方案A（自动匹配）：立即停止音频，让用户专注语音输入
-    if (voicePracticeModeRef.current === 'auto-match') {
-      // 先同步设置状态，阻止循环回调继续播放
-      setIsPlaying(false);
-      // 然后异步暂停音频
-      if (soundRef.current) {
-        soundRef.current.pauseAsync().catch(() => {});
+    // ===== 最高优先级：录音前彻底停止所有音频播放 =====
+    // 1. 先设置状态，阻止任何回调继续播放
+    setIsPlaying(false);
+    setIsLooping(false);
+    isLoopingRef.current = false;
+    
+    // 2. 停止并卸载当前音频（彻底停止，不是暂停）
+    if (soundRef.current) {
+      try {
+        await soundRef.current.stopAsync();
+        await soundRef.current.unloadAsync();
+      } catch (e) {
+        // 忽略停止错误
       }
-    } else if (voicePracticeModeRef.current === 'follow-along') {
-      // 方案B（跟随朗读）：显示友好的引导提示
+      soundRef.current = null;
+    }
+
+    // 方案B（跟随朗读）：显示友好的引导提示
+    if (voicePracticeModeRef.current === 'follow-along') {
       const remainingWords = wordStatusesRef.current
         .filter(ws => !ws.isPunctuation && !ws.revealed)
         .map(ws => ws.word);
@@ -4792,12 +4813,6 @@ export default function SentencePracticeScreen() {
         setVoiceSentenceSuggestion(`🎧 跟着念: ${displayWords}${moreCount}`);
         setShowVoiceResult(true);
       }
-      
-      if (isPlaying) {
-        await pauseAudio();
-      }
-    } else if (isPlaying) {
-      await pauseAudio();
     }
 
     try {
@@ -4835,7 +4850,7 @@ export default function SentencePracticeScreen() {
       console.error('开始录音失败:', error);
       Alert.alert('录音失败', '无法启动录音');
     }
-  }, [hasRecordingPermission, isPlaying, pauseAudio]);
+  }, [hasRecordingPermission, recordActivity]);
 
   // 停止语音输入并识别
   const stopRecordingAndRecognize = useCallback(async () => {
