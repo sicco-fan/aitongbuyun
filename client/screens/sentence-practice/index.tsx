@@ -2354,7 +2354,7 @@ export default function SentencePracticeScreen() {
   const sentencePraiseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const showSentencePraise = useCallback(() => {
-    const praises = ['✨ 漂亮！', '🎯 精准！', '⚡ 神速！', '🔥 帅气！', '💪 牛啊！', '🌟 完美！', '🚀 厉害！'];
+    const praises = ['✨ Perfect!', '🎯 Spot on!', '⚡ Lightning fast!', '🔥 Brilliant!', '💪 Amazing!', '🌟 Excellent!', '🚀 Fantastic!'];
     const randomPraise = praises[Math.floor(Math.random() * praises.length)];
     setSentencePraise(randomPraise);
     
