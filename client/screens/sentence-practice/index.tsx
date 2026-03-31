@@ -2582,6 +2582,30 @@ export default function SentencePracticeScreen() {
         isMountedRef.current = false;
         stopPlayback();
         
+        // 清理预览音频播放器
+        if (previewSoundRef.current) {
+          previewSoundRef.current.unloadAsync().catch(() => {});
+          previewSoundRef.current = null;
+        }
+        
+        // 清理录音对象
+        if (recordingRef.current) {
+          recordingRef.current.stopAndUnloadAsync().catch(() => {});
+          recordingRef.current = null;
+        }
+        
+        // 清理录音计时器
+        if (recordingTimerRef.current) {
+          clearTimeout(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+        
+        // 重置音频模式（释放录音资源）
+        Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+        }).catch(() => {});
+        
         // 使用 ref 获取最新值（避免闭包陷阱）
         const latestSentences = sentencesRef.current;
         const latestIndex = currentIndexRef.current;
@@ -3566,11 +3590,15 @@ export default function SentencePracticeScreen() {
   }, [wordStatuses, currentSentence, savePerfectRecording]);
 
   // 关闭音频源选择面板
-  const closeAudioSourcePanel = useCallback(() => {
+  const closeAudioSourcePanel = useCallback(async () => {
     setShowAudioSourcePanel(false);
     // 停止预览播放
     if (previewSoundRef.current) {
-      previewSoundRef.current.unloadAsync();
+      try {
+        await previewSoundRef.current.unloadAsync();
+      } catch (e) {
+        // 忽略清理错误
+      }
       previewSoundRef.current = null;
     }
     // 恢复循环播放
@@ -3584,21 +3612,34 @@ export default function SentencePracticeScreen() {
     try {
       // 停止之前的预览播放
       if (previewSoundRef.current) {
-        await previewSoundRef.current.unloadAsync();
+        try {
+          await previewSoundRef.current.unloadAsync();
+        } catch (e) {
+          // 忽略清理错误
+        }
+        previewSoundRef.current = null;
       }
+      
       // 播放新的录音
       const { sound } = await Audio.Sound.createAsync({ uri: audioUrl });
       previewSoundRef.current = sound;
-      await sound.playAsync();
-      // 播放完成后自动释放
+      
+      // 设置播放完成后的清理回调（必须在 playAsync 之前设置）
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
-          sound.unloadAsync();
+          sound.unloadAsync().catch(() => {});
           previewSoundRef.current = null;
         }
       });
+      
+      await sound.playAsync();
     } catch (error) {
       console.error('播放预览音频失败:', error);
+      // 播放失败时清理资源
+      if (previewSoundRef.current) {
+        previewSoundRef.current.unloadAsync().catch(() => {});
+        previewSoundRef.current = null;
+      }
     }
   }, []);
 
@@ -4405,21 +4446,28 @@ export default function SentencePracticeScreen() {
 
   // 播放成功音效（使用简短的在线音效）
   const playSuccessSound = useCallback(async () => {
+    let sound: Audio.Sound | null = null;
     try {
       // 使用一个简短的成功音效
-      const { sound } = await Audio.Sound.createAsync(
+      const result = await Audio.Sound.createAsync(
         { uri: 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3' },
         { volume: 0.5 }
       );
-      await sound.playAsync();
-      // 播放完成后自动释放
+      sound = result.sound;
+      
+      // 设置播放完成后的清理回调（必须在 playAsync 之前设置）
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
-          sound.unloadAsync();
+          sound?.unloadAsync().catch(() => {});
         }
       });
+      
+      await sound.playAsync();
     } catch (error) {
-      // 音效播放失败不影响主流程
+      // 音效播放失败不影响主流程，但要释放资源
+      if (sound) {
+        sound.unloadAsync().catch(() => {});
+      }
       console.log('[音效] 播放成功音效失败（可忽略）:', error);
     }
   }, []);
