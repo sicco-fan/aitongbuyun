@@ -1726,7 +1726,7 @@ const FireworkShow: React.FC = () => {
   );
 };
 
-// 课程完成弹窗组件
+// 课程完成弹窗组件 - 极致情绪价值版本
 interface CompletionModalProps {
   visible: boolean;
   duration: number;
@@ -1735,7 +1735,89 @@ interface CompletionModalProps {
   nextLessonTitle?: string; // 下一课标题
   onClose: () => void;
   theme: any;
+  // 新增：统计数据
+  typingAccuracy?: number;    // 打字准确率 0-100
+  voicePassRate?: number;     // 语音通过率 0-100
+  hintUsedCount?: number;     // 使用提示次数
+  skipCount?: number;         // 跳过次数
+  firstTryRate?: number;      // 首次正确率 0-100
 }
+
+// 彩虹屁文案库 - 按维度分类
+const RAINBOW_PRAISE = {
+  // 速度相关
+  speed: {
+    ultra: [
+      { emoji: '⚡', title: '闪电侠本侠！', subtitle: '这速度，键盘都要着火了！', badge: '极速传说' },
+      { emoji: '🚀', title: '开挂了吧？！', subtitle: '这效率，AI都要向你学习！', badge: '速度之王' },
+    ],
+    fast: [
+      { emoji: '💫', title: '效率爆表！', subtitle: '行云流水，一气呵成！', badge: '效率达人' },
+      { emoji: '🔥', title: '火力全开！', subtitle: '这节奏，停不下来！', badge: '效率之星' },
+    ],
+    normal: [
+      { emoji: '🌊', title: '稳扎稳打！', subtitle: '节奏感满分，继续保持！', badge: '稳中求进' },
+    ],
+    slow: [
+      { emoji: '🐢', title: '慢工出细活！', subtitle: '认真学习的样子最迷人！', badge: '精益求精' },
+    ],
+  },
+  // 准确率相关
+  accuracy: {
+    perfect: [
+      { emoji: '👑', title: '完美无瑕！', subtitle: '零失误！这才是真正的高手！', badge: '完美主义者' },
+      { emoji: '💎', title: '钻石品质！', subtitle: '每个字符都精准无误！', badge: '精准大师' },
+    ],
+    high: [
+      { emoji: '🎯', title: '神枪手！', subtitle: '精准度堪比职业选手！', badge: '精准达人' },
+      { emoji: '🎪', title: '稳如泰山！', subtitle: '这准确率，令人佩服！', badge: '准确之星' },
+    ],
+    medium: [
+      { emoji: '📈', title: '稳步提升！', subtitle: '每个错误都是进步的阶梯！', badge: '进步之星' },
+    ],
+  },
+  // 语音相关
+  voice: {
+    perfect: [
+      { emoji: '🎤', title: '发音天花板！', subtitle: '你的口语，可以当教材了！', badge: '口语大师' },
+      { emoji: '🌟', title: '声临其境！', subtitle: '这发音，可以直接出道了！', badge: '发音之星' },
+    ],
+    great: [
+      { emoji: '🎵', title: '语音小天才！', subtitle: '口语进步神速！', badge: '口语达人' },
+    ],
+    good: [
+      { emoji: '💪', title: '语音渐入佳境！', subtitle: '继续练习，你就是下一个口语大神！', badge: '口语新秀' },
+    ],
+  },
+  // 毅力相关
+  persistence: {
+    amazing: [
+      { emoji: '🏔️', title: '毅力之王！', subtitle: '困难面前绝不退缩！', badge: '钢铁意志' },
+      { emoji: '🦁', title: '勇者无畏！', subtitle: '这才是真正的学习精神！', badge: '勇者之证' },
+    ],
+    great: [
+      { emoji: '🌈', title: '坚持就是胜利！', subtitle: '这种精神，成功只是时间问题！', badge: '毅力达人' },
+    ],
+  },
+  // 综合表扬
+  overall: [
+    { emoji: '🏆', title: '今日之星！', subtitle: '你的努力，全世界都看在眼里！', badge: '全能学霸' },
+    { emoji: '🎉', title: '出色完成！', subtitle: '每一分付出都会有回报！', badge: '学习楷模' },
+    { emoji: '👏', title: '掌声响起！', subtitle: '为你的坚持和努力点赞！', badge: '努力达人' },
+  ],
+  // 提示相关（少用提示）
+  noHint: [
+    { emoji: '🧠', title: '大脑超频！', subtitle: '全程无提示，这记忆力绝了！', badge: '记忆大师' },
+  ],
+  fewHints: [
+    { emoji: '💡', title: '独立思考！', subtitle: '善于独立解决问题！', badge: '思考达人' },
+  ],
+};
+
+// 获取随机彩虹屁
+const getRandomPraise = (list: { emoji: string; title: string; subtitle: string; badge: string }[]) => {
+  return list[Math.floor(Math.random() * list.length)];
+};
 
 const CompletionModal: React.FC<CompletionModalProps> = ({
   visible,
@@ -1745,40 +1827,142 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
   nextLessonTitle,
   onClose,
   theme,
+  typingAccuracy = 100,
+  voicePassRate = 0,
+  hintUsedCount = 0,
+  skipCount = 0,
+  firstTryRate = 100,
 }) => {
   const fadeAnim = useRef(new RNAnimated.Value(0)).current;
   const scaleAnim = useRef(new RNAnimated.Value(0.8)).current;
   const glowAnim = useRef(new RNAnimated.Value(0)).current;
+  const bounceAnim = useRef(new RNAnimated.Value(0)).current;
 
-  // 获取表扬文案 - 根据学习时间和句子数量
+  // 计算平均每句时间
   const avgTime = duration / Math.max(sentenceCount, 1);
-  const praise = useMemo(() => {
-    if (avgTime < 60) {
-      return {
-        emoji: '🚀',
-        title: '神速完成！',
-        subtitle: '效率超高，继续保持！',
-        highlight: '闪电般的速度',
-        badge: '速度之星'
-      };
-    } else if (avgTime < 180) {
-      return {
-        emoji: '💪',
-        title: '太棒了！',
-        subtitle: '稳扎稳打，学习效果好！',
-        highlight: '恰到好处的节奏',
-        badge: '学习达人'
-      };
+
+  // 生成多维度的彩虹屁
+  const praiseData = useMemo(() => {
+    const praises: Array<{ emoji: string; title: string; subtitle: string; badge: string }> = [];
+    const badges: string[] = [];
+    const highlights: string[] = [];
+
+    // 1. 速度维度
+    if (avgTime < 30) {
+      const p = getRandomPraise(RAINBOW_PRAISE.speed.ultra);
+      praises.push(p);
+      badges.push(p.badge);
+      highlights.push('⚡ 闪电速度');
+    } else if (avgTime < 60) {
+      const p = getRandomPraise(RAINBOW_PRAISE.speed.fast);
+      praises.push(p);
+      badges.push(p.badge);
+      highlights.push('🚀 高效学习');
+    } else if (avgTime < 120) {
+      const p = getRandomPraise(RAINBOW_PRAISE.speed.normal);
+      praises.push(p);
+      badges.push(p.badge);
     } else {
-      return {
-        emoji: '🌟',
-        title: '坚持不懈！',
-        subtitle: '这种学习精神最可贵！',
-        highlight: '专注且用心',
-        badge: '毅力之王'
-      };
+      const p = getRandomPraise(RAINBOW_PRAISE.speed.slow);
+      praises.push(p);
+      badges.push(p.badge);
+      highlights.push('🐢 精益求精');
     }
-  }, [avgTime]);
+
+    // 2. 准确率维度
+    if (typingAccuracy === 100) {
+      const p = getRandomPraise(RAINBOW_PRAISE.accuracy.perfect);
+      praises.push(p);
+      badges.push(p.badge);
+      highlights.push('💎 零失误');
+    } else if (typingAccuracy >= 95) {
+      const p = getRandomPraise(RAINBOW_PRAISE.accuracy.high);
+      praises.push(p);
+      badges.push(p.badge);
+      highlights.push('🎯 精准无误');
+    } else if (typingAccuracy >= 80) {
+      const p = getRandomPraise(RAINBOW_PRAISE.accuracy.medium);
+      praises.push(p);
+      badges.push(p.badge);
+    }
+
+    // 3. 语音维度（如果有语音识别）
+    if (voicePassRate > 0) {
+      if (voicePassRate >= 90) {
+        const p = getRandomPraise(RAINBOW_PRAISE.voice.perfect);
+        praises.push(p);
+        badges.push(p.badge);
+        highlights.push('🎤 发音完美');
+      } else if (voicePassRate >= 70) {
+        const p = getRandomPraise(RAINBOW_PRAISE.voice.great);
+        praises.push(p);
+        badges.push(p.badge);
+        highlights.push('🎵 口语进步');
+      } else if (voicePassRate >= 50) {
+        const p = getRandomPraise(RAINBOW_PRAISE.voice.good);
+        praises.push(p);
+        badges.push(p.badge);
+      }
+    }
+
+    // 4. 提示使用维度
+    if (hintUsedCount === 0 && sentenceCount >= 5) {
+      const p = getRandomPraise(RAINBOW_PRAISE.noHint);
+      praises.push(p);
+      badges.push(p.badge);
+      highlights.push('🧠 零提示');
+    } else if (hintUsedCount <= 2 && sentenceCount >= 5) {
+      const p = getRandomPraise(RAINBOW_PRAISE.fewHints);
+      praises.push(p);
+      badges.push(p.badge);
+    }
+
+    // 5. 毅力维度（句子多且坚持完成）
+    if (sentenceCount >= 15 && skipCount === 0) {
+      const p = getRandomPraise(RAINBOW_PRAISE.persistence.amazing);
+      praises.push(p);
+      badges.push(p.badge);
+      highlights.push('🏔️ 钢铁毅力');
+    } else if (sentenceCount >= 10 && skipCount <= 1) {
+      const p = getRandomPraise(RAINBOW_PRAISE.persistence.great);
+      praises.push(p);
+      badges.push(p.badge);
+    }
+
+    // 6. 首次正确率
+    if (firstTryRate >= 80 && sentenceCount >= 5) {
+      badges.push('一击即中');
+      highlights.push('🎯 首次正确率高');
+    }
+
+    // 确保至少有一条表扬
+    if (praises.length === 0) {
+      const p = getRandomPraise(RAINBOW_PRAISE.overall);
+      praises.push(p);
+      badges.push(p.badge);
+    }
+
+    // 主表扬（取第一条最重要的）
+    const mainPraise = praises[0];
+    
+    // 生成综合评语
+    let summaryMessage = '';
+    if (highlights.length >= 3) {
+      summaryMessage = `你是${highlights.slice(0, 2).join('、')}的全能学霸！`;
+    } else if (highlights.length >= 1) {
+      summaryMessage = `${highlights[0]}，继续保持！`;
+    } else {
+      summaryMessage = '每一次学习都是成长，继续加油！';
+    }
+
+    return {
+      mainPraise,
+      allPraises: praises,
+      badges: badges.slice(0, 4), // 最多显示4个徽章
+      highlights,
+      summaryMessage,
+    };
+  }, [avgTime, typingAccuracy, voicePassRate, hintUsedCount, skipCount, firstTryRate, sentenceCount]);
 
   // 格式化时长
   const formatDuration = (seconds: number) => {
@@ -1810,6 +1994,21 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
           tension: 100,
           useNativeDriver: true,
         }),
+        // 弹跳动画
+        RNAnimated.loop(
+          RNAnimated.sequence([
+            RNAnimated.timing(bounceAnim, {
+              toValue: 1,
+              duration: 600,
+              useNativeDriver: true,
+            }),
+            RNAnimated.timing(bounceAnim, {
+              toValue: 0,
+              duration: 600,
+              useNativeDriver: true,
+            }),
+          ])
+        ),
       ]).start();
 
       // 发光动画循环
@@ -1831,10 +2030,13 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
       fadeAnim.setValue(0);
       scaleAnim.setValue(0.8);
       glowAnim.setValue(0);
+      bounceAnim.setValue(0);
     }
-  }, [visible, fadeAnim, scaleAnim, glowAnim]);
+  }, [visible, fadeAnim, scaleAnim, glowAnim, bounceAnim]);
 
   if (!visible) return null;
+
+  const { mainPraise, badges, summaryMessage } = praiseData;
 
   return (
     <View style={completionStyles.completionOverlay}>
@@ -1855,69 +2057,102 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
           },
         ]}
       >
-        {/* 成就徽章 */}
-        <View style={[completionStyles.badgeContainer, { backgroundColor: theme.primary }]}>
+        {/* 成就徽章 - 弹跳效果 */}
+        <RNAnimated.View 
+          style={[
+            completionStyles.badgeContainer, 
+            { 
+              backgroundColor: theme.primary,
+              transform: [{
+                translateY: bounceAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, -8],
+                }),
+              }],
+            }
+          ]}
+        >
           <ThemedText variant="h1" color={theme.buttonPrimaryText}>
             🏆
           </ThemedText>
-        </View>
+        </RNAnimated.View>
 
-        {/* 标题 */}
+        {/* 主标题 */}
         <ThemedText variant="h2" color={theme.primary} style={completionStyles.completionTitle}>
           🎉 课程完成！
         </ThemedText>
 
-        {/* 表扬文案 */}
+        {/* 核心表扬文案 */}
         <View style={completionStyles.praiseContainer}>
-          <ThemedText variant="h3" color={theme.textPrimary}>
-            {praise.emoji} {praise.title}
+          <ThemedText variant="h2" color={theme.textPrimary} style={{ textAlign: 'center' }}>
+            {mainPraise.emoji} {mainPraise.title}
           </ThemedText>
-          <ThemedText variant="body" color={theme.textSecondary} style={{ marginTop: Spacing.sm }}>
-            {praise.subtitle}
+          <ThemedText variant="body" color={theme.textSecondary} style={{ marginTop: Spacing.sm, textAlign: 'center' }}>
+            {mainPraise.subtitle}
           </ThemedText>
         </View>
 
-        {/* 成就标签 */}
-        <RNAnimated.View 
-          style={[
-            completionStyles.achievementBadge, 
-            { 
-              backgroundColor: theme.accent + '20',
-              shadowColor: theme.accent,
-              shadowOpacity: glowAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.3, 0.6],
-              }),
-            }
-          ]}
-        >
-          <ThemedText variant="smallMedium" color={theme.accent}>
-            🌟 {praise.badge}
-          </ThemedText>
-        </RNAnimated.View>
+        {/* 成就徽章群 */}
+        <View style={completionStyles.badgesRow}>
+          {badges.map((badge, index) => (
+            <RNAnimated.View 
+              key={index}
+              style={[
+                completionStyles.miniBadge, 
+                { 
+                  backgroundColor: theme.accent + '20',
+                  shadowColor: theme.accent,
+                  shadowOpacity: 0.3,
+                }
+              ]}
+            >
+              <ThemedText variant="tiny" color={theme.accent}>
+                ⭐ {badge}
+              </ThemedText>
+            </RNAnimated.View>
+          ))}
+        </View>
 
-        {/* 数据统计 */}
+        {/* 数据统计卡片 */}
         <View style={completionStyles.statsContainer}>
           <View style={[completionStyles.statItem, { backgroundColor: theme.backgroundTertiary }]}>
-            <FontAwesome6 name="clock" size={28} color={theme.primary} />
-            <ThemedText variant="h2" color={theme.textPrimary} style={{ marginTop: Spacing.sm }}>
+            <FontAwesome6 name="clock" size={24} color={theme.primary} />
+            <ThemedText variant="h3" color={theme.textPrimary} style={{ marginTop: Spacing.xs }}>
               {formatDuration(duration)}
             </ThemedText>
             <ThemedText variant="caption" color={theme.textMuted}>学习时长</ThemedText>
           </View>
           <View style={[completionStyles.statItem, { backgroundColor: theme.backgroundTertiary }]}>
-            <FontAwesome6 name="check-circle" size={28} color={theme.success} />
-            <ThemedText variant="h2" color={theme.textPrimary} style={{ marginTop: Spacing.sm }}>
+            <FontAwesome6 name="check-circle" size={24} color={theme.success} />
+            <ThemedText variant="h3" color={theme.textPrimary} style={{ marginTop: Spacing.xs }}>
               {sentenceCount}
             </ThemedText>
-            <ThemedText variant="caption" color={theme.textMuted}>完成句子</ThemedText>
+            <ThemedText variant="caption" color={theme.textMuted}>句子</ThemedText>
           </View>
+          {typingAccuracy < 100 && (
+            <View style={[completionStyles.statItem, { backgroundColor: theme.backgroundTertiary }]}>
+              <FontAwesome6 name="bullseye" size={24} color={theme.accent} />
+              <ThemedText variant="h3" color={theme.textPrimary} style={{ marginTop: Spacing.xs }}>
+                {typingAccuracy}%
+              </ThemedText>
+              <ThemedText variant="caption" color={theme.textMuted}>准确率</ThemedText>
+            </View>
+          )}
+          {voicePassRate > 0 && (
+            <View style={[completionStyles.statItem, { backgroundColor: theme.backgroundTertiary }]}>
+              <FontAwesome6 name="microphone" size={24} color="#E91E63" />
+              <ThemedText variant="h3" color={theme.textPrimary} style={{ marginTop: Spacing.xs }}>
+                {voicePassRate}%
+              </ThemedText>
+              <ThemedText variant="caption" color={theme.textMuted}>语音</ThemedText>
+            </View>
+          )}
         </View>
 
-        {/* 亮点标签 */}
-        <View style={[completionStyles.highlightBadge, { backgroundColor: theme.primary + '15' }]}>
-          <ThemedText variant="smallMedium" color={theme.primary}>
-            ✨ {praise.highlight}
+        {/* 综合评语 */}
+        <View style={[completionStyles.summaryBox, { backgroundColor: theme.primary + '10', borderLeftColor: theme.primary }]}>
+          <ThemedText variant="body" color={theme.textPrimary} style={{ textAlign: 'center' }}>
+            ✨ {summaryMessage}
           </ThemedText>
         </View>
 
@@ -1931,7 +2166,7 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
           </View>
         )}
 
-        {/* 确认按钮 - 发光效果 */}
+        {/* 确认按钮 */}
         <TouchableOpacity
           style={[
             completionStyles.completionButton, 
@@ -1945,13 +2180,13 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
           activeOpacity={0.9}
         >
           <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-            {hasNextLesson ? '🚀 继续下一课' : '✅ 完成'}
+            {hasNextLesson ? '🚀 继续挑战下一课' : '✨ 完成，去休息吧'}
           </ThemedText>
         </TouchableOpacity>
         
-        {/* 鼓励语 */}
+        {/* 结尾鼓励 */}
         <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: Spacing.md, textAlign: 'center' }}>
-          {hasNextLesson ? '再接再厉，继续挑战！' : '今日学习任务完成，休息一下吧~'}
+          {hasNextLesson ? '💪 你今天的状态超棒，继续保持！' : '🌟 今天的努力，明天的你一定会感谢自己！'}
         </ThemedText>
       </RNAnimated.View>
     </View>
@@ -2018,6 +2253,28 @@ const completionStyles = StyleSheet.create({
   praiseContainer: {
     alignItems: 'center',
     marginTop: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  badgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.lg,
+  },
+  miniBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: 12,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  summaryBox: {
+    width: '100%',
+    padding: Spacing.lg,
+    borderRadius: 12,
+    borderLeftWidth: 4,
     marginBottom: Spacing.lg,
   },
   achievementBadge: {
@@ -2141,9 +2398,28 @@ export default function SentencePracticeScreen() {
   // 句子积分累积（仅后台记录，不显示弹窗）
   const currentSentencePointsRef = useRef(0);
 
+  // 学习统计数据收集（用于课程完成时生成彩虹屁）
+  const statsRef = useRef({
+    totalKeystrokes: 0,        // 总按键次数
+    correctKeystrokes: 0,      // 正确按键次数
+    voiceAttempts: 0,          // 语音识别尝试次数
+    voiceSuccesses: 0,         // 语音识别成功次数（点亮单词）
+    hintUsedCount: 0,          // 使用提示次数
+    skipCount: 0,              // 跳过次数
+    firstTryCorrect: 0,        // 首次尝试就正确的句子数
+    totalSentences: 0,         // 总句子数
+  });
+
   // 课程完成弹窗状态
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [completionDuration, setCompletionDuration] = useState(0); // 学习时长（秒）
+  const [completionStats, setCompletionStats] = useState({  // 完成时的统计数据
+    typingAccuracy: 0,
+    voicePassRate: 0,
+    hintUsedCount: 0,
+    skipCount: 0,
+    firstTryRate: 0,
+  });
 
   // 学习时长计时器 - 带空闲超时检测
   // 逻辑：
@@ -4118,6 +4394,11 @@ export default function SentencePracticeScreen() {
     // 【调试日志】输出匹配结果
     console.log('[长文本匹配] 匹配的索引:', matchedIndices);
     
+    // 记录语音识别成功次数（匹配到的单词数）
+    if (matchedIndices.length > 0) {
+      statsRef.current.voiceSuccesses += matchedIndices.length;
+    }
+    
     // 标记所有匹配成功的单词
     if (matchedIndices.length > 0) {
       updateWordStatusesWithRef(prev => prev.map(ws => {
@@ -4575,6 +4856,27 @@ export default function SentencePracticeScreen() {
       stopPlayback();
       const duration = Math.round(calculateEffectiveDuration());
       setCompletionDuration(duration);
+      
+      // 计算统计数据
+      const stats = statsRef.current;
+      const typingAccuracy = stats.totalKeystrokes > 0 
+        ? Math.round((stats.correctKeystrokes / stats.totalKeystrokes) * 100) 
+        : 100;
+      const voicePassRate = stats.voiceAttempts > 0 
+        ? Math.round((stats.voiceSuccesses / stats.voiceAttempts) * 100) 
+        : 0;
+      const firstTryRate = stats.totalSentences > 0 
+        ? Math.round((stats.firstTryCorrect / stats.totalSentences) * 100) 
+        : 0;
+      
+      setCompletionStats({
+        typingAccuracy,
+        voicePassRate,
+        hintUsedCount: stats.hintUsedCount,
+        skipCount: stats.skipCount,
+        firstTryRate,
+      });
+      
       setShowCompletionModal(true);
       
       // 播放成功音效
@@ -4711,6 +5013,9 @@ export default function SentencePracticeScreen() {
     if (!recordingRef.current) return;
 
     setIsRecording(false);
+    
+    // 记录语音识别尝试次数
+    statsRef.current.voiceAttempts += 1;
 
     try {
       await recordingRef.current.stopAndUnloadAsync();
@@ -5923,6 +6228,11 @@ export default function SentencePracticeScreen() {
         nextLessonTitle={nextLessonTitle}
         onClose={handleCompletionClose}
         theme={theme}
+        typingAccuracy={completionStats.typingAccuracy}
+        voicePassRate={completionStats.voicePassRate}
+        hintUsedCount={completionStats.hintUsedCount}
+        skipCount={completionStats.skipCount}
+        firstTryRate={completionStats.firstTryRate}
       />
     </Screen>
   );
