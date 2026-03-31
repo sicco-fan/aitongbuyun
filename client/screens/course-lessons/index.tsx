@@ -137,6 +137,7 @@ export default function CourseLessonsScreen() {
             if (sentencesCount > 0 && isLocalStorageSupported()) {
               // 检查每个音色的缓存状态
               const voiceStatus = await checkLessonAudioStatusByVoice(courseId, l.id, sentencesCount);
+              console.log(`[缓存检查] 课时${l.id} (${l.title}): ${voiceStatus.completedVoices}/${voiceStatus.totalVoices} 音色完成, 详情:`, voiceStatus.voiceStatus?.map(v => `${v.voiceName}:${v.cached}/${v.total}`).join(', '));
               return {
                 ...l,
                 // 兼容旧逻辑：cached 表示有任意音色的句子数
@@ -150,6 +151,7 @@ export default function CourseLessonsScreen() {
                 isComplete: voiceStatus.isComplete,
               };
             }
+            console.log(`[缓存检查] 课时${l.id} (${l.title}): 跳过检查 (sentencesCount=${sentencesCount}, isLocalStorageSupported=${isLocalStorageSupported()})`);
             return { ...l, cached: 0, total: 0, completedVoices: 0, totalVoices: 4, isComplete: false };
           })
         );

@@ -32,9 +32,19 @@ async function ensureAudioDir(): Promise<void> {
   if (!isLocalStorageSupported()) return;
   
   const AUDIO_DIR = getAudioDir();
-  const dirInfo = await FS.getInfoAsync(AUDIO_DIR);
-  if (!dirInfo.exists) {
-    await FS.makeDirectoryAsync(AUDIO_DIR, { intermediates: true });
+  console.log(`[本地存储] 检查音频目录: ${AUDIO_DIR}`);
+  
+  try {
+    const dirInfo = await FS.getInfoAsync(AUDIO_DIR);
+    if (!dirInfo.exists) {
+      console.log(`[本地存储] 创建音频目录: ${AUDIO_DIR}`);
+      await FS.makeDirectoryAsync(AUDIO_DIR, { intermediates: true });
+    } else {
+      console.log(`[本地存储] 音频目录已存在`);
+    }
+  } catch (error) {
+    console.error(`[本地存储] 检查/创建音频目录失败:`, error);
+    throw error;
   }
 }
 
@@ -50,18 +60,33 @@ export async function saveAudioToLocal(key: string, base64Data: string): Promise
     return '';
   }
   
+  console.log(`[本地存储] 开始保存音频, key: ${key}, 数据大小: ${base64Data.length} 字符`);
+  
   await ensureAudioDir();
   
   const AUDIO_DIR = getAudioDir();
   const fileName = `${key}.mp3`;
   const filePath = `${AUDIO_DIR}${fileName}`;
   
-  await FS.writeAsStringAsync(filePath, base64Data, {
-    encoding: 'base64',
-  });
-  
-  console.log(`[本地存储] 音频已保存: ${filePath}`);
-  return filePath;
+  try {
+    await FS.writeAsStringAsync(filePath, base64Data, {
+      encoding: 'base64',
+    });
+    
+    // 验证保存是否成功
+    const fileInfo = await FS.getInfoAsync(filePath);
+    if (fileInfo.exists) {
+      const size = 'size' in fileInfo ? fileInfo.size : '未知';
+      console.log(`[本地存储] 音频保存成功: ${filePath}, 文件大小: ${size}`);
+    } else {
+      console.error(`[本地存储] 音频保存失败: 文件不存在`);
+    }
+    
+    return filePath;
+  } catch (error) {
+    console.error(`[本地存储] 保存音频失败: ${filePath}`, error);
+    throw error;
+  }
 }
 
 /**
@@ -71,6 +96,7 @@ export async function saveAudioToLocal(key: string, base64Data: string): Promise
  */
 export async function getAudioFromLocal(key: string): Promise<string | null> {
   if (!isLocalStorageSupported()) {
+    console.log(`[本地存储] Web端不支持本地存储，key: ${key}`);
     return null;
   }
   
@@ -81,10 +107,12 @@ export async function getAudioFromLocal(key: string): Promise<string | null> {
   try {
     const fileInfo = await FS.getInfoAsync(filePath);
     if (fileInfo.exists) {
+      console.log(`[本地存储] 找到音频: ${filePath}`);
       return filePath;
     }
+    console.log(`[本地存储] 音频不存在: ${filePath}`);
   } catch (e) {
-    // 忽略错误
+    console.log(`[本地存储] 检查音频失败: ${filePath}`, e);
   }
   
   return null;
@@ -105,8 +133,11 @@ export async function hasAudioLocal(key: string): Promise<boolean> {
   
   try {
     const fileInfo = await FS.getInfoAsync(filePath);
-    return fileInfo.exists;
+    const exists = fileInfo.exists;
+    console.log(`[本地存储] 检查文件: ${filePath}, 存在: ${exists}`);
+    return exists;
   } catch (e) {
+    console.log(`[本地存储] 检查文件失败: ${filePath}`, e);
     return false;
   }
 }
@@ -309,6 +340,23 @@ export async function checkLessonAudioStatusByVoice(
   totalVoices: number;     // 总音色数量
   isComplete: boolean;     // 是否全部音色都已下载完成
 }> {
+  console.log(`[checkLessonAudioStatusByVoice] 开始检查 courseId=${courseId}, lessonId=${lessonId}, sentenceCount=${sentenceCount}`);
+  
+  if (!isLocalStorageSupported()) {
+    console.log(`[checkLessonAudioStatusByVoice] 本地存储不支持，返回空状态`);
+    return {
+      voiceStatus: AI_VOICE_IDS.map(voiceId => ({
+        voiceId,
+        voiceName: voiceId,
+        cached: 0,
+        total: sentenceCount,
+      })),
+      completedVoices: 0,
+      totalVoices: AI_VOICE_IDS.length,
+      isComplete: false,
+    };
+  }
+  
   const voiceNames: Record<string, string> = {
     'zh_female_vv_uranus_bigtts': '薇薇',
     'zh_female_xiaohe_uranus_bigtts': '晓荷',
@@ -328,6 +376,8 @@ export async function checkLessonAudioStatusByVoice(
       }
     }
     
+    console.log(`[checkLessonAudioStatusByVoice] 音色 ${voiceId}: ${cached}/${sentenceCount} 缓存`);
+    
     voiceStatus.push({
       voiceId,
       voiceName: voiceNames[voiceId] || voiceId,
@@ -340,12 +390,15 @@ export async function checkLessonAudioStatusByVoice(
     }
   }
   
-  return {
+  const result = {
     voiceStatus,
     completedVoices,
     totalVoices: AI_VOICE_IDS.length,
     isComplete: completedVoices === AI_VOICE_IDS.length,
   };
+  
+  console.log(`[checkLessonAudioStatusByVoice] 结果: ${completedVoices}/${AI_VOICE_IDS.length} 音色完成`);
+  return result;
 }
 
 /**
