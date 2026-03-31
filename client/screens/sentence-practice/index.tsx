@@ -2379,27 +2379,64 @@ export default function SentencePracticeScreen() {
   }, []);
   
   const showSentencePraise = useCallback((wordCount: number) => {
-    // 长句子（10个单词以上）给更高的情绪价值
+    // 长句子（10个单词以上）给更高的情绪价值 - 约60种
     const longSentencePraises = [
-      '🏆 Masterful!', 
-      '🌟 Outstanding!', 
-      '💎 Phenomenal!', 
-      '🚀 Incredible!', 
-      '👑 Legendary!',
-      '⭐ Superb!',
-      '🎯 Flawless!',
-      '💫 Breathtaking!'
+      // 🏆 顶级赞美
+      '🏆 Masterful!', '🏆 Triumphant!', '🏆 Victorious!', '🏆 Supreme!',
+      // 🌟 卓越赞美
+      '🌟 Outstanding!', '🌟 Exceptional!', '🌟 Extraordinary!', '🌟 Remarkable!',
+      // 💎 珍贵赞美
+      '💎 Phenomenal!', '💎 Magnificent!', '💎 Splendid!', '💎 Glorious!',
+      // 🚀 动力赞美
+      '🚀 Incredible!', '🚀 Sensational!', '🚀 Stupendous!', '🚀 Prodigious!',
+      // 👑 皇家赞美
+      '👑 Legendary!', '👑 Majestic!', '👑 Imperial!', '👑 Regal!',
+      // ⭐ 星级赞美
+      '⭐ Superb!', '⭐ Stellar!', '⭐ Dazzling!', '⭐ Radiant!',
+      // 🎯 精准赞美
+      '🎯 Flawless!', '🎯 Impeccable!', '🎯 Exquisite!', '🎯 Pristine!',
+      // 💫 梦幻赞美
+      '💫 Breathtaking!', '💫 Mesmerizing!', '💫 Enchanting!', '💫 Magical!',
+      // 🔥 热情赞美
+      '🔥 Spectacular!', '🔥 Dazzling!', '🔥 Electrifying!', '🔥 Sizzling!',
+      // 💪 力量赞美
+      '💪 Dominating!', '💪 Unstoppable!', '💪 Unbeatable!', '💪 Formidable!',
+      // 🎪 表演赞美
+      '🎪 Showstopping!', '🎪 Jaw-dropping!', '🎪 Mind-blowing!', '🎪 Earth-shattering!',
+      // 🌈 彩虹赞美
+      '🌈 Brilliant!', '🌈 Shining!', '🌈 Gleaming!', '🌈 Sparkling!',
+      // ⚡ 闪电赞美
+      '⚡ Thunderous!', '⚡ Explosive!', '⚡ Dynamic!', '⚡ Powerful!',
     ];
     
-    // 普通句子的情绪价值
+    // 普通句子的情绪价值 - 约60种
     const normalPraises = [
-      '✨ Perfect!', 
-      '🎯 Spot on!', 
-      '⚡ Lightning fast!', 
-      '🔥 Brilliant!', 
-      '💪 Amazing!', 
-      '🌟 Excellent!', 
-      '🚀 Fantastic!'
+      // ✨ 完美系列
+      '✨ Perfect!', '✨ Great!', '✨ Nice!', '✨ Super!',
+      // 🎯 精准系列
+      '🎯 Spot on!', '🎯 Right on!', '🎯 Bullseye!', '🎯 Precise!',
+      // ⚡ 速度系列
+      '⚡ Lightning fast!', '⚡ Quick!', '⚡ Speedy!', '⚡ Rapid!',
+      // 🔥 热情系列
+      '🔥 Brilliant!', '🔥 Hot!', '🔥 On fire!', '🔥 Blazing!',
+      // 💪 力量系列
+      '💪 Amazing!', '💪 Strong!', '💪 Solid!', '💪 Powerful!',
+      // 🌟 星光系列
+      '🌟 Excellent!', '🌟 Wonderful!', '🌟 Marvelous!', '🌟 Terrific!',
+      // 🚀 动力系列
+      '🚀 Fantastic!', '🚀 Awesome!', '🚀 Cool!', '🚀 Great job!',
+      // 💯 满分系列
+      '💯 Top notch!', '💯 First class!', '💯 A-plus!', '💯 Gold star!',
+      // 🎉 庆祝系列
+      '🎉 Well done!', '🎉 Good job!', '🎉 Nice work!', '🎉 Great work!',
+      // 👏 鼓掌系列
+      '👏 Impressive!', '👏 Admirable!', '👏 Praiseworthy!', '👏 Commendable!',
+      // 🌺 花朵系列
+      '🌺 Beautiful!', '🌺 Lovely!', '🌺 Gorgeous!', '🌺 Stunning!',
+      // 🎵 音乐系列
+      '🎵 Harmonious!', '🎵 Rhythmic!', '🎵 Melodic!', '🎵 In tune!',
+      // 🏅 奖牌系列
+      '🏅 Gold medal!', '🏅 Champion!', '🏅 Winner!', '🏅 Top tier!',
     ];
     
     // 根据单词数量选择情绪价值数组
