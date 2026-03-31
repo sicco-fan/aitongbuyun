@@ -14,6 +14,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Audio } from 'expo-av';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import Animated, { 
   FadeInDown, 
@@ -2348,25 +2349,50 @@ export default function SentencePracticeScreen() {
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
 
-  // 进度条光亮动画
-  const shimmerAnim = useRef(new RNAnimated.Value(0)).current;
+  // 进度条光亮流动动画 - 从左到右移动的光带
+  const shimmerPosition = useRef(new RNAnimated.Value(0)).current;
+  const shimmerOpacity = useRef(new RNAnimated.Value(0.3)).current;
+  
   useEffect(() => {
-    const animation = RNAnimated.loop(
+    // 光带位置动画：从左到右移动
+    const positionAnim = RNAnimated.loop(
       RNAnimated.sequence([
-        RNAnimated.timing(shimmerAnim, {
+        RNAnimated.timing(shimmerPosition, {
           toValue: 1,
-          duration: 1500,
+          duration: 2000,
           useNativeDriver: true,
         }),
-        RNAnimated.timing(shimmerAnim, {
+        RNAnimated.timing(shimmerPosition, {
           toValue: 0,
-          duration: 1500,
+          duration: 2000,
           useNativeDriver: true,
         }),
       ])
     );
-    animation.start();
-    return () => animation.stop();
+    
+    // 光带透明度动画：呼吸效果
+    const opacityAnim = RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.timing(shimmerOpacity, {
+          toValue: 0.8,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        RNAnimated.timing(shimmerOpacity, {
+          toValue: 0.3,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    
+    positionAnim.start();
+    opacityAnim.start();
+    
+    return () => {
+      positionAnim.stop();
+      opacityAnim.stop();
+    };
   }, []);
 
   // 每句答对后的短情绪价值
@@ -5271,27 +5297,41 @@ export default function SentencePracticeScreen() {
         </View>
       )}
 
-      {/* Progress Bar with Shimmer */}
+      {/* Progress Bar with Gradient and Shimmer */}
       <TouchableOpacity
         activeOpacity={1}
         style={styles.progressContainer}
         onPress={() => showAudioSettings && setShowAudioSettings(false)}
       >
         <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${progress}%` }]}>
-            {/* 光亮效果 */}
+          {/* 彩虹渐变进度条 */}
+          <View style={[styles.progressFillContainer, { width: `${progress}%` }]}>
+            <LinearGradient
+              colors={['#667eea', '#764ba2', '#f093fb', '#f5576c', '#ffd700']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.progressGradient}
+            />
+            {/* 流动的光带效果 */}
             <RNAnimated.View 
               style={[
                 styles.progressShimmer,
                 {
-                  opacity: shimmerAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.3, 0.9],
-                  }),
+                  opacity: shimmerOpacity,
+                  transform: [
+                    {
+                      translateX: shimmerPosition.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-100, 100],
+                      }),
+                    },
+                  ],
                 }
               ]}
             />
           </View>
+          {/* 进度条发光边框 */}
+          <View style={[styles.progressGlow, { width: `${progress}%` }]} />
         </View>
       </TouchableOpacity>
 

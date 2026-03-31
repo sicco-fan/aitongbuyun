@@ -56,10 +56,23 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: theme.backgroundDefault,
     },
     progressBar: {
-      height: 4,
+      height: 6,
       backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.full,
       overflow: 'hidden',
+      // 添加外发光效果
+      shadowColor: '#667eea',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+    },
+    progressFillContainer: {
+      height: '100%',
+      borderRadius: BorderRadius.full,
+      overflow: 'hidden',
+    },
+    progressGradient: {
+      flex: 1,
     },
     progressFill: {
       height: '100%',
@@ -69,11 +82,28 @@ export const createStyles = (theme: Theme) => {
     },
     progressShimmer: {
       position: 'absolute',
-      top: 0,
+      top: -2,
+      bottom: -2,
       left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(255, 255, 255, 0.6)',
+      width: 60,
+      backgroundColor: 'rgba(255, 255, 255, 0.8)',
+      // 光带渐变效果
+      shadowColor: '#ffffff',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 10,
+    },
+    progressGlow: {
+      position: 'absolute',
+      top: -1,
+      bottom: -1,
+      left: 0,
+      borderRadius: BorderRadius.full,
+      // 发光边框效果
+      shadowColor: '#764ba2',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.6,
+      shadowRadius: 6,
     },
     sentencePraiseContainer: {
       position: 'absolute',
