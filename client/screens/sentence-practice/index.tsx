@@ -2353,6 +2353,31 @@ export default function SentencePracticeScreen() {
   const [sentencePraise, setSentencePraise] = useState<string | null>(null);
   const sentencePraiseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
+  // 播放一遍过音效（简短清脆）
+  const playPraiseSound = useCallback(async () => {
+    let sound: Audio.Sound | null = null;
+    try {
+      // 使用简短清脆的成功音效
+      const result = await Audio.Sound.createAsync(
+        { uri: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3' },
+        { volume: 0.6 }
+      );
+      sound = result.sound;
+      
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound?.unloadAsync().catch(() => {});
+        }
+      });
+      
+      await sound.playAsync();
+    } catch (error) {
+      if (sound) {
+        sound.unloadAsync().catch(() => {});
+      }
+    }
+  }, []);
+  
   const showSentencePraise = useCallback((wordCount: number) => {
     // 长句子（10个单词以上）给更高的情绪价值
     const longSentencePraises = [
@@ -2382,6 +2407,9 @@ export default function SentencePracticeScreen() {
     const randomPraise = praises[Math.floor(Math.random() * praises.length)];
     setSentencePraise(randomPraise);
     
+    // 播放音效
+    playPraiseSound();
+    
     // 清除之前的定时器
     if (sentencePraiseTimeoutRef.current) {
       clearTimeout(sentencePraiseTimeoutRef.current);
@@ -2391,7 +2419,7 @@ export default function SentencePracticeScreen() {
     sentencePraiseTimeoutRef.current = setTimeout(() => {
       setSentencePraise(null);
     }, 2000);
-  }, []);
+  }, [playPraiseSound]);
 
   // 当切换句子时，重置跟随朗读和智能引导的进度，以及音源索引
   useEffect(() => {
