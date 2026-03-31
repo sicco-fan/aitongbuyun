@@ -56,7 +56,7 @@ export const createStyles = (theme: Theme) => {
       backgroundColor: theme.backgroundDefault,
     },
     progressBar: {
-      height: 3,
+      height: 4,
       backgroundColor: theme.backgroundTertiary,
       borderRadius: BorderRadius.full,
       overflow: 'hidden',
@@ -65,6 +65,24 @@ export const createStyles = (theme: Theme) => {
       height: '100%',
       backgroundColor: theme.primary,
       borderRadius: BorderRadius.full,
+      overflow: 'hidden',
+    },
+    progressShimmer: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    },
+    sentencePraiseContainer: {
+      position: 'absolute',
+      top: 100,
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+      paddingVertical: Spacing.md,
+      zIndex: 100,
     },
     
     // Audio Settings Panel (弹出面板)
