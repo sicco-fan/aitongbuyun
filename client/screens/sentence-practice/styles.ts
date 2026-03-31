@@ -105,14 +105,12 @@ export const createStyles = (theme: Theme) => {
       shadowOpacity: 0.6,
       shadowRadius: 6,
     },
-    sentencePraiseContainer: {
-      position: 'absolute',
-      top: 100,
-      left: 0,
-      right: 0,
+    
+    // 每句答对的短情绪价值 - 内联显示在句子下方
+    sentencePraiseInline: {
       alignItems: 'center',
       paddingVertical: Spacing.md,
-      zIndex: 100,
+      marginTop: Spacing.md,
     },
     
     // Audio Settings Panel (弹出面板)

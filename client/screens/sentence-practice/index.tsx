@@ -2349,52 +2349,6 @@ export default function SentencePracticeScreen() {
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
 
-  // 进度条光亮流动动画 - 从左到右移动的光带
-  const shimmerPosition = useRef(new RNAnimated.Value(0)).current;
-  const shimmerOpacity = useRef(new RNAnimated.Value(0.3)).current;
-  
-  useEffect(() => {
-    // 光带位置动画：从左到右移动
-    const positionAnim = RNAnimated.loop(
-      RNAnimated.sequence([
-        RNAnimated.timing(shimmerPosition, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-        RNAnimated.timing(shimmerPosition, {
-          toValue: 0,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    
-    // 光带透明度动画：呼吸效果
-    const opacityAnim = RNAnimated.loop(
-      RNAnimated.sequence([
-        RNAnimated.timing(shimmerOpacity, {
-          toValue: 0.8,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        RNAnimated.timing(shimmerOpacity, {
-          toValue: 0.3,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    
-    positionAnim.start();
-    opacityAnim.start();
-    
-    return () => {
-      positionAnim.stop();
-      opacityAnim.stop();
-    };
-  }, []);
-
   // 每句答对后的短情绪价值
   const [sentencePraise, setSentencePraise] = useState<string | null>(null);
   const sentencePraiseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -4721,15 +4675,7 @@ export default function SentencePracticeScreen() {
       setShowVoiceResult(false);
       setRecognizedWordMatches([]);
       setVoiceResultText('');
-      
-      // 如果是一遍过，延迟切换页面让情绪价值显示完毕
-      if (isFirstTry) {
-        setTimeout(() => {
-          setCurrentIndex(prev => prev + 1);
-        }, 800); // 800ms 后切换，情绪价值显示1.5秒
-      } else {
-        setCurrentIndex(prev => prev + 1);
-      }
+      setCurrentIndex(prev => prev + 1);
     } else {
       // 课程完成，显示庆祝弹窗
       stopPlayback();
@@ -5297,7 +5243,7 @@ export default function SentencePracticeScreen() {
         </View>
       )}
 
-      {/* Progress Bar with Gradient and Shimmer */}
+      {/* Progress Bar with Gradient */}
       <TouchableOpacity
         activeOpacity={1}
         style={styles.progressContainer}
@@ -5312,40 +5258,11 @@ export default function SentencePracticeScreen() {
               end={{ x: 1, y: 0 }}
               style={styles.progressGradient}
             />
-            {/* 流动的光带效果 */}
-            <RNAnimated.View 
-              style={[
-                styles.progressShimmer,
-                {
-                  opacity: shimmerOpacity,
-                  transform: [
-                    {
-                      translateX: shimmerPosition.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [-100, 100],
-                      }),
-                    },
-                  ],
-                }
-              ]}
-            />
           </View>
           {/* 进度条发光边框 */}
           <View style={[styles.progressGlow, { width: `${progress}%` }]} />
         </View>
       </TouchableOpacity>
-
-      {/* 每句答对的短情绪价值 */}
-      {sentencePraise && (
-        <RNAnimated.View 
-          style={[
-            styles.sentencePraiseContainer,
-            { backgroundColor: theme.success + '20' }
-          ]}
-        >
-          <ThemedText variant="h3" color={theme.success}>{sentencePraise}</ThemedText>
-        </RNAnimated.View>
-      )}
 
       {/* Main Content with Keyboard Avoiding */}
       <KeyboardAvoidingView 
@@ -5512,6 +5429,13 @@ export default function SentencePracticeScreen() {
               ))}
             </View>
           </RNAnimated.View>
+
+          {/* 每句答对的短情绪价值 - 放在句子卡片下方 */}
+          {sentencePraise && (
+            <View style={styles.sentencePraiseInline}>
+              <ThemedText variant="h3" color={theme.success}>{sentencePraise}</ThemedText>
+            </View>
+          )}
 
           {/* Translation Display - 放在句子区域内 */}
           {showTranslation && currentTranslation && (
