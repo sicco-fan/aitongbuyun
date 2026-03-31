@@ -1731,7 +1731,6 @@ interface CompletionModalProps {
   visible: boolean;
   duration: number;
   sentenceCount: number;
-  countdown: number;
   hasNextLesson: boolean; // 是否有下一课
   nextLessonTitle?: string; // 下一课标题
   onClose: () => void;
@@ -1742,7 +1741,6 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
   visible,
   duration,
   sentenceCount,
-  countdown,
   hasNextLesson,
   nextLessonTitle,
   onClose,
@@ -1750,8 +1748,9 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
 }) => {
   const fadeAnim = useRef(new RNAnimated.Value(0)).current;
   const scaleAnim = useRef(new RNAnimated.Value(0.8)).current;
+  const glowAnim = useRef(new RNAnimated.Value(0)).current;
 
-  // 获取表扬文案
+  // 获取表扬文案 - 根据学习时间和句子数量
   const avgTime = duration / Math.max(sentenceCount, 1);
   const praise = useMemo(() => {
     if (avgTime < 60) {
@@ -1759,21 +1758,24 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
         emoji: '🚀',
         title: '神速完成！',
         subtitle: '效率超高，继续保持！',
-        highlight: '闪电般的速度'
+        highlight: '闪电般的速度',
+        badge: '速度之星'
       };
     } else if (avgTime < 180) {
       return {
         emoji: '💪',
         title: '太棒了！',
         subtitle: '稳扎稳打，学习效果好！',
-        highlight: '恰到好处的节奏'
+        highlight: '恰到好处的节奏',
+        badge: '学习达人'
       };
     } else {
       return {
         emoji: '🌟',
         title: '坚持不懈！',
         subtitle: '这种学习精神最可贵！',
-        highlight: '专注且用心'
+        highlight: '专注且用心',
+        badge: '毅力之王'
       };
     }
   }, [avgTime]);
@@ -1795,6 +1797,7 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
 
   useEffect(() => {
     if (visible) {
+      // 入场动画
       RNAnimated.parallel([
         RNAnimated.timing(fadeAnim, {
           toValue: 1,
@@ -1808,11 +1811,28 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
           useNativeDriver: true,
         }),
       ]).start();
+
+      // 发光动画循环
+      RNAnimated.loop(
+        RNAnimated.sequence([
+          RNAnimated.timing(glowAnim, {
+            toValue: 1,
+            duration: 1500,
+            useNativeDriver: true,
+          }),
+          RNAnimated.timing(glowAnim, {
+            toValue: 0,
+            duration: 1500,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
     } else {
       fadeAnim.setValue(0);
       scaleAnim.setValue(0.8);
+      glowAnim.setValue(0);
     }
-  }, [visible, fadeAnim, scaleAnim]);
+  }, [visible, fadeAnim, scaleAnim, glowAnim]);
 
   if (!visible) return null;
 
@@ -1822,11 +1842,7 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
       <FireworkShow />
 
       {/* 背景遮罩 */}
-      <TouchableOpacity 
-        style={completionStyles.completionBackdrop}
-        activeOpacity={1}
-        onPress={onClose}
-      />
+      <View style={completionStyles.completionBackdrop} />
 
       {/* 弹窗内容 */}
       <RNAnimated.View
@@ -1839,6 +1855,13 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
           },
         ]}
       >
+        {/* 成就徽章 */}
+        <View style={[completionStyles.badgeContainer, { backgroundColor: theme.primary }]}>
+          <ThemedText variant="h1" color={theme.buttonPrimaryText}>
+            🏆
+          </ThemedText>
+        </View>
+
         {/* 标题 */}
         <ThemedText variant="h2" color={theme.primary} style={completionStyles.completionTitle}>
           🎉 课程完成！
@@ -1854,19 +1877,38 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
           </ThemedText>
         </View>
 
+        {/* 成就标签 */}
+        <RNAnimated.View 
+          style={[
+            completionStyles.achievementBadge, 
+            { 
+              backgroundColor: theme.accent + '20',
+              shadowColor: theme.accent,
+              shadowOpacity: glowAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.3, 0.6],
+              }),
+            }
+          ]}
+        >
+          <ThemedText variant="smallMedium" color={theme.accent}>
+            🌟 {praise.badge}
+          </ThemedText>
+        </RNAnimated.View>
+
         {/* 数据统计 */}
         <View style={completionStyles.statsContainer}>
           <View style={[completionStyles.statItem, { backgroundColor: theme.backgroundTertiary }]}>
-            <FontAwesome6 name="clock" size={24} color={theme.primary} />
-            <ThemedText variant="h3" color={theme.textPrimary} style={{ marginTop: Spacing.sm }}>
+            <FontAwesome6 name="clock" size={28} color={theme.primary} />
+            <ThemedText variant="h2" color={theme.textPrimary} style={{ marginTop: Spacing.sm }}>
               {formatDuration(duration)}
             </ThemedText>
             <ThemedText variant="caption" color={theme.textMuted}>学习时长</ThemedText>
           </View>
           <View style={[completionStyles.statItem, { backgroundColor: theme.backgroundTertiary }]}>
-            <FontAwesome6 name="check-circle" size={24} color={theme.success} />
-            <ThemedText variant="h3" color={theme.textPrimary} style={{ marginTop: Spacing.sm }}>
-              {sentenceCount}句
+            <FontAwesome6 name="check-circle" size={28} color={theme.success} />
+            <ThemedText variant="h2" color={theme.textPrimary} style={{ marginTop: Spacing.sm }}>
+              {sentenceCount}
             </ThemedText>
             <ThemedText variant="caption" color={theme.textMuted}>完成句子</ThemedText>
           </View>
@@ -1879,23 +1921,38 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
           </ThemedText>
         </View>
 
-        {/* 底部按钮 */}
+        {/* 下一课提示 */}
+        {hasNextLesson && nextLessonTitle && (
+          <View style={[completionStyles.nextLessonHint, { backgroundColor: theme.backgroundTertiary }]}>
+            <FontAwesome6 name="arrow-right" size={14} color={theme.primary} />
+            <ThemedText variant="smallMedium" color={theme.textSecondary} style={{ marginLeft: Spacing.xs }}>
+              下一课：{nextLessonTitle}
+            </ThemedText>
+          </View>
+        )}
+
+        {/* 确认按钮 - 发光效果 */}
         <TouchableOpacity
-          style={[completionStyles.completionButton, { backgroundColor: theme.primary }]}
+          style={[
+            completionStyles.completionButton, 
+            { 
+              backgroundColor: theme.primary,
+              shadowColor: theme.primary,
+              shadowOpacity: 0.4,
+            }
+          ]}
           onPress={onClose}
+          activeOpacity={0.9}
         >
           <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-            {hasNextLesson 
-              ? `继续下一课 (${countdown}s)` 
-              : `返回 (${countdown}s)`
-            }
+            {hasNextLesson ? '🚀 继续下一课' : '✅ 完成'}
           </ThemedText>
         </TouchableOpacity>
-        {hasNextLesson && nextLessonTitle && (
-          <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: Spacing.sm }}>
-            下一课：{nextLessonTitle}
-          </ThemedText>
-        )}
+        
+        {/* 鼓励语 */}
+        <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: Spacing.md, textAlign: 'center' }}>
+          {hasNextLesson ? '再接再厉，继续挑战！' : '今日学习任务完成，休息一下吧~'}
+        </ThemedText>
       </RNAnimated.View>
     </View>
   );
@@ -1927,19 +1984,33 @@ const completionStyles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   completionModal: {
-    width: '85%',
-    maxWidth: 360,
-    borderRadius: 24,
+    width: '90%',
+    maxWidth: 380,
+    borderRadius: 28,
     padding: Spacing.xl,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.4,
+    shadowRadius: 25,
+    elevation: 15,
+  },
+  badgeContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: -Spacing['2xl'],
+    marginBottom: Spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowRadius: 8,
+    elevation: 8,
   },
   completionTitle: {
     textAlign: 'center',
@@ -1948,6 +2019,15 @@ const completionStyles = StyleSheet.create({
     alignItems: 'center',
     marginTop: Spacing.lg,
     marginBottom: Spacing.lg,
+  },
+  achievementBadge: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: 20,
+    marginBottom: Spacing.lg,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 4,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -1964,13 +2044,25 @@ const completionStyles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
     borderRadius: 20,
+    marginBottom: Spacing.md,
+  },
+  nextLessonHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: 12,
     marginBottom: Spacing.lg,
   },
   completionButton: {
     width: '100%',
     paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing['2xl'],
     borderRadius: 16,
     alignItems: 'center',
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 6,
   },
 });
 
@@ -2052,7 +2144,6 @@ export default function SentencePracticeScreen() {
   // 课程完成弹窗状态
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [completionDuration, setCompletionDuration] = useState(0); // 学习时长（秒）
-  const [countdown, setCountdown] = useState(3); // 自动返回倒计时
 
   // 学习时长计时器 - 带空闲超时检测
   // 逻辑：
@@ -4480,7 +4571,6 @@ export default function SentencePracticeScreen() {
       stopPlayback();
       const duration = Math.round(calculateEffectiveDuration());
       setCompletionDuration(duration);
-      setCountdown(3);
       setShowCompletionModal(true);
       
       // 播放成功音效
@@ -4536,22 +4626,6 @@ export default function SentencePracticeScreen() {
       router.back();
     }
   }, [submitLearningData, completionDuration, router, sourceType, nextLessonId, nextLessonNumber, nextLessonTitle, courseId, courseTitle]);
-
-  // 倒计时自动返回
-  useEffect(() => {
-    if (!showCompletionModal) return;
-    
-    if (countdown <= 0) {
-      handleCompletionClose();
-      return;
-    }
-    
-    const timer = setTimeout(() => {
-      setCountdown(prev => prev - 1);
-    }, 1000);
-    
-    return () => clearTimeout(timer);
-  }, [showCompletionModal, countdown, handleCompletionClose]);
 
   // 开始语音输入
   const startRecording = useCallback(async () => {
@@ -5802,7 +5876,6 @@ export default function SentencePracticeScreen() {
         visible={showCompletionModal}
         duration={completionDuration}
         sentenceCount={sentences.length}
-        countdown={countdown}
         hasNextLesson={sourceType === 'lesson' && !!nextLessonId}
         nextLessonTitle={nextLessonTitle}
         onClose={handleCompletionClose}
