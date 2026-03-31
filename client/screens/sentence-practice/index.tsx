@@ -2518,8 +2518,9 @@ export default function SentencePracticeScreen() {
         let loadedSentences = data.sentences;
         console.log(`[句库学习] 加载了 ${data.sentences.length} 个可学习句子`);
         
-        // 如果是错题优先模式，获取错题句子列表并重新排序
-        if (errorPriority && isAuthenticated && user?.id) {
+        // 如果是错题优先模式且不是单句模式，获取错题句子列表并重新排序
+        // 单句模式下不排序，直接跳转到指定句子
+        if (errorPriority && !singleSentenceMode && isAuthenticated && user?.id) {
           try {
             /**
              * 服务端文件：server/src/routes/error-words.ts
@@ -3595,7 +3596,7 @@ export default function SentencePracticeScreen() {
 
   // 减少错题次数（错题练习模式下调用）
   const reduceErrorCount = useCallback(async (word: string) => {
-    if (!isAuthenticated || !user?.id || !fileId || !errorPriority) return;
+    if (!isAuthenticated || !user?.id || !fileId || !errorPriority || !currentSentence) return;
     
     try {
       /**
@@ -3609,7 +3610,7 @@ export default function SentencePracticeScreen() {
         body: JSON.stringify({
           user_id: user.id,
           sentence_file_id: fileId,
-          sentence_index: currentIndex,
+          sentence_index: currentSentence.sentence_index, // 使用句子的原始索引
           word: word.toLowerCase(),
         }),
       });
@@ -3617,7 +3618,7 @@ export default function SentencePracticeScreen() {
     } catch (error) {
       console.error('[错题练习] 减少错误次数失败:', error);
     }
-  }, [isAuthenticated, user?.id, fileId, errorPriority, currentIndex]);
+  }, [isAuthenticated, user?.id, fileId, errorPriority, currentSentence]);
 
   // 记录积分
   // 记录积分（单词正确时只累积，不更新统计）
@@ -4694,7 +4695,15 @@ export default function SentencePracticeScreen() {
       setShowVoiceResult(false);
       setRecognizedWordMatches([]);
       setVoiceResultText('');
-      setCurrentIndex(prev => prev + 1);
+      
+      // 如果是一遍过，延迟切换页面让情绪价值显示完毕
+      if (isFirstTry) {
+        setTimeout(() => {
+          setCurrentIndex(prev => prev + 1);
+        }, 800); // 800ms 后切换，情绪价值显示1.5秒
+      } else {
+        setCurrentIndex(prev => prev + 1);
+      }
     } else {
       // 课程完成，显示庆祝弹窗
       stopPlayback();
