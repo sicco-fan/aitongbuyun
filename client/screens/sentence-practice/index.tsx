@@ -2695,6 +2695,10 @@ export default function SentencePracticeScreen() {
         Audio.setAudioModeAsync({
           allowsRecordingIOS: false,
           playsInSilentModeIOS: true,
+          interruptionModeIOS: 1,
+          shouldDuckAndroid: true,
+          interruptionModeAndroid: 1,
+          playThroughEarpieceAndroid: false,  // 强制使用扬声器
         }).catch(() => {});
         
         // 使用 ref 获取最新值（避免闭包陷阱）
@@ -4679,6 +4683,10 @@ export default function SentencePracticeScreen() {
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
+        interruptionModeIOS: 1,
+        shouldDuckAndroid: true,
+        interruptionModeAndroid: 1,
+        playThroughEarpieceAndroid: false,  // 强制使用扬声器，避免听筒播放
       });
 
       const { recording } = await Audio.Recording.createAsync(
@@ -4894,6 +4902,10 @@ export default function SentencePracticeScreen() {
           await Audio.setAudioModeAsync({
             allowsRecordingIOS: false,
             playsInSilentModeIOS: true,
+            interruptionModeIOS: 1,
+            shouldDuckAndroid: true,
+            interruptionModeAndroid: 1,
+            playThroughEarpieceAndroid: false,  // 强制使用扬声器
           });
         } catch (e) {
           // 忽略恢复错误
@@ -4906,6 +4918,10 @@ export default function SentencePracticeScreen() {
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: false,
           playsInSilentModeIOS: true,
+          interruptionModeIOS: 1,
+          shouldDuckAndroid: true,
+          interruptionModeAndroid: 1,
+          playThroughEarpieceAndroid: false,  // 强制使用扬声器
         });
       } catch (e) {
         // 忽略恢复错误
