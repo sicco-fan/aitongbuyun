@@ -3957,7 +3957,26 @@ export default function SentencePracticeScreen() {
       }
     }
     
+    // 【新增】四词连字符组合（如 "state-of-the-art"）
+    for (let i = 0; i < inputWords.length - 3; i++) {
+      const combined = `${inputWords[i]}-${inputWords[i + 1]}-${inputWords[i + 2]}-${inputWords[i + 3]}`;
+      if (!finalInputWords.includes(combined)) {
+        finalInputWords.push(combined);
+      }
+    }
+    
+    // 【新增】五词连字符组合（如 "up-to-the-minute"）
+    for (let i = 0; i < inputWords.length - 4; i++) {
+      const combined = `${inputWords[i]}-${inputWords[i + 1]}-${inputWords[i + 2]}-${inputWords[i + 3]}-${inputWords[i + 4]}`;
+      if (!finalInputWords.includes(combined)) {
+        finalInputWords.push(combined);
+      }
+    }
+    
     console.log('[长文本匹配] 扩展后的输入单词:', finalInputWords);
+    
+    // 【新增】预处理：记录哪些输入词已被使用（用于连字符单词的部分匹配）
+    const usedInputIndices = new Set<number>();
     
     // 无序匹配：对于每个输入单词，尝试匹配所有未完成的单词
     // 这样可以处理用户念的单词顺序和句子顺序不一致的情况
@@ -3972,6 +3991,31 @@ export default function SentencePracticeScreen() {
           matchedIndices.push(targetWord.index);
           console.log(`[长文本匹配] ✓ "${inputWord}" 匹配 "${targetWord.word}"`);
           break; // 匹配成功后跳出内层循环，处理下一个输入单词
+        }
+      }
+    }
+    
+    // 【新增】连字符单词拆分匹配：如果目标单词包含连字符，检查用户是否说出了所有部分
+    // 例如：目标是 "state-of-the-art"，用户说了 "state", "of", "the", "art"
+    for (const targetWord of incompleteWords) {
+      // 如果这个目标单词已经被匹配过，跳过
+      if (matchedIndices.includes(targetWord.index)) continue;
+      
+      // 检查目标单词是否包含连字符
+      if (/[-–—]/.test(targetWord.word)) {
+        const parts = splitHyphenatedWord(targetWord.word);
+        if (parts.length > 1) {
+          // 检查用户是否说出了所有部分
+          const allPartsFound = parts.every(part => 
+            inputWords.some(inputWord => 
+              wordsMatchWithVariants(part, inputWord)
+            )
+          );
+          
+          if (allPartsFound) {
+            matchedIndices.push(targetWord.index);
+            console.log(`[长文本匹配] ✓ 连字符拆分匹配: "${targetWord.word}" -> [${parts.join(', ')}]`);
+          }
         }
       }
     }
