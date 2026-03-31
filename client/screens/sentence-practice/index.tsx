@@ -2353,8 +2353,32 @@ export default function SentencePracticeScreen() {
   const [sentencePraise, setSentencePraise] = useState<string | null>(null);
   const sentencePraiseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  const showSentencePraise = useCallback(() => {
-    const praises = ['✨ Perfect!', '🎯 Spot on!', '⚡ Lightning fast!', '🔥 Brilliant!', '💪 Amazing!', '🌟 Excellent!', '🚀 Fantastic!'];
+  const showSentencePraise = useCallback((wordCount: number) => {
+    // 长句子（10个单词以上）给更高的情绪价值
+    const longSentencePraises = [
+      '🏆 Masterful!', 
+      '🌟 Outstanding!', 
+      '💎 Phenomenal!', 
+      '🚀 Incredible!', 
+      '👑 Legendary!',
+      '⭐ Superb!',
+      '🎯 Flawless!',
+      '💫 Breathtaking!'
+    ];
+    
+    // 普通句子的情绪价值
+    const normalPraises = [
+      '✨ Perfect!', 
+      '🎯 Spot on!', 
+      '⚡ Lightning fast!', 
+      '🔥 Brilliant!', 
+      '💪 Amazing!', 
+      '🌟 Excellent!', 
+      '🚀 Fantastic!'
+    ];
+    
+    // 根据单词数量选择情绪价值数组
+    const praises = wordCount >= 10 ? longSentencePraises : normalPraises;
     const randomPraise = praises[Math.floor(Math.random() * praises.length)];
     setSentencePraise(randomPraise);
     
@@ -4540,7 +4564,9 @@ export default function SentencePracticeScreen() {
                        !sentenceHadVoiceErrorRef.current && 
                        !sentenceUsedHintRef.current;
     if (isFirstTry) {
-      showSentencePraise();
+      // 计算句子单词数量
+      const wordCount = currentSentence?.text.split(/\s+/).filter(w => w.length > 0).length || 0;
+      showSentencePraise(wordCount);
       // 记录首次正确
       statsRef.current.firstTryCorrect += 1;
     }
