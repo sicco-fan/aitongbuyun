@@ -5132,6 +5132,15 @@ export default function SentencePracticeScreen() {
                 y: e.nativeEvent.pageY,
                 time: Date.now(),
               };
+              
+              // 【立即】暂停音频，不等待300ms延迟
+              // 用户按下屏幕准备说话时，音频应该马上停止
+              if (soundRef.current && isPlaying) {
+                soundRef.current.pauseAsync().catch(() => {});
+                setIsPlaying(false);
+                console.log('[触摸录音] 立即暂停音频');
+              }
+              
               // 延迟300ms开始录音
               recordingTimerRef.current = setTimeout(() => {
                 // 确认还在按住状态
@@ -5150,19 +5159,37 @@ export default function SentencePracticeScreen() {
                 clearTimeout(recordingTimerRef.current);
                 recordingTimerRef.current = null;
                 touchStartRef.current = null;
+                
+                // 取消录音时恢复音频播放
+                if (isLoopingRef.current && !isRecording) {
+                  console.log('[触摸录音] 取消录音，恢复音频');
+                  playAudio();
+                }
               }
             }
           }}
           onTouchEnd={() => {
+            // 记录是否正在录音（在清除状态之前）
+            const wasRecording = isRecording;
+            const wasWaitingToRecord = !!touchStartRef.current && !isRecording;
+            
             // 清除计时器
             if (recordingTimerRef.current) {
               clearTimeout(recordingTimerRef.current);
               recordingTimerRef.current = null;
             }
             touchStartRef.current = null;
+            
             // 如果正在录音，停止并识别
-            if (isRecording) {
+            if (wasRecording) {
               stopRecordingAndRecognize();
+            } else if (wasWaitingToRecord) {
+              // 用户轻触（300ms内松手），没有开始录音
+              // 恢复音频播放
+              if (isLoopingRef.current) {
+                console.log('[触摸录音] 轻触取消，恢复音频');
+                playAudio();
+              }
             }
           }}
         >
