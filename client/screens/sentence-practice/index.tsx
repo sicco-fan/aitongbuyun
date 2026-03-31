@@ -2363,10 +2363,10 @@ export default function SentencePracticeScreen() {
       clearTimeout(sentencePraiseTimeoutRef.current);
     }
     
-    // 1.5秒后隐藏
+    // 2秒后隐藏（与翻译显示时间一致）
     sentencePraiseTimeoutRef.current = setTimeout(() => {
       setSentencePraise(null);
-    }, 1500);
+    }, 2000);
   }, []);
 
   // 当切换句子时，重置跟随朗读和智能引导的进度，以及音源索引
@@ -2383,6 +2383,13 @@ export default function SentencePracticeScreen() {
       soundRef.current = null;
     }
     setIsPlaying(false);
+    
+    // 清除情绪价值
+    if (sentencePraiseTimeoutRef.current) {
+      clearTimeout(sentencePraiseTimeoutRef.current);
+      sentencePraiseTimeoutRef.current = null;
+    }
+    setSentencePraise(null);
   }, [currentIndex]);
 
   // 初始化默认选中的音源（选中当前voiceId对应的AI音色）
@@ -4528,6 +4535,16 @@ export default function SentencePracticeScreen() {
       return;
     }
 
+    // 检查是否是一遍过，如果是则显示情绪价值
+    const isFirstTry = !sentenceHadTypingRef.current && 
+                       !sentenceHadVoiceErrorRef.current && 
+                       !sentenceUsedHintRef.current;
+    if (isFirstTry) {
+      showSentencePraise();
+      // 记录首次正确
+      statsRef.current.firstTryCorrect += 1;
+    }
+
     // 获取翻译并显示
     try {
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/translate`, {
@@ -4550,7 +4567,7 @@ export default function SentencePracticeScreen() {
         goToNextSentence();
       }, 600);
     }
-  }, [currentSentence, pauseAudio, currentIndex, saveProgress, router]);
+  }, [currentSentence, pauseAudio, currentIndex, saveProgress, router, showSentencePraise]);
 
   // 处理单词点击
   const handleWordPress = useCallback((ws: WordStatus) => {
@@ -4658,16 +4675,6 @@ export default function SentencePracticeScreen() {
     if (currentIndex < sentences.length - 1) {
       // 记录用户活动（切换句子）
       recordActivity();
-      
-      // 只有一遍过（没有打字错误、没有语音错误、没有使用提示）才显示情绪价值
-      const isFirstTry = !sentenceHadTypingRef.current && 
-                         !sentenceHadVoiceErrorRef.current && 
-                         !sentenceUsedHintRef.current;
-      if (isFirstTry) {
-        showSentencePraise();
-        // 记录首次正确
-        statsRef.current.firstTryCorrect += 1;
-      }
       
       stopPlayback();
       currentSentencePointsRef.current = 0; // 重置句子积分
