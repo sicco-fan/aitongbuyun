@@ -4864,21 +4864,25 @@ export default function SentencePracticeScreen() {
     // 记录用户活动（语音输入）
     recordActivity();
 
-    // ===== 最简单可靠的方案：暂停播放，保留循环状态 =====
-    // 注意：onTouchStart 可能已经记录了播放状态并暂停了音频
-    // 只有当播放状态还没被记录时（Web端点击麦克风按钮），才在这里记录
-    if (!wasPlayingBeforeRecordingRef.current && isPlaying && soundRef.current) {
-      // Web端麦克风按钮触发：需要在这里记录播放状态并暂停
-      wasPlayingBeforeRecordingRef.current = true;
+    // ===== 最简单可靠的方案：无条件暂停音频 =====
+    // 不管是移动端（onTouchStart已处理）还是Web端，都确保音频被暂停
+    if (soundRef.current) {
       try {
-        await soundRef.current.pauseAsync();
-        setIsPlaying(false);
-        console.log('[录音开始-Web] 暂停音频播放，记录播放状态');
+        // 获取当前播放状态
+        const status = await soundRef.current.getStatusAsync();
+        if (status.isLoaded && status.isPlaying) {
+          // 记录播放状态（只有还没记录时才记录，避免覆盖 onTouchStart 的记录）
+          if (!wasPlayingBeforeRecordingRef.current) {
+            wasPlayingBeforeRecordingRef.current = true;
+            console.log('[录音开始] 记录播放状态');
+          }
+          await soundRef.current.pauseAsync();
+          setIsPlaying(false);
+          console.log('[录音开始] 音频已暂停');
+        }
       } catch (e) {
-        console.log('[录音开始-Web] 暂停音频失败:', e);
+        console.log('[录音开始] 暂停音频失败:', e);
       }
-    } else {
-      console.log('[录音开始] 播放状态已由 onTouchStart 处理或音频未在播放');
     }
 
     // 方案B（跟随朗读）：显示友好的引导提示
@@ -5407,7 +5411,7 @@ export default function SentencePracticeScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           scrollEnabled={!isRecording}
-          onTouchStart={(e) => {
+          onTouchStart={async (e) => {
             showAudioSettings && setShowAudioSettings(false);
             // 先收起键盘，允许从打字模式切换到语音模式
             Keyboard.dismiss();
@@ -5420,13 +5424,20 @@ export default function SentencePracticeScreen() {
               };
               
               // 【立即】暂停音频，不等待300ms延迟
-              // 用户按下屏幕准备说话时，音频应该马上停止
-              if (soundRef.current && isPlaying) {
-                // 记录播放状态，用于后续恢复
-                wasPlayingBeforeRecordingRef.current = true;
-                soundRef.current.pauseAsync().catch(() => {});
-                setIsPlaying(false);
-                console.log('[触摸录音] 立即暂停音频，记录播放状态');
+              // 直接检查音频实际播放状态，不依赖 isPlaying 状态变量
+              if (soundRef.current) {
+                try {
+                  const status = await soundRef.current.getStatusAsync();
+                  if (status.isLoaded && status.isPlaying) {
+                    // 记录播放状态
+                    wasPlayingBeforeRecordingRef.current = true;
+                    await soundRef.current.pauseAsync();
+                    setIsPlaying(false);
+                    console.log('[触摸录音] 立即暂停音频，记录播放状态');
+                  }
+                } catch (e) {
+                  console.log('[触摸录音] 暂停音频失败:', e);
+                }
               }
               
               // 延迟300ms开始录音
