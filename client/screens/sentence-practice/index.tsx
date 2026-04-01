@@ -1386,6 +1386,11 @@ const calculateMatchScore = (
       .replace(/(?<![a-z])'(?![a-z])/g, ' ')
       .replace(/[""„‶❝❞]/g, ' ') // 将双引号替换为空格
       .replace(/[—–−]/g, ' ') // 将破折号替换为空格
+      // 【关键修复】先处理缩写词中的句号，让字母分开
+      // 例如：B.C. -> b c, A.D. -> a d, U.S. -> u s
+      // 这样与 extractWords 的处理方式一致（缩写词被分成单独的字母）
+      .replace(/([a-z])\.(?=[a-z]|$)/gi, '$1 ')
+      .replace(/([a-z])\.(?=[a-z]|$)/gi, '$1 ') // 再次处理，处理连续的情况如 B.C.
       .replace(/[^\w\s']/g, '') // 移除标点符号（保留字母、数字、空格、单引号）
       .replace(/\s+/g, ' ')
       .trim();
