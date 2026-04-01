@@ -2215,6 +2215,7 @@ export default function SentencePracticeScreen() {
   const currentIndexRef = useRef(0); // 用于在 cleanup 中获取最新的 currentIndex
   const [loading, setLoading] = useState(true);
   const [resumingFromProgress, setResumingFromProgress] = useState(false); // 是否从进度恢复
+  const resumingFromProgressRef = useRef(false); // 用于在 useEffect 中检查最新状态
   const [errorPriority, setErrorPriority] = useState(params.errorPriority || false); // 错题优先模式
   const [errorSentences, setErrorSentences] = useState<Array<{ sentence_index: number; totalErrors: number }>>([]); // 错题句子列表
   const hasShownProgressAlert = useRef(false); // 是否已经显示过进度弹窗（防止重复弹出）
@@ -2974,6 +2975,10 @@ export default function SentencePracticeScreen() {
   useEffect(() => {
     currentIndexRef.current = currentIndex;
   }, [currentIndex]);
+
+  useEffect(() => {
+    resumingFromProgressRef.current = resumingFromProgress;
+  }, [resumingFromProgress]);
 
   // 每次页面获得焦点时重新加载语音答题模式配置
   useFocusEffect(
@@ -3760,7 +3765,14 @@ export default function SentencePracticeScreen() {
       });
     }
 
+    // 进度恢复过程中不自动播放（等待用户选择后再播放）
+    // 使用 ref 检查最新状态，避免将 resumingFromProgress 加入依赖数组
     const timer = setTimeout(() => {
+      // 检查是否正在恢复进度（弹窗等待用户选择）
+      if (resumingFromProgressRef.current) {
+        console.log('[自动播放] 跳过：正在恢复进度，等待用户选择');
+        return;
+      }
       playAudio();
     }, 500);
 
