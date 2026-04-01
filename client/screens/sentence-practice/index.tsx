@@ -16,6 +16,7 @@ import {
 import { Audio } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, { 
   FadeInDown, 
   FadeIn, 
@@ -47,10 +48,69 @@ import {
   getAudioFromLocal, 
   generateCourseAudioKey,
   hasAudioLocal,
-  hasCourseAudioLocal,
+  hasAudioLocal as hasCourseAudioLocal,
 } from '@/utils/audioStorage';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
+
+// ==================== 本地学习进度缓存 ====================
+// 格式：learning_progress_${sourceType}_${id}
+// 例如：learning_progress_lesson_123, learning_progress_file_456
+
+interface LocalLearningProgress {
+  sentenceIndex: number;
+  totalSentences: number;
+  updatedAt: number;
+  completed: boolean; // 是否已完成整个课程
+}
+
+const getProgressKey = (sourceType: string, id: string | number): string => {
+  return `learning_progress_${sourceType}_${id}`;
+};
+
+const saveLocalProgress = async (
+  sourceType: string,
+  id: string | number,
+  progress: LocalLearningProgress
+): Promise<void> => {
+  try {
+    const key = getProgressKey(sourceType, id);
+    await AsyncStorage.setItem(key, JSON.stringify(progress));
+    console.log(`[本地进度] 已保存: ${key}`, progress);
+  } catch (error) {
+    console.error('[本地进度] 保存失败:', error);
+  }
+};
+
+const getLocalProgress = async (
+  sourceType: string,
+  id: string | number
+): Promise<LocalLearningProgress | null> => {
+  try {
+    const key = getProgressKey(sourceType, id);
+    const data = await AsyncStorage.getItem(key);
+    if (data) {
+      return JSON.parse(data) as LocalLearningProgress;
+    }
+    return null;
+  } catch (error) {
+    console.error('[本地进度] 读取失败:', error);
+    return null;
+  }
+};
+
+const clearLocalProgress = async (
+  sourceType: string,
+  id: string | number
+): Promise<void> => {
+  try {
+    const key = getProgressKey(sourceType, id);
+    await AsyncStorage.removeItem(key);
+    console.log(`[本地进度] 已清除: ${key}`);
+  } catch (error) {
+    console.error('[本地进度] 清除失败:', error);
+  }
+};
 
 /**
  * 判断字符是否为单引号类字符
@@ -2573,6 +2633,48 @@ export default function SentencePracticeScreen() {
           // 如果有传入指定的句子索引，直接跳转
           if (params.sentenceIndex !== undefined && params.sentenceIndex < data.sentences.length) {
             setCurrentIndex(params.sentenceIndex);
+            initialIndexRef.current = params.sentenceIndex; // 记录初始索引
+          } else {
+            // 检查本地进度
+            const progressId = lessonId;
+            
+            if (progressId && !hasShownProgressAlert.current) {
+              hasShownProgressAlert.current = true;
+              
+              // 先检查本地进度
+              const localProgress = await getLocalProgress('lesson', progressId);
+              
+              if (localProgress && !localProgress.completed && localProgress.sentenceIndex >= 0 && localProgress.sentenceIndex < data.sentences.length) {
+                // 有本地进度且未完成
+                setResumingFromProgress(true);
+                Alert.alert(
+                  '继续学习',
+                  `上次学习到第 ${localProgress.sentenceIndex + 1} 句（共 ${localProgress.totalSentences} 句），是否继续？`,
+                  [
+                    { 
+                      text: '从头开始', 
+                      onPress: () => {
+                        setCurrentIndex(0);
+                        initialIndexRef.current = 0;
+                        setResumingFromProgress(false);
+                      }
+                    },
+                    { 
+                      text: '继续学习', 
+                      style: 'default',
+                      onPress: () => {
+                        setCurrentIndex(localProgress.sentenceIndex);
+                        initialIndexRef.current = localProgress.sentenceIndex;
+                        setResumingFromProgress(false);
+                      }
+                    }
+                  ]
+                );
+              } else {
+                // 无本地进度，从头开始
+                initialIndexRef.current = 0;
+              }
+            }
           }
         }
       } catch (error) {
@@ -2640,65 +2742,106 @@ export default function SentencePracticeScreen() {
           setCurrentIndex(params.sentenceIndex);
           initialIndexRef.current = params.sentenceIndex; // 记录初始索引
         } else {
-          // 获取学习进度（只在首次进入时弹出提示）
+          // 获取学习进度（优先本地缓存，再服务端）
           // 课程模式使用 lessonId，句库模式使用 fileId
           const progressId = sourceType === 'lesson' ? lessonId : fileId;
           
-          if (isAuthenticated && user?.id && progressId && !errorPriority && !hasShownProgressAlert.current) {
+          if (progressId && !errorPriority && !hasShownProgressAlert.current) {
             hasShownProgressAlert.current = true; // 标记已显示过弹窗
-            try {
-              /**
-               * 服务端文件：server/src/routes/learning.ts
-               * 接口：GET /api/v1/learning-records/progress/:fileId
-               * Query 参数：user_id: string
-               */
-              const progressResponse = await fetch(
-                `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${progressId}?user_id=${user.id}`
+            
+            // 1. 先检查本地进度
+            const localProgress = await getLocalProgress(sourceType, progressId);
+            
+            if (localProgress && !localProgress.completed && localProgress.sentenceIndex >= 0 && localProgress.sentenceIndex < loadedSentences.length) {
+              // 有本地进度且未完成
+              setResumingFromProgress(true);
+              Alert.alert(
+                '继续学习',
+                `上次学习到第 ${localProgress.sentenceIndex + 1} 句（共 ${localProgress.totalSentences} 句），是否继续？`,
+                [
+                  { 
+                    text: '从头开始', 
+                    onPress: () => {
+                      setCurrentIndex(0);
+                      initialIndexRef.current = 0;
+                      setResumingFromProgress(false);
+                    }
+                  },
+                  { 
+                    text: '继续学习', 
+                    style: 'default',
+                    onPress: () => {
+                      setCurrentIndex(localProgress.sentenceIndex);
+                      initialIndexRef.current = localProgress.sentenceIndex;
+                      setResumingFromProgress(false);
+                    }
+                  }
+                ]
               );
-              const progressData = await progressResponse.json();
-              
-              if (progressData.success && progressData.progress) {
-                const savedIndex = progressData.progress.lastSentenceIndex;
-                // 只要有进度（savedIndex >= 0），就询问是否继续
-                if (savedIndex >= 0 && savedIndex < loadedSentences.length) {
-                  setResumingFromProgress(true);
-                  Alert.alert(
-                    '继续学习',
-                    `上次学习到第 ${savedIndex + 1} 句，是否继续？`,
-                    [
-                      { 
-                        text: '从头开始', 
-                        onPress: () => {
-                          setCurrentIndex(0);
-                          initialIndexRef.current = 0;
-                          setResumingFromProgress(false);
+            } else if (isAuthenticated && user?.id) {
+              // 2. 本地无进度，检查服务端进度
+              try {
+                /**
+                 * 服务端文件：server/src/routes/learning.ts
+                 * 接口：GET /api/v1/learning-records/progress/:fileId
+                 * Query 参数：user_id: string
+                 */
+                const progressResponse = await fetch(
+                  `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/learning-records/progress/${progressId}?user_id=${user.id}`
+                );
+                const progressData = await progressResponse.json();
+                
+                if (progressData.success && progressData.progress) {
+                  const savedIndex = progressData.progress.lastSentenceIndex;
+                  // 只要有进度（savedIndex >= 0），就询问是否继续
+                  if (savedIndex >= 0 && savedIndex < loadedSentences.length) {
+                    // 同步保存到本地
+                    await saveLocalProgress(sourceType, progressId, {
+                      sentenceIndex: savedIndex,
+                      totalSentences: loadedSentences.length,
+                      updatedAt: Date.now(),
+                      completed: false,
+                    });
+                    
+                    setResumingFromProgress(true);
+                    Alert.alert(
+                      '继续学习',
+                      `上次学习到第 ${savedIndex + 1} 句，是否继续？`,
+                      [
+                        { 
+                          text: '从头开始', 
+                          onPress: () => {
+                            setCurrentIndex(0);
+                            initialIndexRef.current = 0;
+                            setResumingFromProgress(false);
+                          }
+                        },
+                        { 
+                          text: '继续学习', 
+                          onPress: () => {
+                            setCurrentIndex(savedIndex);
+                            initialIndexRef.current = savedIndex;
+                            setResumingFromProgress(false);
+                          }
                         }
-                      },
-                      { 
-                        text: '继续学习', 
-                        onPress: () => {
-                          setCurrentIndex(savedIndex);
-                          initialIndexRef.current = savedIndex;
-                          setResumingFromProgress(false);
-                        }
-                      }
-                    ]
-                  );
+                      ]
+                    );
+                  } else {
+                    // 进度超出范围，从头开始
+                    initialIndexRef.current = 0;
+                  }
                 } else {
-                  // 进度超出范围，从头开始
+                  // 没有进度记录，初始索引为0
                   initialIndexRef.current = 0;
                 }
-              } else {
-                // 没有进度记录，初始索引为0
+              } catch (progressError) {
+                console.log('[学习进度] 获取进度失败:', progressError);
                 initialIndexRef.current = 0;
               }
-            } catch (progressError) {
-              console.log('[学习进度] 获取进度失败:', progressError);
+            } else {
+              // 不需要检查进度，初始索引为0
               initialIndexRef.current = 0;
             }
-          } else {
-            // 不需要检查进度，初始索引为0
-            initialIndexRef.current = 0;
           }
         }
       }
@@ -4604,6 +4747,27 @@ export default function SentencePracticeScreen() {
     
     // 保存学习进度（当前句子已完成，准备进入下一句）
     saveProgress(currentIndex);
+    
+    // 【新增】同时保存到本地缓存
+    const progressId = sourceType === 'lesson' ? lessonId : fileId;
+    if (progressId && sentences.length > 0) {
+      // 计算下一句的索引（用户即将学习的句子）
+      const nextIndex = currentIndex + 1;
+      const isCompleted = nextIndex >= sentences.length;
+      
+      await saveLocalProgress(sourceType, progressId, {
+        sentenceIndex: isCompleted ? sentences.length - 1 : nextIndex, // 如果已完成，保存最后一句
+        totalSentences: sentences.length,
+        updatedAt: Date.now(),
+        completed: isCompleted,
+      });
+      
+      // 如果课程已完成，清除本地进度缓存
+      if (isCompleted) {
+        console.log('[本地进度] 课程已完成，清除缓存');
+        await clearLocalProgress(sourceType, progressId);
+      }
+    }
 
     // 重置累积积分
     currentSentencePointsRef.current = 0;
