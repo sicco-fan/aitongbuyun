@@ -2323,6 +2323,7 @@ export default function SentencePracticeScreen() {
   const sentenceHadVoiceErrorRef = useRef(false); // 当前句子是否有过语音识别错误
   const sentenceUsedHintRef = useRef(false); // 当前句子是否使用过提示
   const wasPlayingBeforePanelRef = useRef(false); // 打开面板前是否在播放
+  const wasPlayingBeforeRecordingRef = useRef(false); // 开始录音前是否在播放
   const previewSoundRef = useRef<Audio.Sound | null>(null); // 预览音频播放器
   
   // 音频源选择状态
@@ -4863,21 +4864,21 @@ export default function SentencePracticeScreen() {
     // 记录用户活动（语音输入）
     recordActivity();
 
-    // ===== 最高优先级：录音前彻底停止所有音频播放 =====
-    // 1. 先设置状态，阻止任何回调继续播放
-    setIsPlaying(false);
-    setIsLooping(false);
-    isLoopingRef.current = false;
-    
-    // 2. 停止并卸载当前音频（彻底停止，不是暂停）
-    if (soundRef.current) {
+    // ===== 最简单可靠的方案：暂停播放，保留循环状态 =====
+    // 注意：onTouchStart 可能已经记录了播放状态并暂停了音频
+    // 只有当播放状态还没被记录时（Web端点击麦克风按钮），才在这里记录
+    if (!wasPlayingBeforeRecordingRef.current && isPlaying && soundRef.current) {
+      // Web端麦克风按钮触发：需要在这里记录播放状态并暂停
+      wasPlayingBeforeRecordingRef.current = true;
       try {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
+        await soundRef.current.pauseAsync();
+        setIsPlaying(false);
+        console.log('[录音开始-Web] 暂停音频播放，记录播放状态');
       } catch (e) {
-        // 忽略停止错误
+        console.log('[录音开始-Web] 暂停音频失败:', e);
       }
-      soundRef.current = null;
+    } else {
+      console.log('[录音开始] 播放状态已由 onTouchStart 处理或音频未在播放');
     }
 
     // 方案B（跟随朗读）：显示友好的引导提示
@@ -5074,6 +5075,13 @@ export default function SentencePracticeScreen() {
               const moreCount = remainingWords.length > 5 ? ` +${remainingWords.length - 5}` : '';
               setVoiceSentenceSuggestion(`继续念: ${displayWords}${moreCount}`);
               setShowVoiceResult(true);
+              
+              // ===== 恢复音频播放 =====
+              setTimeout(() => {
+                if (isLoopingRef.current && isMountedRef.current) {
+                  playAudio();
+                }
+              }, 500);
             } else {
               setShowVoiceResult(false);
             }
@@ -5138,6 +5146,19 @@ export default function SentencePracticeScreen() {
         } catch (e) {
           // 忽略恢复错误
         }
+        
+        // ===== 统一恢复播放逻辑 =====
+        // 如果录音前是在播放状态，且循环状态仍然开启，恢复播放
+        if (wasPlayingBeforeRecordingRef.current && isLoopingRef.current && isMountedRef.current) {
+          console.log('[录音结束] 恢复音频播放');
+          setTimeout(() => {
+            if (isLoopingRef.current && isMountedRef.current) {
+              playAudio();
+            }
+          }, 300);
+        }
+        // 重置录音前播放状态
+        wasPlayingBeforeRecordingRef.current = false;
       }
     } catch (error) {
       console.error('语音识别失败:', error);
@@ -5154,6 +5175,17 @@ export default function SentencePracticeScreen() {
       } catch (e) {
         // 忽略恢复错误
       }
+      
+      // 出错时也尝试恢复播放
+      if (wasPlayingBeforeRecordingRef.current && isLoopingRef.current && isMountedRef.current) {
+        console.log('[录音出错] 恢复音频播放');
+        setTimeout(() => {
+          if (isLoopingRef.current && isMountedRef.current) {
+            playAudio();
+          }
+        }, 300);
+      }
+      wasPlayingBeforeRecordingRef.current = false;
     }
   }, [currentSentence, handleLongTextInput, playAudio, isPlaying]);
 
@@ -5390,9 +5422,11 @@ export default function SentencePracticeScreen() {
               // 【立即】暂停音频，不等待300ms延迟
               // 用户按下屏幕准备说话时，音频应该马上停止
               if (soundRef.current && isPlaying) {
+                // 记录播放状态，用于后续恢复
+                wasPlayingBeforeRecordingRef.current = true;
                 soundRef.current.pauseAsync().catch(() => {});
                 setIsPlaying(false);
-                console.log('[触摸录音] 立即暂停音频');
+                console.log('[触摸录音] 立即暂停音频，记录播放状态');
               }
               
               // 延迟300ms开始录音
@@ -5415,9 +5449,10 @@ export default function SentencePracticeScreen() {
                 touchStartRef.current = null;
                 
                 // 取消录音时恢复音频播放
-                if (isLoopingRef.current && !isRecording) {
+                if (wasPlayingBeforeRecordingRef.current && isLoopingRef.current && !isRecording) {
                   console.log('[触摸录音] 取消录音，恢复音频');
                   playAudio();
+                  wasPlayingBeforeRecordingRef.current = false;
                 }
               }
             }
@@ -5440,9 +5475,10 @@ export default function SentencePracticeScreen() {
             } else if (wasWaitingToRecord) {
               // 用户轻触（300ms内松手），没有开始录音
               // 恢复音频播放
-              if (isLoopingRef.current) {
+              if (wasPlayingBeforeRecordingRef.current && isLoopingRef.current) {
                 console.log('[触摸录音] 轻触取消，恢复音频');
                 playAudio();
+                wasPlayingBeforeRecordingRef.current = false;
               }
             }
           }}
