@@ -2324,6 +2324,7 @@ export default function SentencePracticeScreen() {
   const sentenceUsedHintRef = useRef(false); // 当前句子是否使用过提示
   const wasPlayingBeforePanelRef = useRef(false); // 打开面板前是否在播放
   const wasPlayingBeforeRecordingRef = useRef(false); // 开始录音前是否在播放
+  const isStartingRecordingRef = useRef(false); // 正在启动录音（用于 onTouchEnd 检测）
   const previewSoundRef = useRef<Audio.Sound | null>(null); // 预览音频播放器
   
   // 音频源选择状态
@@ -4858,8 +4859,12 @@ export default function SentencePracticeScreen() {
   const startRecording = useCallback(async () => {
     if (!hasRecordingPermission) {
       Alert.alert('权限不足', '需要麦克风权限才能使用语音输入');
+      isStartingRecordingRef.current = false;
       return;
     }
+
+    // 标记正在启动录音（用于 onTouchEnd 检测）
+    isStartingRecordingRef.current = true;
 
     // 记录用户活动（语音输入）
     recordActivity();
@@ -4925,6 +4930,8 @@ export default function SentencePracticeScreen() {
 
       recordingRef.current = recording;
       setIsRecording(true);
+      // 录音成功启动，清除"正在启动"标记
+      isStartingRecordingRef.current = false;
       
       // 标记为语音模式开始（如果还没有打字输入）
       if (!sentenceHadTypingRef.current) {
@@ -4932,6 +4939,7 @@ export default function SentencePracticeScreen() {
       }
     } catch (error) {
       console.error('开始录音失败:', error);
+      isStartingRecordingRef.current = false;
       Alert.alert('录音失败', '无法启动录音');
     }
   }, [hasRecordingPermission, recordActivity]);
@@ -5469,9 +5477,11 @@ export default function SentencePracticeScreen() {
             }
           }}
           onTouchEnd={() => {
-            // 记录是否正在录音（在清除状态之前）
-            const wasRecording = isRecording;
-            const wasWaitingToRecord = !!touchStartRef.current && !isRecording;
+            // 记录是否正在录音或正在启动录音（在清除状态之前）
+            const wasRecording = isRecording || isStartingRecordingRef.current;
+            const wasWaitingToRecord = !!touchStartRef.current && !isRecording && !isStartingRecordingRef.current;
+            
+            console.log(`[onTouchEnd] isRecording=${isRecording}, isStarting=${isStartingRecordingRef.current}, wasRecording=${wasRecording}, wasWaiting=${wasWaitingToRecord}`);
             
             // 清除计时器
             if (recordingTimerRef.current) {
@@ -5480,9 +5490,28 @@ export default function SentencePracticeScreen() {
             }
             touchStartRef.current = null;
             
-            // 如果正在录音，停止并识别
+            // 如果正在录音或正在启动录音，停止并识别
             if (wasRecording) {
-              stopRecordingAndRecognize();
+              // 如果录音还在启动中，等待一下再停止
+              if (isStartingRecordingRef.current && !isRecording) {
+                // 录音还在启动中，延迟停止
+                const checkAndStop = () => {
+                  if (recordingRef.current) {
+                    stopRecordingAndRecognize();
+                  } else {
+                    // 还没创建录音对象，清除标记
+                    isStartingRecordingRef.current = false;
+                    // 恢复播放
+                    if (wasPlayingBeforeRecordingRef.current && isLoopingRef.current) {
+                      playAudio();
+                      wasPlayingBeforeRecordingRef.current = false;
+                    }
+                  }
+                };
+                setTimeout(checkAndStop, 100);
+              } else {
+                stopRecordingAndRecognize();
+              }
             } else if (wasWaitingToRecord) {
               // 用户轻触（300ms内松手），没有开始录音
               // 恢复音频播放
