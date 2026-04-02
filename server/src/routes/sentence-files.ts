@@ -75,12 +75,22 @@ router.get('/', async (req: Request, res: Response) => {
           console.error('生成签名URL失败:', e);
         }
       }
+
+      // 检查是否已分享
+      const { data: share } = await supabase
+        .from('shared_sentence_files')
+        .select('id, download_count')
+        .eq('sentence_file_id', file.id)
+        .eq('is_active', true)
+        .maybeSingle();
       
       return {
         ...file,
         sentences_count: totalCount || 0,
         ready_sentences_count: readyCount || 0, // 有时间戳可学习的句子数
         original_audio_signed_url,
+        is_shared: !!share,
+        share_info: share ? { id: share.id, download_count: share.download_count } : null,
       };
     }));
     

@@ -24,6 +24,10 @@ interface SentenceFile {
   status: string;
   original_duration: number;
   source_type?: string;
+  created_by?: string;
+  description?: string;
+  is_shared?: boolean;
+  share_info?: { id: number; download_count: number } | null;
 }
 
 interface Course {
@@ -56,14 +60,14 @@ export default function HomeScreen() {
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [disclaimerChecked, setDisclaimerChecked] = useState(false);
 
-  // AI 句库文件
+  // AI 句库文件（包括预置句库）
   const aiSentenceFiles = useMemo(() => {
-    return sentenceFiles.filter(f => f.source_type === 'ai_tts');
+    return sentenceFiles.filter(f => f.source_type === 'ai_tts' || f.source_type === 'preset');
   }, [sentenceFiles]);
 
-  // 自制句库
+  // 自制句库（用户上传的，不包括预置句库）
   const customSentenceFiles = useMemo(() => {
-    return sentenceFiles.filter(f => f.source_type !== 'ai_tts');
+    return sentenceFiles.filter(f => f.source_type !== 'ai_tts' && f.source_type !== 'preset');
   }, [sentenceFiles]);
 
   // AI 句库总句数
