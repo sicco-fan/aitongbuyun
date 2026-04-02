@@ -1045,9 +1045,9 @@ const checkLetterSequenceMatch = (targetWord: string, recognizedText: string): b
     return false;
   }
   
-  // 检查识别词是否是字母序列（由空格分隔的单个字母）
-  // 例如："a p p l e" 或 "a b c"
-  const parts = recognizedText.split(/\s+/).filter(p => p.length > 0);
+  // 检查识别词是否是字母序列（由空格或逗号分隔的单个字母）
+  // 例如："a p p l e" 或 "a,p,p,l,e" 或 "a, p, p, l, e"
+  const parts = recognizedText.split(/[\s,]+/).filter(p => p.length > 0);
   
   // 必须至少有2个部分，且每个部分都是单个字母
   if (parts.length < 2) {
