@@ -1839,11 +1839,14 @@ const getMainPraise = (params: {
   typingAccuracy: number;
   hasVoice: boolean;
   voiceSuccessRate: number;
+  firstTryRate: number;
+  hintUsedCount: number;
 }) => {
-  const { avgTime, typingAccuracy, hasVoice, voiceSuccessRate } = params;
+  const { avgTime, typingAccuracy, hasVoice, voiceSuccessRate, firstTryRate, hintUsedCount } = params;
   
-  // 优先级：准确率100% > 速度极快 > 语音好 > 其他
-  if (typingAccuracy === 100) {
+  // 优先级：真正零失误（首次正确率100% + 没用提示）> 速度极快 > 语音好 > 其他
+  // 【重要】只有真正一遍过（每句话第一次就正确）才算"零失误"
+  if (firstTryRate === 100 && hintUsedCount === 0) {
     return { ...RAINBOW_PRAISE.accuracy.perfect, badge: '完美主义者', highlight: '💎零失误' };
   }
   if (avgTime < 30) {
@@ -1890,8 +1893,8 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
 
   // 获取主要表扬
   const mainPraise = useMemo(() => {
-    return getMainPraise({ avgTime, typingAccuracy, hasVoice, voiceSuccessRate });
-  }, [avgTime, typingAccuracy, hasVoice, voiceSuccessRate]);
+    return getMainPraise({ avgTime, typingAccuracy, hasVoice, voiceSuccessRate, firstTryRate, hintUsedCount });
+  }, [avgTime, typingAccuracy, hasVoice, voiceSuccessRate, firstTryRate, hintUsedCount]);
 
   // 格式化时长 - 紧凑格式
   const formatDuration = (seconds: number) => {
