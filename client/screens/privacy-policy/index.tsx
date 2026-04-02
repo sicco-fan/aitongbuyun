@@ -25,7 +25,7 @@ export default function PrivacyPolicyScreen() {
             引言
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            欢迎使用我们的英语学习应用（以下简称"本应用"）。我们非常重视您的隐私保护，本隐私政策旨在向您说明我们如何收集、使用、存储和保护您的个人信息。请您在使用本应用前仔细阅读本政策。
+            欢迎使用本英语学习应用（以下简称"本应用"）。本应用由个人开发者独立开发和运营。我非常重视您的隐私保护，本隐私政策旨在向您说明我如何收集、使用、存储和保护您的个人信息。请您在使用本应用前仔细阅读本政策。
           </ThemedText>
         </View>
 
@@ -34,7 +34,7 @@ export default function PrivacyPolicyScreen() {
             一、信息收集
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            为了提供完整的学习功能，我们会收集以下信息：
+            为了提供完整的学习功能，我会收集以下信息：
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
             • 账户信息：用户名、头像（可选）
@@ -55,7 +55,7 @@ export default function PrivacyPolicyScreen() {
             二、信息使用
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            我们收集的信息将用于以下目的：
+            我收集的信息将用于以下目的：
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
             • 提供个性化学习体验和进度跟踪
@@ -76,16 +76,13 @@ export default function PrivacyPolicyScreen() {
             三、信息存储与安全
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            我们采用行业标准的安全措施保护您的数据：
+            我采用行业标准的安全措施保护您的数据：
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
             • 数据传输采用 HTTPS 加密协议
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
             • 服务器数据采用加密存储
-          </ThemedText>
-          <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
-            • 定期进行安全审计和漏洞修复
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
             • 严格限制数据访问权限
@@ -97,7 +94,7 @@ export default function PrivacyPolicyScreen() {
             四、信息共享
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            我们不会出售您的个人信息。仅在以下情况下可能共享您的数据：
+            我不会出售您的个人信息。仅在以下情况下可能共享您的数据：
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
             • 获得您的明确同意
@@ -136,7 +133,7 @@ export default function PrivacyPolicyScreen() {
             六、未成年人保护
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            我们重视未成年人的隐私保护。如果您是18岁以下的未成年人，请在监护人陪同下使用本应用，并由监护人阅读本隐私政策。
+            我重视未成年人的隐私保护。如果您是18岁以下的未成年人，请在监护人陪同下使用本应用，并由监护人阅读本隐私政策。
           </ThemedText>
         </View>
 
@@ -145,7 +142,7 @@ export default function PrivacyPolicyScreen() {
             七、政策更新
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            我们可能会不时更新本隐私政策。重大变更时，我们会在应用内以弹窗或公告形式通知您。继续使用本应用即表示您接受更新后的政策。
+            我可能会不时更新本隐私政策。重大变更时，会在应用内以弹窗或公告形式通知您。继续使用本应用即表示您接受更新后的政策。
           </ThemedText>
         </View>
 
@@ -154,16 +151,10 @@ export default function PrivacyPolicyScreen() {
             八、联系我们
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            如果您对本隐私政策有任何疑问或建议，请通过以下方式联系我们：
+            如果您对本隐私政策有任何疑问或建议，请通过以下方式联系我：
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
-            • 电子邮箱：support@example.com
-          </ThemedText>
-          <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
-            • 客服电话：400-XXX-XXXX
-          </ThemedText>
-          <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
-            • 工作时间：周一至周五 9:00-18:00
+            • 电子邮箱：your-email@example.com
           </ThemedText>
         </View>
       </ScrollView>

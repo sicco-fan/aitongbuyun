@@ -37,7 +37,7 @@ export default function UserAgreementScreen() {
             1.1 本应用为用户提供英语学习服务，包括但不限于课程学习、语音识别、句库管理、错题练习等功能。
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            1.2 我们保留随时修改、暂停或终止服务的权利，恕不另行通知。
+            1.2 我保留随时修改、暂停或终止服务的权利，恕不另行通知。
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
             1.3 部分高级功能可能需要付费订阅才能使用，具体费用以应用内展示为准。
@@ -58,7 +58,7 @@ export default function UserAgreementScreen() {
             2.3 您的账户仅限本人使用，不得转让、出售或出借给他人。
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            2.4 如发现账户被盗用，请立即通知我们。
+            2.4 如发现账户被盗用，请立即通知我。
           </ThemedText>
         </View>
 
@@ -97,10 +97,10 @@ export default function UserAgreementScreen() {
             4.1 您上传、分享的内容应符合法律法规，不得包含违法违规信息。
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            4.2 您对上传的内容享有知识产权，同时授予我们全球性、非排他性的使用许可。
+            4.2 您对上传的内容享有知识产权，同时授予我全球性、非排他性的使用许可。
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            4.3 我们有权删除违规内容，并视情节严重程度对账户进行处理。
+            4.3 我有权删除违规内容，并视情节严重程度对账户进行处理。
           </ThemedText>
         </View>
 
@@ -109,7 +109,7 @@ export default function UserAgreementScreen() {
             五、知识产权
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            5.1 本应用的所有内容（包括但不限于软件、课程、音频、文字、图片）的知识产权归我们所有。
+            5.1 本应用的所有内容（包括但不限于软件、课程、音频、文字、图片）的知识产权归开发者所有。
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
             5.2 未经书面授权，您不得复制、传播、展示、修改本应用的任何内容。
@@ -124,13 +124,13 @@ export default function UserAgreementScreen() {
             六、免责声明
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            6.1 我们不保证服务不会中断或没有错误，不对因网络状况等原因造成的服务中断负责。
+            6.1 我不保证服务不会中断或没有错误，不对因网络状况等原因造成的服务中断负责。
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
             6.2 用户使用本应用产生的风险由用户自行承担。
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            6.3 第三方链接或服务的内容和隐私政策不受我们控制，我们对此不承担任何责任。
+            6.3 第三方链接或服务的内容和隐私政策不受我控制，我对此不承担任何责任。
           </ThemedText>
         </View>
 
@@ -142,7 +142,7 @@ export default function UserAgreementScreen() {
             7.1 您可以随时注销账户并停止使用服务。
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            7.2 如您违反本协议，我们有权暂停或终止您的账户，并删除相关数据。
+            7.2 如您违反本协议，我有权暂停或终止您的账户，并删除相关数据。
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
             7.3 账户注销后，您的数据将被删除或匿名化处理。
@@ -154,10 +154,10 @@ export default function UserAgreementScreen() {
             八、协议修改
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            8.1 我们有权随时修改本协议，修改后的协议将在应用内公布。
+            8.1 我有权随时修改本协议，修改后的协议将在应用内公布。
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            8.2 重大变更时，我们会通过弹窗或其他方式通知您。
+            8.2 重大变更时，会通过弹窗或其他方式通知您。
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
             8.3 如您不同意修改后的协议，可以停止使用本应用。继续使用即表示您接受修改后的协议。
@@ -172,7 +172,7 @@ export default function UserAgreementScreen() {
             9.1 本协议适用中华人民共和国法律。
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            9.2 因本协议引起的争议，双方应友好协商解决；协商不成的，可向我们所在地人民法院提起诉讼。
+            9.2 因本协议引起的争议，双方应友好协商解决；协商不成的，可向我所在地人民法院提起诉讼。
           </ThemedText>
         </View>
 
@@ -181,13 +181,10 @@ export default function UserAgreementScreen() {
             十、联系我们
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-            如您对本协议有任何疑问，请通过以下方式联系我们：
+            如您对本协议有任何疑问，请通过以下方式联系我：
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
-            • 电子邮箱：support@example.com
-          </ThemedText>
-          <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
-            • 客服电话：400-XXX-XXXX
+            • 电子邮箱：your-email@example.com
           </ThemedText>
         </View>
       </ScrollView>
