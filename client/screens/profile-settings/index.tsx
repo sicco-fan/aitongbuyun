@@ -276,6 +276,35 @@ export default function ProfileSettingsScreen() {
           </View>
         </View>
 
+        {/* 法律信息区域 */}
+        <View style={styles.legalSection}>
+          <ThemedText variant="smallMedium" color={theme.textSecondary} style={styles.sectionTitle}>
+            法律信息
+          </ThemedText>
+          <TouchableOpacity 
+            style={styles.legalItem}
+            onPress={() => router.push('/privacy-policy')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.legalItemLeft}>
+              <FontAwesome6 name="shield-halved" size={18} color={theme.textSecondary} />
+              <ThemedText variant="body" color={theme.textPrimary}>隐私政策</ThemedText>
+            </View>
+            <FontAwesome6 name="chevron-right" size={14} color={theme.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.legalItem}
+            onPress={() => router.push('/user-agreement')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.legalItemLeft}>
+              <FontAwesome6 name="file-contract" size={18} color={theme.textSecondary} />
+              <ThemedText variant="body" color={theme.textPrimary}>用户协议</ThemedText>
+            </View>
+            <FontAwesome6 name="chevron-right" size={14} color={theme.textMuted} />
+          </TouchableOpacity>
+        </View>
+
         {/* 保存按钮 */}
         <TouchableOpacity 
           style={[styles.saveButton, saving && styles.saveButtonDisabled]} 

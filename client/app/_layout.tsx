@@ -41,6 +41,8 @@ export default function RootLayout() {
             <Stack.Screen name="lesson-learning" options={{ title: "课程学习" }} />
             <Stack.Screen name="learning-monitor" options={{ title: "学习监控" }} />
             <Stack.Screen name="profile-settings" options={{ title: "个人设置" }} />
+            <Stack.Screen name="privacy-policy" options={{ title: "隐私政策" }} />
+            <Stack.Screen name="user-agreement" options={{ title: "用户协议" }} />
           </Stack>
           <Toast />
         </GestureHandlerRootView>

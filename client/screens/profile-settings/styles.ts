@@ -120,6 +120,24 @@ export const createStyles = (theme: Theme) => {
     sectionSubtitle: {
       marginBottom: Spacing.md,
     },
+    // 法律信息区域
+    legalSection: {
+      marginTop: Spacing.lg,
+    },
+    legalItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: theme.backgroundDefault,
+      borderRadius: BorderRadius.lg,
+      padding: Spacing.md,
+      marginTop: Spacing.sm,
+    },
+    legalItemLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.md,
+    },
     // 保存按钮
     saveButton: {
       backgroundColor: theme.primary,
