@@ -86,9 +86,6 @@ export function DisclaimerModal({ visible, onAccept }: DisclaimerModalProps) {
               <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
                 • <Text style={styles.bold}>打字输入</Text>：通过键盘输入句子，正确即可点亮文本
               </ThemedText>
-              <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
-                • <Text style={styles.bold}>循序渐进</Text>：先听发音，再背诵句子，最后听写巩固
-              </ThemedText>
             </View>
 
             {/* 版权免责声明 */}
