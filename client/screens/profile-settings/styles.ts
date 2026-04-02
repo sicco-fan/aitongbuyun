@@ -120,52 +120,6 @@ export const createStyles = (theme: Theme) => {
     sectionSubtitle: {
       marginBottom: Spacing.md,
     },
-    voiceModeList: {
-      gap: Spacing.md,
-    },
-    voiceModeCard: {
-      backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.lg,
-      padding: Spacing.md,
-      borderWidth: 2,
-      borderColor: theme.border,
-    },
-    voiceModeCardSelected: {
-      borderColor: theme.primary,
-      backgroundColor: theme.primary + '08',
-    },
-    voiceModeHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    voiceModeIconContainer: {
-      width: 44,
-      height: 44,
-      borderRadius: BorderRadius.lg,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: Spacing.md,
-    },
-    voiceModeTitleRow: {
-      flex: 1,
-    },
-    voiceModeCheckmark: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      backgroundColor: theme.primary,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    voiceModeFeatures: {
-      marginTop: Spacing.sm,
-      marginLeft: Spacing.xl + Spacing.md,
-    },
-    voiceModeFeatureItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginTop: Spacing.xs,
-    },
     // 保存按钮
     saveButton: {
       backgroundColor: theme.primary,

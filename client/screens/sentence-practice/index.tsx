@@ -40,10 +40,6 @@ import { createStyles } from './styles';
 import { Spacing, BorderRadius } from '@/constants/theme';
 import { createFormDataFile } from '@/utils';
 import { saveLastLearningPosition, LastLearningPosition } from '@/utils/learningStorage';
-import {
-  getVoicePracticeMode,
-  VoicePracticeMode,
-} from '@/utils/voicePracticeConfig';
 import { 
   getAudioFromLocal, 
   generateCourseAudioKey,
@@ -2560,14 +2556,10 @@ export default function SentencePracticeScreen() {
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null); // 长按录音延迟计时器
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null); // 触摸起点
   
-  // 语音答题模式
-  const [voicePracticeMode, setVoicePracticeMode] = useState<VoicePracticeMode>('auto-match');
-  const voicePracticeModeRef = useRef<VoicePracticeMode>('auto-match'); // 用于在回调中获取最新值
-  
-  // 跟随朗读模式的当前进度索引（必须按顺序念）
+  // 跟随朗读模式的当前进度索引（已废弃，保留兼容）
   const followAlongIndexRef = useRef<number>(0);
   
-  // 智能引导模式的当前攻克单词索引
+  // 智能引导模式的当前攻克单词索引（已废弃，保留兼容）
   const smartGuideIndexRef = useRef<number>(0);
   
   // 语音识别结果
@@ -2575,7 +2567,6 @@ export default function SentencePracticeScreen() {
   const [voiceResultText, setVoiceResultText] = useState('');
   const [voiceMatchScore, setVoiceMatchScore] = useState(0);
   const [voiceWordMatches, setVoiceWordMatches] = useState<Array<{ word: string; isMatch: boolean }>>([]);
-  const [voiceSentenceSuggestion, setVoiceSentenceSuggestion] = useState(''); // 长句子分段建议
   const [voiceTargetWord, setVoiceTargetWord] = useState<string | null>(null); // 当前要重读的单词
   const [remainingWordsCount, setRemainingWordsCount] = useState(0); // 剩余未完成单词数
   const [recognizedWordMatches, setRecognizedWordMatches] = useState<Array<{ word: string; isMatch: boolean }>>([]); // 识别结果中每个词的匹配状态
@@ -2780,28 +2771,6 @@ export default function SentencePracticeScreen() {
   }, []);
 
   // 加载语音答题模式设置
-  useEffect(() => {
-    (async () => {
-      const mode = await getVoicePracticeMode();
-      setVoicePracticeMode(mode);
-      voicePracticeModeRef.current = mode;
-      console.log('[语音答题模式] 已加载:', mode);
-    })();
-  }, []);
-
-  // 当模式切换时，重置相关状态并显示提示
-  useEffect(() => {
-    // 重置进度索引
-    followAlongIndexRef.current = 0;
-    smartGuideIndexRef.current = 0;
-    
-    // 清除语音结果
-    setShowVoiceResult(false);
-    setVoiceTargetWord(null);
-    
-    console.log('[语音答题模式] 模式切换，重置进度');
-  }, [voicePracticeMode]);
-
   // 更新剩余单词数量
   useEffect(() => {
     const remaining = wordStatuses.filter(ws => !ws.isPunctuation && !ws.revealed).length;
@@ -3205,16 +3174,6 @@ export default function SentencePracticeScreen() {
       lastActivityTimeRef.current = Date.now();
       accumulatedDurationRef.current = 0;
       console.log('[学习时长] 开始计时');
-      
-      // 重新加载语音答题模式配置（用户可能在设置页面修改了）
-      (async () => {
-        const mode = await getVoicePracticeMode();
-        if (mode !== voicePracticeModeRef.current) {
-          console.log('[语音答题模式] 检测到模式变化:', voicePracticeModeRef.current, '->', mode);
-          setVoicePracticeMode(mode);
-          voicePracticeModeRef.current = mode;
-        }
-      })();
       
       fetchSentences();
       fetchNextLesson(); // 课程模式：获取下一课时信息
@@ -5294,20 +5253,6 @@ export default function SentencePracticeScreen() {
       }
     }
 
-    // 方案B（跟随朗读）：显示友好的引导提示
-    if (voicePracticeModeRef.current === 'follow-along') {
-      const remainingWords = wordStatusesRef.current
-        .filter(ws => !ws.isPunctuation && !ws.revealed)
-        .map(ws => ws.word);
-      
-      if (remainingWords.length > 0) {
-        const displayWords = remainingWords.slice(0, 5).join(' ');
-        const moreCount = remainingWords.length > 5 ? ` +${remainingWords.length - 5}` : '';
-        setVoiceSentenceSuggestion(`🎧 跟着念: ${displayWords}${moreCount}`);
-        setShowVoiceResult(true);
-      }
-    }
-
     try {
       // 先清理可能存在的旧录音对象
       if (recordingRef.current) {
@@ -5383,170 +5328,50 @@ export default function SentencePracticeScreen() {
 
         if (data.text) {
           const recognizedText = data.text.toLowerCase();
-          const mode = voicePracticeModeRef.current;
           
-          console.log(`[语音识别] 模式: ${mode}, 识别结果: ${recognizedText}`);
+          console.log(`[语音识别] 识别结果: ${recognizedText}`);
           
-          // 获取当前未完成的单词索引
-          const incompleteIndices = wordStatusesRef.current
-            .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
-            .filter(idx => idx !== -1);
+          // ===== 自动匹配模式（唯一模式）=====
+          // 极简风格：显示识别结果，匹配到的变绿，不要任何红色提示
           
-          // 根据语音答题模式采用不同的处理逻辑
-          if (mode === 'auto-match') {
-            // ===== 方案A：自动匹配模式 =====
-            // 极简风格：显示识别结果，匹配到的变绿，不要任何红色提示
-            
-            const { score, wordMatches, recognizedWordMatches: recMatches } = calculateMatchScore(recognizedText, currentSentence.text);
-            const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
-            
-            // 显示用户念的内容，并把匹配到的单词标绿
-            setVoiceResultText(recognizedText);
-            setVoiceMatchScore(score);
-            setRecognizedWordMatches(recMatches); // 保存识别结果中每个词的匹配状态
-            setVoiceWordMatches([]); // 不显示红色块块
-            setVoiceSentenceSuggestion(''); // 不显示任何提示
-            setShowVoiceResult(true);
-            
-            // 延迟一下再填入匹配结果，让用户先看到识别结果
-            setTimeout(() => {
-              if (matchedWords.length > 0) {
-                handleLongTextInput(matchedWords.join(' '));
-              }
-              
-              // 检查是否全部完成
-              const newIncompleteIndices = wordStatusesRef.current
-                .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
-                .filter(idx => idx !== -1);
-              
-              if (newIncompleteIndices.length === 0) {
-                // 全部完成，短暂显示后隐藏
-                setTimeout(() => setShowVoiceResult(false), 1000);
-              } else {
-                // 还有未完成的，恢复音频播放
-                setTimeout(() => {
-                  if (isLoopingRef.current && isMountedRef.current) {
-                    playAudio();
-                  }
-                }, 500);
-              }
-              
-              // 记录是否有语音错误（用于完美发音判断）
-              if (score < 100 && newIncompleteIndices.length > 0) {
-                sentenceHadVoiceErrorRef.current = true;
-              }
-            }, 300);
-            
-          } else if (mode === 'follow-along') {
-            // ===== 方案B：分段跟读模式 =====
-            // 显示引导提示，帮助用户知道要念什么
-            
-            // 获取所有未完成的单词
-            const incompleteWords = wordStatusesRef.current
-              .filter(ws => !ws.isPunctuation && !ws.revealed)
-              .map(ws => ws.word.toLowerCase());
-            
-            if (incompleteWords.length === 0) {
-              setShowVoiceResult(false);
-              return;
-            }
-            
-            // 计算匹配度
-            const { score, wordMatches, recognizedWordMatches: recMatches } = calculateMatchScore(recognizedText, currentSentence.text);
-            
-            // 从识别结果中匹配所有未完成的单词（不需要按顺序）
-            const matchedWords = wordMatches
-              .filter(w => incompleteWords.includes(w.word.toLowerCase()) && w.isMatch)
-              .map(w => w.word);
-            
-            // 显示识别结果，匹配到的标绿
-            setVoiceResultText(recognizedText);
-            setVoiceMatchScore(score);
-            setRecognizedWordMatches(recMatches);
-            
+          const { score, wordMatches, recognizedWordMatches: recMatches } = calculateMatchScore(recognizedText, currentSentence.text);
+          const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
+          
+          // 显示用户念的内容，并把匹配到的单词标绿
+          setVoiceResultText(recognizedText);
+          setVoiceMatchScore(score);
+          setRecognizedWordMatches(recMatches); // 保存识别结果中每个词的匹配状态
+          setVoiceWordMatches([]); // 不显示红色块块
+          setShowVoiceResult(true);
+          
+          // 延迟一下再填入匹配结果，让用户先看到识别结果
+          setTimeout(() => {
             if (matchedWords.length > 0) {
               handleLongTextInput(matchedWords.join(' '));
             }
             
-            // 获取新的剩余未完成单词
+            // 检查是否全部完成
             const newIncompleteIndices = wordStatusesRef.current
               .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
               .filter(idx => idx !== -1);
             
-            if (newIncompleteIndices.length > 0) {
-              sentenceHadVoiceErrorRef.current = true;
-              const unmatchedWords = wordMatches.filter(w => !w.isMatch);
-              
-              // 获取剩余的未完成单词列表
-              const remainingWords = wordStatusesRef.current
-                .filter(ws => !ws.isPunctuation && !ws.revealed)
-                .map(ws => ws.word);
-              
-              setVoiceResultText(recognizedText);
-              setVoiceMatchScore(score);
-              setVoiceWordMatches(unmatchedWords);
-              
-              // 提示用户剩余的单词（最多显示5个）
-              const displayWords = remainingWords.slice(0, 5).join(' ');
-              const moreCount = remainingWords.length > 5 ? ` +${remainingWords.length - 5}` : '';
-              setVoiceSentenceSuggestion(`继续念: ${displayWords}${moreCount}`);
-              setShowVoiceResult(true);
-              
-              // ===== 恢复音频播放 =====
+            if (newIncompleteIndices.length === 0) {
+              // 全部完成，短暂显示后隐藏
+              setTimeout(() => setShowVoiceResult(false), 1000);
+            } else {
+              // 还有未完成的，恢复音频播放
               setTimeout(() => {
                 if (isLoopingRef.current && isMountedRef.current) {
                   playAudio();
                 }
               }, 500);
-            } else {
-              setShowVoiceResult(false);
-            }
-          } else if (mode === 'smart-guide') {
-            // ===== 方案C：智能引导模式 =====
-            // 自动播放未完成部分的音频，然后等待用户跟读
-            
-            // 获取第一个未完成的单词
-            const firstIncompleteIdx = incompleteIndices[0];
-            if (firstIncompleteIdx === undefined) {
-              setShowVoiceResult(false);
-              return;
             }
             
-            // 计算匹配度
-            const { score, wordMatches, recognizedWordMatches: recMatches } = calculateMatchScore(recognizedText, currentSentence.text);
-            const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
-            
-            // 显示识别结果，匹配到的标绿
-            setVoiceResultText(recognizedText);
-            setVoiceMatchScore(score);
-            setRecognizedWordMatches(recMatches);
-            
-            if (matchedWords.length > 0) {
-              handleLongTextInput(matchedWords.join(' '));
-            }
-            
-            // 获取新的剩余未完成单词
-            const newIncompleteIndices = wordStatusesRef.current
-              .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
-              .filter(idx => idx !== -1);
-            
-            if (newIncompleteIndices.length > 0) {
+            // 记录是否有语音错误（用于完美发音判断）
+            if (score < 100 && newIncompleteIndices.length > 0) {
               sentenceHadVoiceErrorRef.current = true;
-              const unmatchedWords = wordMatches.filter(w => !w.isMatch);
-              setVoiceWordMatches(unmatchedWords);
-              setVoiceSentenceSuggestion(`听听怎么读，再跟读`);
-              setShowVoiceResult(true);
-              
-              // 方案C特有：自动播放原音频帮助用户跟读
-              setTimeout(() => {
-                if (!isPlaying) {
-                  playAudio();
-                }
-              }, 800);
-            } else {
-              setShowVoiceResult(false);
             }
-          }
+          }, 300);
         }
         
         // 恢复音频播放模式（从听筒切回扬声器）
@@ -6069,16 +5894,6 @@ export default function SentencePracticeScreen() {
                   <FontAwesome6 name="times" size={14} color={theme.textMuted} />
                 </TouchableOpacity>
               </View>
-
-              {/* 方案B和方案C才显示提示 */}
-              {voiceWordMatches.length > 0 && voiceSentenceSuggestion && (
-                <View style={styles.segmentSuggestionContainer}>
-                  <FontAwesome6 name="lightbulb" size={14} color={theme.accent} />
-                  <ThemedText variant="small" color={theme.textSecondary} style={{ flex: 1, marginLeft: 6 }}>
-                    {voiceSentenceSuggestion}
-                  </ThemedText>
-                </View>
-              )}
             </Animated.View>
           )}
 

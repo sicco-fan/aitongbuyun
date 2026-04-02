@@ -513,14 +513,6 @@ export const createStyles = (theme: Theme) => {
       paddingVertical: 2,
       borderRadius: BorderRadius.xs,
     },
-    segmentSuggestionContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: theme.accent + '10',
-      borderRadius: BorderRadius.md,
-      padding: Spacing.sm,
-      marginTop: Spacing.sm,
-    },
     voiceResultBtn: {
       paddingVertical: Spacing.sm,
       paddingHorizontal: Spacing.lg,
