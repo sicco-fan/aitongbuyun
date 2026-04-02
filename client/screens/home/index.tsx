@@ -8,6 +8,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/contexts/AuthContext';
 import { getLastLearningPosition, LastLearningPosition } from '@/utils/learningStorage';
 import { getHomeLayoutConfig, HomeLayoutType } from '@/utils/homeLayoutConfig';
+import { DisclaimerModal, checkDisclaimerAccepted } from '@/components/DisclaimerModal';
 
 // 布局组件
 import SingleColumnLayout from './layouts/SingleColumnLayout';
@@ -52,6 +53,8 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [layoutType, setLayoutType] = useState<HomeLayoutType>('state-driven');
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
+  const [disclaimerChecked, setDisclaimerChecked] = useState(false);
 
   // AI 句库文件
   const aiSentenceFiles = useMemo(() => {
@@ -125,6 +128,22 @@ export default function HomeScreen() {
     }, [fetchData])
   );
 
+  // 检查免责声明是否已同意
+  useEffect(() => {
+    const checkDisclaimer = async () => {
+      const accepted = await checkDisclaimerAccepted();
+      if (!accepted) {
+        setShowDisclaimer(true);
+      }
+      setDisclaimerChecked(true);
+    };
+    checkDisclaimer();
+  }, []);
+
+  const handleAcceptDisclaimer = () => {
+    setShowDisclaimer(false);
+  };
+
   const handleRefresh = () => {
     setRefreshing(true);
     fetchData();
@@ -153,13 +172,33 @@ export default function HomeScreen() {
   // 根据布局类型渲染对应布局
   switch (layoutType) {
     case 'single-column':
-      return <SingleColumnLayout {...layoutProps} />;
+      return (
+        <>
+          <SingleColumnLayout {...layoutProps} />
+          <DisclaimerModal visible={showDisclaimer} onAccept={handleAcceptDisclaimer} />
+        </>
+      );
     case 'two-column':
-      return <TwoColumnLayout {...layoutProps} />;
+      return (
+        <>
+          <TwoColumnLayout {...layoutProps} />
+          <DisclaimerModal visible={showDisclaimer} onAccept={handleAcceptDisclaimer} />
+        </>
+      );
     case 'hero-list':
-      return <HeroListLayout {...layoutProps} />;
+      return (
+        <>
+          <HeroListLayout {...layoutProps} />
+          <DisclaimerModal visible={showDisclaimer} onAccept={handleAcceptDisclaimer} />
+        </>
+      );
     case 'state-driven':
     default:
-      return <StateDrivenLayout {...layoutProps} />;
+      return (
+        <>
+          <StateDrivenLayout {...layoutProps} />
+          <DisclaimerModal visible={showDisclaimer} onAccept={handleAcceptDisclaimer} />
+        </>
+      );
   }
 }

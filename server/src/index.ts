@@ -20,6 +20,7 @@ import usersRouter from "./routes/users";
 import communityRouter from "./routes/community";
 import tasksRouter from "./routes/tasks";
 import ttsRouter from "./routes/tts";
+import { initializePresetData } from "./database/init-preset-data";
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -106,4 +107,9 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 
 app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}/`);
+  
+  // 初始化预置句库数据
+  initializePresetData().catch(err => {
+    console.error('Failed to initialize preset data:', err);
+  });
 });
