@@ -494,6 +494,25 @@ export default function ProfileScreen() {
           <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
         </TouchableOpacity>
 
+        {/* 关于我们 */}
+        <TouchableOpacity 
+          style={styles.adminCard}
+          onPress={() => router.push('/about')}
+        >
+          <View style={[styles.adminIcon, { backgroundColor: theme.textSecondary + '15' }]}>
+            <FontAwesome6 name="circle-info" size={24} color={theme.textSecondary} />
+          </View>
+          <View style={styles.adminContent}>
+            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+              关于我们
+            </ThemedText>
+            <ThemedText variant="small" color={theme.textMuted}>
+              应用版本、联系方式、隐私政策
+            </ThemedText>
+          </View>
+          <FontAwesome6 name="chevron-right" size={16} color={theme.textMuted} />
+        </TouchableOpacity>
+
         {/* 用户管理 - 仅管理员可见 */}
         {user?.role === 'admin' && (
           <TouchableOpacity 

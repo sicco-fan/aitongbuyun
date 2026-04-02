@@ -154,7 +154,7 @@ export default function PrivacyPolicyScreen() {
             如果您对本隐私政策有任何疑问或建议，请通过以下方式联系我：
           </ThemedText>
           <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
-            • 电子邮箱：your-email@example.com
+            • 电子邮箱：support@aidictation.com
           </ThemedText>
         </View>
       </ScrollView>
