@@ -2416,6 +2416,8 @@ export default function SentencePracticeScreen() {
   const [errorPriority, setErrorPriority] = useState(params.errorPriority || false); // 错题优先模式
   const [errorSentences, setErrorSentences] = useState<Array<{ sentence_index: number; totalErrors: number }>>([]); // 错题句子列表
   const hasShownProgressAlert = useRef(false); // 是否已经显示过进度弹窗（防止重复弹出）
+  const isLoadingSentencesRef = useRef(false); // 是否正在加载句子（防止重复加载）
+  const focusSessionIdRef = useRef(0); // 当前焦点会话ID，用于识别是否是同一个进入周期
   
   // 课程模式：下一课时信息（用于学完自动跳转）
   const [nextLessonId, setNextLessonId] = useState<number | null>(null);
@@ -2779,6 +2781,13 @@ export default function SentencePracticeScreen() {
 
   // 加载可学习的句子
   const fetchSentences = useCallback(async () => {
+    // 防止重复加载
+    if (isLoadingSentencesRef.current) {
+      console.log('[句子加载] 已在加载中，跳过重复请求');
+      return;
+    }
+    isLoadingSentencesRef.current = true;
+    
     // 课程模式：使用课程API
     if (sourceType === 'lesson' && lessonId) {
       setLoading(true);
@@ -2852,12 +2861,16 @@ export default function SentencePracticeScreen() {
         console.error('加载课程句子失败:', error);
       } finally {
         setLoading(false);
+        isLoadingSentencesRef.current = false;
       }
       return;
     }
     
     // 句库模式：使用原有API
-    if (!fileId) return;
+    if (!fileId) {
+      isLoadingSentencesRef.current = false;
+      return;
+    }
 
     setLoading(true);
     try {
@@ -3020,6 +3033,7 @@ export default function SentencePracticeScreen() {
       console.error('加载句子失败:', error);
     } finally {
       setLoading(false);
+      isLoadingSentencesRef.current = false;
     }
   }, [fileId, isAuthenticated, user?.id, errorPriority, params.sentenceIndex, sourceType, lessonId, voiceId]);
 
@@ -3165,18 +3179,26 @@ export default function SentencePracticeScreen() {
   // 每次页面获得焦点时重新加载语音答题模式配置
   useFocusEffect(
     useCallback(() => {
+      // 生成新的会话ID
+      const currentSessionId = ++focusSessionIdRef.current;
+      
       isMountedRef.current = true;
       isExitingRef.current = false; // 重置退出标记
-      hasShownProgressAlert.current = false; // 重置进度弹窗标记，允许每次进入时检查进度
       
-      // 开始学习计时（进入页面就开始计时）
-      sessionStartTimeRef.current = Date.now();
-      lastActivityTimeRef.current = Date.now();
-      accumulatedDurationRef.current = 0;
-      console.log('[学习时长] 开始计时');
-      
-      fetchSentences();
-      fetchNextLesson(); // 课程模式：获取下一课时信息
+      // 只有当是新的会话时才重置弹窗标记和加载句子
+      // 使用 isLoadingSentencesRef 防止在同一个焦点周期内重复加载
+      if (!isLoadingSentencesRef.current) {
+        hasShownProgressAlert.current = false; // 重置进度弹窗标记，允许每次进入时检查进度
+        
+        // 开始学习计时（进入页面就开始计时）
+        sessionStartTimeRef.current = Date.now();
+        lastActivityTimeRef.current = Date.now();
+        accumulatedDurationRef.current = 0;
+        console.log('[学习时长] 开始计时');
+        
+        fetchSentences();
+        fetchNextLesson(); // 课程模式：获取下一课时信息
+      }
       // 注意：fetchPerfectRecordings 在 useEffect 中根据 currentSentence?.id 变化时调用
 
       return () => {
@@ -3265,6 +3287,9 @@ export default function SentencePracticeScreen() {
           saveLastLearningPosition(position);
           console.log('[学习位置] 已保存:', position);
         }
+        
+        // 重置加载标记，允许下次进入时重新加载
+        isLoadingSentencesRef.current = false;
       };
     }, [fetchSentences, fetchNextLesson, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId, user?.id, calculateEffectiveDuration])
   );
