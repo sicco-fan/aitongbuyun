@@ -2,33 +2,38 @@ import { ExpoConfig, ConfigContext } from 'expo/config';
 
 const appName = process.env.COZE_PROJECT_NAME || process.env.EXPO_PUBLIC_COZE_PROJECT_NAME || 'AI听写云';
 const projectId = process.env.COZE_PROJECT_ID || process.env.EXPO_PUBLIC_COZE_PROJECT_ID;
-const slugAppName = projectId ? `app${projectId}` : 'myapp';
+
+// 正式包名：个人开发者建议使用 com.用户名.应用名 格式
+const androidPackage = `com.aidictation.app${projectId ? `.${projectId}` : ''}`;
+const iosBundleIdentifier = `com.aidictation.app${projectId ? `.${projectId}` : ''}`;
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   return {
     ...config,
     "name": appName,
-    "slug": slugAppName,
+    "slug": `aidictation${projectId ? `-${projectId}` : ''}`,
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "aidictation",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": iosBundleIdentifier,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": `AI听写云需要访问麦克风以播放音频内容。`,
-        "NSPhotoLibraryUsageDescription": `允许AI听写云访问您的相册，以便您上传或保存图片。`,
-        "NSCameraUsageDescription": `允许AI听写云使用您的相机，以便您直接拍摄照片上传。`
+        "NSMicrophoneUsageDescription": "AI听写云需要访问麦克风以录制您的语音进行学习练习。",
+        "NSPhotoLibraryUsageDescription": "允许AI听写云访问您的相册，以便您上传或保存图片。",
+        "NSCameraUsageDescription": "允许AI听写云使用您的相机，以便您直接拍摄照片上传。",
+        "NSSpeechRecognitionUsageDescription": "AI听写云需要语音识别功能来评估您的发音准确性。"
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#3B82F6"
       },
-      "package": `com.anonymous.x${projectId || '0'}`,
+      "package": androidPackage,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -59,13 +64,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#3B82F6"
         }
       ],
       [
         "expo-av",
         {
-          "microphonePermission": `AI听写云需要访问麦克风以播放音频内容。`
+          "microphonePermission": "AI听写云需要访问麦克风以录制您的语音进行学习练习。"
         }
       ],
       [
@@ -77,23 +82,28 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       [
         "expo-image-picker",
         {
-          "photosPermission": `允许AI听写云访问您的相册，以便您上传或保存图片。`,
-          "cameraPermission": `允许AI听写云使用您的相机，以便您直接拍摄照片上传。`,
-          "microphonePermission": `允许AI听写云访问您的麦克风，以便您拍摄带有声音的视频。`
+          "photosPermission": "允许AI听写云访问您的相册，以便您上传或保存图片。",
+          "cameraPermission": "允许AI听写云使用您的相机，以便您直接拍摄照片上传。",
+          "microphonePermission": "允许AI听写云访问您的麦克风，以便您拍摄带有声音的视频。"
         }
       ],
       "expo-asset",
       [
         "expo-media-library",
         {
-          "photosPermission": `允许AI听写云访问您的相册，以便您上传视频文件。`,
-          "savePhotosPermission": `允许AI听写云保存图片到相册。`,
+          "photosPermission": "允许AI听写云访问您的相册，以便您上传视频文件。",
+          "savePhotosPermission": "允许AI听写云保存图片到相册。",
           "isAccessMediaLocationEnabled": true
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": projectId
+      }
     }
   }
 }
