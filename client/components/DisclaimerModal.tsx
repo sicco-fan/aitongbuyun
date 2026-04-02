@@ -40,7 +40,7 @@ export function DisclaimerModal({ visible, onAccept }: DisclaimerModalProps) {
           <View style={styles.header}>
             <Text style={styles.icon}>📖</Text>
             <ThemedText variant="h3" color={theme.textPrimary} style={styles.title}>
-              欢迎使用句子背诵助手
+              欢迎使用 AI听写云
             </ThemedText>
           </View>
 
@@ -51,7 +51,7 @@ export function DisclaimerModal({ visible, onAccept }: DisclaimerModalProps) {
                 软件功能介绍
               </ThemedText>
               <ThemedText variant="body" color={theme.textSecondary} style={styles.paragraph}>
-                本应用是一款智能句子背诵工具，帮助您通过"听-读-背"的方式高效学习语言。
+                本应用是一款智能句子学习工具，帮助您通过"听-背-写"的方式高效掌握语言。
               </ThemedText>
             </View>
 
@@ -87,7 +87,7 @@ export function DisclaimerModal({ visible, onAccept }: DisclaimerModalProps) {
                 • <Text style={styles.bold}>打字输入</Text>：通过键盘输入句子，正确即可点亮文本
               </ThemedText>
               <ThemedText variant="body" color={theme.textSecondary} style={styles.listItem}>
-                • <Text style={styles.bold}>循序渐进</Text>：从听到读，从读到背，逐步掌握每个句子
+                • <Text style={styles.bold}>循序渐进</Text>：先听发音，再背诵句子，最后听写巩固
               </ThemedText>
             </View>
 
