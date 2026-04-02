@@ -2411,8 +2411,13 @@ export default function SentencePracticeScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const currentIndexRef = useRef(0); // 用于在 cleanup 中获取最新的 currentIndex
   const [loading, setLoading] = useState(true);
+  const [resumingFromProgress, setResumingFromProgress] = useState(false); // 是否从进度恢复
+  const resumingFromProgressRef = useRef(false); // 用于在 useEffect 中检查最新状态
   const [errorPriority, setErrorPriority] = useState(params.errorPriority || false); // 错题优先模式
   const [errorSentences, setErrorSentences] = useState<Array<{ sentence_index: number; totalErrors: number }>>([]); // 错题句子列表
+  const hasShownProgressAlert = useRef(false); // 是否已经显示过进度弹窗（防止重复弹出）
+  const isShowingProgressAlertRef = useRef(false); // 是否正在显示进度弹窗（防止重复弹出）
+  const lastCheckedResourceIdRef = useRef<string | null>(null); // 上次检查进度的资源ID（同一资源只检查一次）
   
   // 课程模式：下一课时信息（用于学完自动跳转）
   const [nextLessonId, setNextLessonId] = useState<number | null>(null);
@@ -2776,6 +2781,18 @@ export default function SentencePracticeScreen() {
 
   // 加载可学习的句子
   const fetchSentences = useCallback(async () => {
+    // 计算当前资源的唯一标识
+    const currentResourceId = sourceType === 'lesson' ? `lesson_${lessonId}` : `file_${fileId}`;
+    
+    // 检查是否已经检查过这个资源的进度（同一资源只检查一次）
+    if (lastCheckedResourceIdRef.current === currentResourceId) {
+      console.log(`[句子加载] 资源 ${currentResourceId} 已检查过进度，跳过`);
+      return;
+    }
+    
+    // 标记正在检查这个资源
+    lastCheckedResourceIdRef.current = currentResourceId;
+    
     // 课程模式：使用课程API
     if (sourceType === 'lesson' && lessonId) {
       setLoading(true);
@@ -2803,20 +2820,45 @@ export default function SentencePracticeScreen() {
             setCurrentIndex(params.sentenceIndex);
             initialIndexRef.current = params.sentenceIndex; // 记录初始索引
           } else {
-            // 检查本地进度，直接跳转，不再弹窗询问
+            // 检查本地进度
             const progressId = lessonId;
             
-            if (progressId) {
+            // 使用 isShowingProgressAlertRef 防止重复弹出
+            if (progressId && !isShowingProgressAlertRef.current) {
               // 先检查本地进度
               const localProgress = await getLocalProgress('lesson', progressId);
               
-              // 如果有未完成的进度，直接跳转到存档点
               if (localProgress && !localProgress.completed && localProgress.sentenceIndex >= 0 && localProgress.sentenceIndex < data.sentences.length) {
-                console.log(`[课程学习] 从存档点继续: 第 ${localProgress.sentenceIndex + 1} 句`);
-                setCurrentIndex(localProgress.sentenceIndex);
-                initialIndexRef.current = localProgress.sentenceIndex;
+                // 有本地进度且未完成
+                isShowingProgressAlertRef.current = true; // 标记正在显示弹窗
+                setResumingFromProgress(true);
+                Alert.alert(
+                  '继续学习',
+                  `上次学习到第 ${localProgress.sentenceIndex + 1} 句（共 ${localProgress.totalSentences} 句），是否继续？`,
+                  [
+                    { 
+                      text: '从头开始', 
+                      onPress: () => {
+                        setCurrentIndex(0);
+                        initialIndexRef.current = 0;
+                        setResumingFromProgress(false);
+                        isShowingProgressAlertRef.current = false; // 重置标记
+                      }
+                    },
+                    { 
+                      text: '继续学习', 
+                      style: 'default',
+                      onPress: () => {
+                        setCurrentIndex(localProgress.sentenceIndex);
+                        initialIndexRef.current = localProgress.sentenceIndex;
+                        setResumingFromProgress(false);
+                        isShowingProgressAlertRef.current = false; // 重置标记
+                      }
+                    }
+                  ]
+                );
               } else {
-                // 无进度或已完成，从头开始
+                // 无本地进度或进度无效，从头开始
                 initialIndexRef.current = 0;
               }
             }
@@ -2893,15 +2935,40 @@ export default function SentencePracticeScreen() {
           // 课程模式使用 lessonId，句库模式使用 fileId
           const progressId = sourceType === 'lesson' ? lessonId : fileId;
           
-          if (progressId && !errorPriority) {
+          // 使用 isShowingProgressAlertRef 防止重复弹出
+          if (progressId && !errorPriority && !isShowingProgressAlertRef.current) {
             // 1. 先检查本地进度
             const localProgress = await getLocalProgress(sourceType, progressId);
             
-            // 如果有未完成的进度，直接跳转到存档点
             if (localProgress && !localProgress.completed && localProgress.sentenceIndex >= 0 && localProgress.sentenceIndex < loadedSentences.length) {
-              console.log(`[句库学习] 从存档点继续: 第 ${localProgress.sentenceIndex + 1} 句`);
-              setCurrentIndex(localProgress.sentenceIndex);
-              initialIndexRef.current = localProgress.sentenceIndex;
+              // 有本地进度且未完成
+              isShowingProgressAlertRef.current = true; // 标记正在显示弹窗
+              setResumingFromProgress(true);
+              Alert.alert(
+                '继续学习',
+                `上次学习到第 ${localProgress.sentenceIndex + 1} 句（共 ${localProgress.totalSentences} 句），是否继续？`,
+                [
+                  { 
+                    text: '从头开始', 
+                    onPress: () => {
+                      setCurrentIndex(0);
+                      initialIndexRef.current = 0;
+                      setResumingFromProgress(false);
+                      isShowingProgressAlertRef.current = false; // 重置标记
+                    }
+                  },
+                  { 
+                    text: '继续学习', 
+                    style: 'default',
+                    onPress: () => {
+                      setCurrentIndex(localProgress.sentenceIndex);
+                      initialIndexRef.current = localProgress.sentenceIndex;
+                      setResumingFromProgress(false);
+                      isShowingProgressAlertRef.current = false; // 重置标记
+                    }
+                  }
+                ]
+              );
             } else if (isAuthenticated && user?.id) {
               // 2. 本地无进度，检查服务端进度
               try {
@@ -2917,7 +2984,7 @@ export default function SentencePracticeScreen() {
                 
                 if (progressData.success && progressData.progress) {
                   const savedIndex = progressData.progress.lastSentenceIndex;
-                  // 如果有进度，直接跳转
+                  // 只要有进度（savedIndex >= 0），就询问是否继续
                   if (savedIndex >= 0 && savedIndex < loadedSentences.length) {
                     // 同步保存到本地
                     await saveLocalProgress(sourceType, progressId, {
@@ -2927,15 +2994,38 @@ export default function SentencePracticeScreen() {
                       completed: false,
                     });
                     
-                    console.log(`[句库学习] 从服务端存档点继续: 第 ${savedIndex + 1} 句`);
-                    setCurrentIndex(savedIndex);
-                    initialIndexRef.current = savedIndex;
+                    isShowingProgressAlertRef.current = true; // 标记正在显示弹窗
+                    setResumingFromProgress(true);
+                    Alert.alert(
+                      '继续学习',
+                      `上次学习到第 ${savedIndex + 1} 句，是否继续？`,
+                      [
+                        { 
+                          text: '从头开始', 
+                          onPress: () => {
+                            setCurrentIndex(0);
+                            initialIndexRef.current = 0;
+                            setResumingFromProgress(false);
+                            isShowingProgressAlertRef.current = false; // 重置标记
+                          }
+                        },
+                        { 
+                          text: '继续学习', 
+                          onPress: () => {
+                            setCurrentIndex(savedIndex);
+                            initialIndexRef.current = savedIndex;
+                            setResumingFromProgress(false);
+                            isShowingProgressAlertRef.current = false; // 重置标记
+                          }
+                        }
+                      ]
+                    );
                   } else {
                     // 进度超出范围，从头开始
                     initialIndexRef.current = 0;
                   }
                 } else {
-                  // 没有进度记录，从头开始
+                  // 没有进度记录，初始索引为0
                   initialIndexRef.current = 0;
                 }
               } catch (progressError) {
@@ -2943,7 +3033,7 @@ export default function SentencePracticeScreen() {
                 initialIndexRef.current = 0;
               }
             } else {
-              // 不需要检查进度，从头开始
+              // 不需要检查进度，初始索引为0
               initialIndexRef.current = 0;
             }
           }
@@ -3043,7 +3133,7 @@ export default function SentencePracticeScreen() {
   }, [currentSentence?.id, user?.id]);
 
   // 保存学习进度
-  const saveProgress = useCallback(async (sentenceIndex: number, completed: boolean = false) => {
+  const saveProgress = useCallback(async (sentenceIndex: number) => {
     // 课程模式使用 lessonId，句库模式使用 fileId
     const recordId = sourceType === 'lesson' ? lessonId : fileId;
     if (!recordId) return;
@@ -3051,12 +3141,12 @@ export default function SentencePracticeScreen() {
     // 【修复】无论是否登录，都保存到本地缓存
     if (sentences.length > 0) {
       await saveLocalProgress(sourceType, recordId, {
-        sentenceIndex: completed ? 0 : sentenceIndex, // 如果已完成，下次从头开始
+        sentenceIndex: sentenceIndex,
         totalSentences: sentences.length,
         updatedAt: Date.now(),
-        completed: completed,
+        completed: false,
       });
-      console.log(`[本地进度] 已保存: 第 ${sentenceIndex + 1} 句 (ID: ${recordId}), completed: ${completed}`);
+      console.log(`[本地进度] 已保存: 第 ${sentenceIndex + 1} 句 (ID: ${recordId})`);
     }
     
     // 登录用户同时保存到服务端
@@ -3073,10 +3163,10 @@ export default function SentencePracticeScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: user.id,
-          sentence_index: completed ? 0 : sentenceIndex, // 如果已完成，下次从头开始
+          sentence_index: sentenceIndex,
         }),
       });
-      console.log(`[服务端进度] 已保存: 第 ${sentenceIndex + 1} 句 (ID: ${recordId}), completed: ${completed}`);
+      console.log(`[服务端进度] 已保存: 第 ${sentenceIndex + 1} 句 (ID: ${recordId})`);
     } catch (error) {
       console.error('[服务端进度] 保存失败:', error);
     }
@@ -3091,11 +3181,18 @@ export default function SentencePracticeScreen() {
     currentIndexRef.current = currentIndex;
   }, [currentIndex]);
 
+  useEffect(() => {
+    resumingFromProgressRef.current = resumingFromProgress;
+  }, [resumingFromProgress]);
+
   // 每次页面获得焦点时重新加载语音答题模式配置
   useFocusEffect(
     useCallback(() => {
       isMountedRef.current = true;
       isExitingRef.current = false; // 重置退出标记
+      
+      // 重置进度检查标记（每次进入页面时重新检查进度）
+      isShowingProgressAlertRef.current = false;
       
       // 开始学习计时（进入页面就开始计时）
       sessionStartTimeRef.current = Date.now();
@@ -3194,6 +3291,10 @@ export default function SentencePracticeScreen() {
           saveLastLearningPosition(position);
           console.log('[学习位置] 已保存:', position);
         }
+        
+        // 重置标记，允许下次进入页面时重新加载
+        lastCheckedResourceIdRef.current = null;
+        isShowingProgressAlertRef.current = false;
       };
     }, [fetchSentences, fetchNextLesson, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId, user?.id, calculateEffectiveDuration])
   );
@@ -3866,8 +3967,14 @@ export default function SentencePracticeScreen() {
       });
     }
 
-    // 延迟播放，等待句子状态初始化完成
+    // 进度恢复过程中不自动播放（等待用户选择后再播放）
+    // 使用 ref 检查最新状态，避免将 resumingFromProgress 加入依赖数组
     const timer = setTimeout(() => {
+      // 检查是否正在恢复进度（弹窗等待用户选择）
+      if (resumingFromProgressRef.current) {
+        console.log('[自动播放] 跳过：正在恢复进度，等待用户选择');
+        return;
+      }
       playAudio();
     }, 500);
 
@@ -5113,10 +5220,6 @@ export default function SentencePracticeScreen() {
   // 处理课程完成弹窗关闭
   const handleCompletionClose = useCallback(() => {
     setShowCompletionModal(false);
-    
-    // 【重要】标记课程已完成，下次进入从头开始
-    saveProgress(0, true);
-    
     // 提交最终学习数据
     submitLearningData(true, completionDuration);
     
@@ -5133,21 +5236,17 @@ export default function SentencePracticeScreen() {
     } else {
       router.back();
     }
-  }, [saveProgress, submitLearningData, completionDuration, router, sourceType, nextLessonId, nextLessonNumber, nextLessonTitle, courseId, courseTitle]);
+  }, [submitLearningData, completionDuration, router, sourceType, nextLessonId, nextLessonNumber, nextLessonTitle, courseId, courseTitle]);
 
   // 处理返回首页
   const handleGoHome = useCallback(() => {
     setShowCompletionModal(false);
-    
-    // 【重要】标记课程已完成，下次进入从头开始
-    saveProgress(0, true);
-    
     // 提交最终学习数据
     submitLearningData(true, completionDuration);
     
     // 返回首页（课程列表）
     router.replace('/');
-  }, [saveProgress, submitLearningData, completionDuration, router]);
+  }, [submitLearningData, completionDuration, router]);
 
   // 开始语音输入
   const startRecording = useCallback(async () => {
