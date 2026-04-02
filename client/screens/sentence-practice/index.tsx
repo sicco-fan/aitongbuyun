@@ -2416,8 +2416,9 @@ export default function SentencePracticeScreen() {
   const [errorPriority, setErrorPriority] = useState(params.errorPriority || false); // 错题优先模式
   const [errorSentences, setErrorSentences] = useState<Array<{ sentence_index: number; totalErrors: number }>>([]); // 错题句子列表
   const hasShownProgressAlert = useRef(false); // 是否已经显示过进度弹窗（防止重复弹出）
-  const isLoadingSentencesRef = useRef(false); // 是否正在加载句子（防止重复加载）
-  const focusSessionIdRef = useRef(0); // 当前焦点会话ID，用于识别是否是同一个进入周期
+  const hasCheckedProgressRef = useRef(false); // 当前会话是否已检查过进度（更稳定的标记）
+  const loadingIdRef = useRef<string | null>(null); // 当前正在加载的资源ID（防止重复加载同一资源）
+  const focusSessionIdRef = useRef(0); // 焦点会话ID（每次进入页面时递增，用于判断 Alert 是否应该显示）
   
   // 课程模式：下一课时信息（用于学完自动跳转）
   const [nextLessonId, setNextLessonId] = useState<number | null>(null);
@@ -2780,13 +2781,18 @@ export default function SentencePracticeScreen() {
   }, [wordStatuses]);
 
   // 加载可学习的句子
-  const fetchSentences = useCallback(async () => {
-    // 防止重复加载
-    if (isLoadingSentencesRef.current) {
-      console.log('[句子加载] 已在加载中，跳过重复请求');
+  const fetchSentences = useCallback(async (sessionId: number) => {
+    // 计算当前资源的唯一标识
+    const currentResourceId = sourceType === 'lesson' ? `lesson_${lessonId}` : `file_${fileId}`;
+    
+    // 防止重复加载同一资源
+    if (loadingIdRef.current === currentResourceId) {
+      console.log(`[句子加载] 资源 ${currentResourceId} 已在加载中，跳过重复请求`);
       return;
     }
-    isLoadingSentencesRef.current = true;
+    
+    // 标记正在加载
+    loadingIdRef.current = currentResourceId;
     
     // 课程模式：使用课程API
     if (sourceType === 'lesson' && lessonId) {
@@ -2818,13 +2824,15 @@ export default function SentencePracticeScreen() {
             // 检查本地进度
             const progressId = lessonId;
             
-            if (progressId && !hasShownProgressAlert.current) {
-              hasShownProgressAlert.current = true;
+            // 使用 hasCheckedProgressRef 防止重复检查
+            if (progressId && !hasCheckedProgressRef.current) {
+              hasCheckedProgressRef.current = true; // 立即标记，防止重复进入
               
               // 先检查本地进度
               const localProgress = await getLocalProgress('lesson', progressId);
               
-              if (localProgress && !localProgress.completed && localProgress.sentenceIndex >= 0 && localProgress.sentenceIndex < data.sentences.length) {
+              // 再次检查会话ID，确保只显示最新会话的Alert
+              if (localProgress && !localProgress.completed && localProgress.sentenceIndex >= 0 && localProgress.sentenceIndex < data.sentences.length && focusSessionIdRef.current === sessionId) {
                 // 有本地进度且未完成
                 setResumingFromProgress(true);
                 Alert.alert(
@@ -2850,8 +2858,8 @@ export default function SentencePracticeScreen() {
                     }
                   ]
                 );
-              } else {
-                // 无本地进度，从头开始
+              } else if (focusSessionIdRef.current === sessionId) {
+                // 无本地进度或进度无效，从头开始
                 initialIndexRef.current = 0;
               }
             }
@@ -2861,14 +2869,14 @@ export default function SentencePracticeScreen() {
         console.error('加载课程句子失败:', error);
       } finally {
         setLoading(false);
-        isLoadingSentencesRef.current = false;
+        loadingIdRef.current = null; // 重置加载标记
       }
       return;
     }
     
     // 句库模式：使用原有API
     if (!fileId) {
-      isLoadingSentencesRef.current = false;
+      loadingIdRef.current = null; // 重置加载标记
       return;
     }
 
@@ -2930,13 +2938,15 @@ export default function SentencePracticeScreen() {
           // 课程模式使用 lessonId，句库模式使用 fileId
           const progressId = sourceType === 'lesson' ? lessonId : fileId;
           
-          if (progressId && !errorPriority && !hasShownProgressAlert.current) {
-            hasShownProgressAlert.current = true; // 标记已显示过弹窗
+          // 使用 hasCheckedProgressRef 防止重复检查
+          if (progressId && !errorPriority && !hasCheckedProgressRef.current) {
+            hasCheckedProgressRef.current = true; // 立即标记，防止重复进入
             
             // 1. 先检查本地进度
             const localProgress = await getLocalProgress(sourceType, progressId);
             
-            if (localProgress && !localProgress.completed && localProgress.sentenceIndex >= 0 && localProgress.sentenceIndex < loadedSentences.length) {
+            // 再次检查会话ID，确保只显示最新会话的Alert
+            if (localProgress && !localProgress.completed && localProgress.sentenceIndex >= 0 && localProgress.sentenceIndex < loadedSentences.length && focusSessionIdRef.current === sessionId) {
               // 有本地进度且未完成
               setResumingFromProgress(true);
               Alert.alert(
@@ -2962,7 +2972,7 @@ export default function SentencePracticeScreen() {
                   }
                 ]
               );
-            } else if (isAuthenticated && user?.id) {
+            } else if (isAuthenticated && user?.id && focusSessionIdRef.current === sessionId) {
               // 2. 本地无进度，检查服务端进度
               try {
                 /**
@@ -2975,7 +2985,7 @@ export default function SentencePracticeScreen() {
                 );
                 const progressData = await progressResponse.json();
                 
-                if (progressData.success && progressData.progress) {
+                if (progressData.success && progressData.progress && focusSessionIdRef.current === sessionId) {
                   const savedIndex = progressData.progress.lastSentenceIndex;
                   // 只要有进度（savedIndex >= 0），就询问是否继续
                   if (savedIndex >= 0 && savedIndex < loadedSentences.length) {
@@ -3010,11 +3020,11 @@ export default function SentencePracticeScreen() {
                         }
                       ]
                     );
-                  } else {
+                  } else if (focusSessionIdRef.current === sessionId) {
                     // 进度超出范围，从头开始
                     initialIndexRef.current = 0;
                   }
-                } else {
+                } else if (focusSessionIdRef.current === sessionId) {
                   // 没有进度记录，初始索引为0
                   initialIndexRef.current = 0;
                 }
@@ -3033,7 +3043,7 @@ export default function SentencePracticeScreen() {
       console.error('加载句子失败:', error);
     } finally {
       setLoading(false);
-      isLoadingSentencesRef.current = false;
+      loadingIdRef.current = null; // 重置加载标记
     }
   }, [fileId, isAuthenticated, user?.id, errorPriority, params.sentenceIndex, sourceType, lessonId, voiceId]);
 
@@ -3179,26 +3189,24 @@ export default function SentencePracticeScreen() {
   // 每次页面获得焦点时重新加载语音答题模式配置
   useFocusEffect(
     useCallback(() => {
-      // 生成新的会话ID
+      // 递增会话ID，用于验证 Alert 是否应该显示
       const currentSessionId = ++focusSessionIdRef.current;
       
       isMountedRef.current = true;
       isExitingRef.current = false; // 重置退出标记
       
-      // 只有当是新的会话时才重置弹窗标记和加载句子
-      // 使用 isLoadingSentencesRef 防止在同一个焦点周期内重复加载
-      if (!isLoadingSentencesRef.current) {
-        hasShownProgressAlert.current = false; // 重置进度弹窗标记，允许每次进入时检查进度
-        
-        // 开始学习计时（进入页面就开始计时）
-        sessionStartTimeRef.current = Date.now();
-        lastActivityTimeRef.current = Date.now();
-        accumulatedDurationRef.current = 0;
-        console.log('[学习时长] 开始计时');
-        
-        fetchSentences();
-        fetchNextLesson(); // 课程模式：获取下一课时信息
-      }
+      // 重置进度检查标记（每次进入页面时重新检查进度）
+      hasCheckedProgressRef.current = false;
+      
+      // 开始学习计时（进入页面就开始计时）
+      sessionStartTimeRef.current = Date.now();
+      lastActivityTimeRef.current = Date.now();
+      accumulatedDurationRef.current = 0;
+      console.log('[学习时长] 开始计时');
+      
+      // 加载句子（fetchSentences 内部会检查 loadingIdRef 防止重复加载）
+      fetchSentences(currentSessionId);
+      fetchNextLesson(); // 课程模式：获取下一课时信息
       // 注意：fetchPerfectRecordings 在 useEffect 中根据 currentSentence?.id 变化时调用
 
       return () => {
@@ -3288,8 +3296,8 @@ export default function SentencePracticeScreen() {
           console.log('[学习位置] 已保存:', position);
         }
         
-        // 重置加载标记，允许下次进入时重新加载
-        isLoadingSentencesRef.current = false;
+        // 重置加载标记，允许下次进入页面时重新加载
+        loadingIdRef.current = null;
       };
     }, [fetchSentences, fetchNextLesson, saveProgress, sourceType, lessonId, courseId, courseTitle, lessonNumber, practiceTitle, voiceId, fileId, user?.id, calculateEffectiveDuration])
   );
