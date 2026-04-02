@@ -978,6 +978,7 @@ const generateVariants = (word: string): string[] => {
 /**
  * 检查两个单词是否匹配（支持变体匹配）
  * 支持缩写词、数字、时间、货币等多种变体匹配
+ * 【新增】支持逐字母朗读匹配：用户说 "a p p l e" 可以匹配 "apple"
  */
 const wordsMatchWithVariants = (targetWord: string, recognizedWord: string): boolean => {
   const targetLower = targetWord.toLowerCase();
@@ -995,13 +996,22 @@ const wordsMatchWithVariants = (targetWord: string, recognizedWord: string): boo
     return true;
   }
   
-  // 3. 生成目标词的所有变体
+  // 【新增】3. 逐字母朗读匹配
+  // 用户说 "a p p l e" 可以匹配 "apple"
+  // 检查识别词是否是字母序列（由空格分隔的单个字母）
+  const letterSequenceMatch = checkLetterSequenceMatch(targetLower, recognizedLower);
+  if (letterSequenceMatch) {
+    console.log(`[字母序列匹配] 目标 "${targetLower}" 匹配字母序列 "${recognizedLower}"`);
+    return true;
+  }
+  
+  // 4. 生成目标词的所有变体
   const targetVariants = generateVariants(targetWord);
   
-  // 4. 生成识别词的所有变体（反向匹配）
+  // 5. 生成识别词的所有变体（反向匹配）
   const recognizedVariants = generateVariants(recognizedWord);
   
-  // 5. 检查是否有任何变体匹配（使用精确相等或标准化比较）
+  // 6. 检查是否有任何变体匹配（使用精确相等或标准化比较）
   for (const tv of targetVariants) {
     for (const rv of recognizedVariants) {
       // 变体匹配时，尝试两种方式：精确相等 或 标准化后相等
@@ -1011,14 +1021,14 @@ const wordsMatchWithVariants = (targetWord: string, recognizedWord: string): boo
     }
   }
   
-  // 6. 检查交叉匹配：目标词变体是否直接等于识别词（标准化后）
+  // 7. 检查交叉匹配：目标词变体是否直接等于识别词（标准化后）
   for (const tv of targetVariants) {
     if (tv === recognizedLower || normalizeForCompare(tv) === normalizeForCompare(recognizedLower)) {
       return true;
     }
   }
   
-  // 7. 检查识别词变体是否直接等于目标词（标准化后）
+  // 8. 检查识别词变体是否直接等于目标词（标准化后）
   for (const rv of recognizedVariants) {
     if (rv === targetLower || normalizeForCompare(rv) === normalizeForCompare(targetLower)) {
       return true;
@@ -1026,6 +1036,66 @@ const wordsMatchWithVariants = (targetWord: string, recognizedWord: string): boo
   }
   
   return false;
+};
+
+/**
+ * 检查字母序列匹配
+ * 用户逐个字母朗读单词时，识别结果可能是 "a p p l e" 或 "a p l e"
+ * 这个函数检查识别词是否是目标词的字母序列形式
+ */
+const checkLetterSequenceMatch = (targetWord: string, recognizedText: string): boolean => {
+  // 目标词必须是纯字母单词
+  if (!/^[a-z]+$/.test(targetWord)) {
+    return false;
+  }
+  
+  // 检查识别词是否是字母序列（由空格分隔的单个字母）
+  // 例如："a p p l e" 或 "a b c"
+  const parts = recognizedText.split(/\s+/).filter(p => p.length > 0);
+  
+  // 必须至少有2个部分，且每个部分都是单个字母
+  if (parts.length < 2) {
+    return false;
+  }
+  
+  // 检查每个部分是否都是单个字母
+  const isLetterSequence = parts.every(p => /^[a-z]$/i.test(p));
+  if (!isLetterSequence) {
+    return false;
+  }
+  
+  // 合并字母序列
+  const mergedWord = parts.join('');
+  
+  // 检查合并后的单词是否与目标词匹配
+  if (mergedWord === targetWord) {
+    return true;
+  }
+  
+  // 【宽松匹配】检查是否是目标词的子序列（允许漏读少量字母）
+  // 例如：目标 "apple"，用户说 "a p l e"（漏了一个 p）也算正确
+  // 但漏读不能超过 20% 的字母
+  const targetLen = targetWord.length;
+  const mergedLen = mergedWord.length;
+  const maxMissing = Math.floor(targetLen * 0.2); // 最多允许漏读20%的字母
+  
+  // 检查 mergedWord 是否是 targetWord 的子序列
+  let targetIdx = 0;
+  for (const char of mergedWord) {
+    // 在 targetWord 中找到当前字符
+    while (targetIdx < targetWord.length && targetWord[targetIdx] !== char) {
+      targetIdx++;
+    }
+    if (targetIdx >= targetWord.length) {
+      // 没找到，不是子序列
+      return false;
+    }
+    targetIdx++; // 找到了，继续找下一个
+  }
+  
+  // 如果是子序列，检查漏读数量是否在允许范围内
+  const missingCount = targetLen - mergedLen;
+  return missingCount <= maxMissing && missingCount >= 0;
 };
 
 /**
@@ -1356,6 +1426,7 @@ const expandAbbreviation = (word: string): string[] => {
  * 例如：targetWord="cat-like" 可以匹配 recognizedWords 中的 "cat" 和 "like"
  * 例如：targetWord="modern-looking" 可以匹配 recognizedWords 中的 "modern"（部分匹配）
  * 例如：targetWord="45" 可以匹配 recognizedWords 中的 "forty-five"
+ * 【新增】例如：targetWord="apple" 可以匹配 recognizedWords 中的 ["a", "p", "p", "l", "e"]（逐字母朗读）
  */
 const smartWordMatch = (
   targetWord: string,
@@ -1415,7 +1486,101 @@ const smartWordMatch = (
     }
   }
   
+  // 【新增】字母序列匹配：用户逐个字母朗读单词
+  // 例如：目标是 "apple"，用户说 "a p p l e"
+  const letterSequenceResult = tryLetterSequenceMatch(targetLower, recognizedWords, usedIndices);
+  if (letterSequenceResult.matched) {
+    return letterSequenceResult;
+  }
+  
   return { matched: false, usedIndices: [] };
+};
+
+/**
+ * 尝试字母序列匹配
+ * 当用户逐个字母朗读单词时（如 "a p p l e"），尝试匹配目标单词
+ */
+const tryLetterSequenceMatch = (
+  targetWord: string,
+  recognizedWords: string[],
+  usedIndices: Set<number>
+): { matched: boolean; usedIndices: number[] } => {
+  // 目标词必须是纯字母单词，且长度在2-10之间
+  if (!/^[a-z]+$/.test(targetWord) || targetWord.length < 2 || targetWord.length > 10) {
+    return { matched: false, usedIndices: [] };
+  }
+  
+  // 找出所有未被使用的单字母识别词
+  const letterIndices: number[] = [];
+  const letters: string[] = [];
+  
+  for (let i = 0; i < recognizedWords.length; i++) {
+    if (usedIndices.has(i)) continue;
+    const word = recognizedWords[i].toLowerCase();
+    // 检查是否是单个字母
+    if (/^[a-z]$/.test(word)) {
+      letterIndices.push(i);
+      letters.push(word);
+    }
+  }
+  
+  // 如果没有足够的单字母，无法匹配
+  if (letters.length < 2) {
+    return { matched: false, usedIndices: [] };
+  }
+  
+  // 尝试在字母序列中找到目标词
+  // 目标是找到连续的字母序列，合并后等于目标词
+  const targetLen = targetWord.length;
+  
+  // 滑动窗口：检查每个可能的起始位置
+  for (let start = 0; start <= letters.length - targetLen; start++) {
+    // 取 targetLen 个字母
+    const candidate = letters.slice(start, start + targetLen).join('');
+    
+    if (candidate === targetWord) {
+      // 找到完全匹配！
+      const matchedIndices = letterIndices.slice(start, start + targetLen);
+      console.log(`[字母序列匹配] 目标 "${targetWord}" 匹配字母序列 [${matchedIndices.map(i => recognizedWords[i]).join(', ')}]`);
+      return { matched: true, usedIndices: matchedIndices };
+    }
+  }
+  
+  // 【宽松匹配】允许漏读少量字母（最多20%）
+  const maxMissing = Math.floor(targetLen * 0.2);
+  
+  for (let start = 0; start <= letters.length - (targetLen - maxMissing); start++) {
+    // 尝试不同长度的窗口
+    for (let windowLen = targetLen - maxMissing; windowLen <= Math.min(targetLen + 1, letters.length - start); windowLen++) {
+      const candidate = letters.slice(start, start + windowLen).join('');
+      
+      // 检查 candidate 是否是 targetWord 的子序列
+      if (isSubsequence(candidate, targetWord)) {
+        const missingCount = targetLen - windowLen;
+        // 检查漏读数量是否在允许范围内
+        if (missingCount >= 0 && missingCount <= maxMissing) {
+          const matchedIndices = letterIndices.slice(start, start + windowLen);
+          console.log(`[字母序列宽松匹配] 目标 "${targetWord}" 匹配字母序列 [${matchedIndices.map(i => recognizedWords[i]).join(', ')}]，漏读 ${missingCount} 个字母`);
+          return { matched: true, usedIndices: matchedIndices };
+        }
+      }
+    }
+  }
+  
+  return { matched: false, usedIndices: [] };
+};
+
+/**
+ * 检查 shortStr 是否是 longStr 的子序列
+ */
+const isSubsequence = (shortStr: string, longStr: string): boolean => {
+  let shortIdx = 0;
+  for (const char of longStr) {
+    if (shortIdx < shortStr.length && shortStr[shortIdx] === char) {
+      shortIdx++;
+    }
+  }
+  return shortIdx === shortStr.length;
 };
 
 /**
