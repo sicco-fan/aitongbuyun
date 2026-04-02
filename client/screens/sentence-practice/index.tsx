@@ -1888,7 +1888,7 @@ const Firework: React.FC<FireworkProps> = ({ x, y, delay, colors, particleCount 
   }, [colors, particleCount]);
 
   return (
-    <View style={{ position: 'absolute', left: x, top: y }} pointerEvents="none">
+    <View style={{ position: 'absolute', left: x, top: y, pointerEvents: 'none' }}>
       {particles.map((p) => (
         <Particle
           key={p.id}
@@ -1934,7 +1934,7 @@ const FireworkShow: React.FC = () => {
   }, [colors]);
 
   return (
-    <View style={completionStyles.fireworkContainer} pointerEvents="none">
+    <View style={[completionStyles.fireworkContainer, { pointerEvents: 'none' }]}>
       {/* 背景星星闪烁 */}
       {sparkles.map((s) => (
         <Sparkle key={s.id} delay={s.delay} x={s.x} y={s.y} color={s.color} />
@@ -5873,8 +5873,7 @@ export default function SentencePracticeScreen() {
           <Animated.View 
             entering={FadeIn.duration(200)}
             exiting={FadeOut.duration(200)}
-            style={styles.recordingOverlay}
-            pointerEvents="none"
+            style={[styles.recordingOverlay, { pointerEvents: 'none' }]}
           >
             <View style={styles.recordingMicContainer}>
               <FontAwesome6 name="microphone" size={80} color={theme.buttonPrimaryText} />
