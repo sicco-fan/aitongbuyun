@@ -5779,7 +5779,7 @@ export default function SentencePracticeScreen() {
                           {wordPhonetics[ws.word] && (
                             <ThemedText 
                               variant="tiny" 
-                              color={theme.textMuted}
+                              color="#F59E0B"
                               style={styles.phoneticText}
                             >
                               {wordPhonetics[ws.word]}
@@ -5788,7 +5788,7 @@ export default function SentencePracticeScreen() {
                           {/* 中文意思 */}
                           <ThemedText 
                             variant="tiny" 
-                            color={theme.textSecondary}
+                            color="#F59E0B"
                             style={styles.meaningText}
                           >
                             {wordContextMeanings[ws.word] || '...'}
