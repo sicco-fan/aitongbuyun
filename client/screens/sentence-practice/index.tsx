@@ -1967,6 +1967,7 @@ interface CompletionModalProps {
   hasNextLesson: boolean; // 是否有下一课
   nextLessonTitle?: string; // 下一课标题
   onClose: () => void;
+  onGoHome?: () => void; // 返回首页
   theme: any;
   // 新增：统计数据
   typingAccuracy?: number;    // 打字准确率 0-100
@@ -2039,6 +2040,7 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
   hasNextLesson,
   nextLessonTitle,
   onClose,
+  onGoHome,
   theme,
   typingAccuracy = 100,
   voiceAttempts = 0,
@@ -2186,16 +2188,31 @@ const CompletionModal: React.FC<CompletionModalProps> = ({
           </View>
         )}
 
-        {/* 确认按钮 */}
-        <TouchableOpacity
-          style={[completionStyles.completionButton, { backgroundColor: theme.primary, shadowColor: theme.primary, shadowOpacity: 0.4 }]}
-          onPress={onClose}
-          activeOpacity={0.9}
-        >
-          <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
-            {hasNextLesson ? '🚀 继续下一课' : '✨ 完成'}
-          </ThemedText>
-        </TouchableOpacity>
+        {/* 按钮区域 */}
+        <View style={completionStyles.buttonRow}>
+          {/* 返回首页按钮 */}
+          {onGoHome && (
+            <TouchableOpacity
+              style={[completionStyles.secondaryButton, { backgroundColor: theme.backgroundTertiary, borderColor: theme.border }]}
+              onPress={onGoHome}
+              activeOpacity={0.9}
+            >
+              <ThemedText variant="bodyMedium" color={theme.textSecondary}>
+                🏠 返回首页
+              </ThemedText>
+            </TouchableOpacity>
+          )}
+          {/* 主按钮 */}
+          <TouchableOpacity
+            style={[completionStyles.completionButton, { backgroundColor: theme.primary, shadowColor: theme.primary, shadowOpacity: 0.4 }]}
+            onPress={onClose}
+            activeOpacity={0.9}
+          >
+            <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
+              {hasNextLesson ? '🚀 继续下一课' : '✨ 完成'}
+            </ThemedText>
+          </TouchableOpacity>
+        </View>
         
         {/* 结尾鼓励 - 放大 */}
         <ThemedText variant="smallMedium" color={theme.textMuted} style={{ marginTop: Spacing.md, textAlign: 'center' }}>
@@ -2335,8 +2352,22 @@ const completionStyles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: Spacing.lg,
   },
-  completionButton: {
+  buttonRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
     width: '100%',
+    marginBottom: Spacing.md,
+  },
+  secondaryButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  completionButton: {
+    flex: 1,
     paddingVertical: Spacing.lg,
     paddingHorizontal: Spacing['2xl'],
     borderRadius: 16,
@@ -5218,6 +5249,16 @@ export default function SentencePracticeScreen() {
     }
   }, [submitLearningData, completionDuration, router, sourceType, nextLessonId, nextLessonNumber, nextLessonTitle, courseId, courseTitle]);
 
+  // 处理返回首页
+  const handleGoHome = useCallback(() => {
+    setShowCompletionModal(false);
+    // 提交最终学习数据
+    submitLearningData(true, completionDuration);
+    
+    // 返回首页（课程列表）
+    router.replace('/');
+  }, [submitLearningData, completionDuration, router]);
+
   // 开始语音输入
   const startRecording = useCallback(async () => {
     if (!hasRecordingPermission) {
@@ -6606,6 +6647,7 @@ export default function SentencePracticeScreen() {
         hasNextLesson={sourceType === 'lesson' && !!nextLessonId}
         nextLessonTitle={nextLessonTitle}
         onClose={handleCompletionClose}
+        onGoHome={handleGoHome}
         theme={theme}
         typingAccuracy={completionStats.typingAccuracy}
         voiceAttempts={completionStats.voiceAttempts}
