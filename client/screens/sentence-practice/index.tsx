@@ -2941,11 +2941,23 @@ export default function SentencePracticeScreen() {
 
   // 保存学习进度
   const saveProgress = useCallback(async (sentenceIndex: number) => {
-    if (!isAuthenticated || !user?.id) return;
-    
     // 课程模式使用 lessonId，句库模式使用 fileId
     const recordId = sourceType === 'lesson' ? lessonId : fileId;
     if (!recordId) return;
+    
+    // 【修复】无论是否登录，都保存到本地缓存
+    if (sentences.length > 0) {
+      await saveLocalProgress(sourceType, recordId, {
+        sentenceIndex: sentenceIndex,
+        totalSentences: sentences.length,
+        updatedAt: Date.now(),
+        completed: false,
+      });
+      console.log(`[本地进度] 已保存: 第 ${sentenceIndex + 1} 句 (ID: ${recordId})`);
+    }
+    
+    // 登录用户同时保存到服务端
+    if (!isAuthenticated || !user?.id) return;
     
     try {
       /**
@@ -2961,11 +2973,11 @@ export default function SentencePracticeScreen() {
           sentence_index: sentenceIndex,
         }),
       });
-      console.log(`[学习进度] 已保存进度: 第 ${sentenceIndex + 1} 句 (ID: ${recordId})`);
+      console.log(`[服务端进度] 已保存: 第 ${sentenceIndex + 1} 句 (ID: ${recordId})`);
     } catch (error) {
-      console.error('[学习进度] 保存失败:', error);
+      console.error('[服务端进度] 保存失败:', error);
     }
-  }, [fileId, lessonId, sourceType, isAuthenticated, user?.id]);
+  }, [fileId, lessonId, sourceType, isAuthenticated, user?.id, sentences.length]);
 
   // 同步 ref 值（用于 cleanup 中获取最新值）
   useEffect(() => {
