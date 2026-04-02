@@ -254,13 +254,13 @@ export const createStyles = (theme: Theme) => {
       minWidth: 40,
     },
     phoneticText: {
-      fontSize: 9,
-      lineHeight: 11,
+      fontSize: 11,
+      lineHeight: 14,
       fontStyle: 'italic',
     },
     meaningText: {
-      fontSize: 9,
-      lineHeight: 11,
+      fontSize: 11,
+      lineHeight: 14,
       textAlign: 'center',
     },
     
