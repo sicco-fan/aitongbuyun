@@ -103,27 +103,36 @@ router.post('/login', async (req, res) => {
     
     const client = getSupabaseClient();
     
-    // 验证验证码
-    const { data: codeRecord, error: codeError } = await client
-      .from('verification_codes')
-      .select('*')
-      .eq('phone', phone)
-      .eq('code', code)
-      .eq('used', false)
-      .gt('expires_at', new Date().toISOString())
-      .maybeSingle();
+    // 验证验证码（支持固定验证码123456）
+    let codeRecord = null;
     
-    if (codeError) throw codeError;
-    
-    if (!codeRecord) {
-      return res.status(400).json({ error: '验证码无效或已过期' });
+    // 如果是固定验证码123456，跳过数据库验证
+    if (code === DEV_CODE) {
+      console.log(`[AUTH] 使用固定验证码登录: ${phone}`);
+    } else {
+      // 非固定验证码，从数据库验证
+      const { data, error: codeError } = await client
+        .from('verification_codes')
+        .select('*')
+        .eq('phone', phone)
+        .eq('code', code)
+        .eq('used', false)
+        .gt('expires_at', new Date().toISOString())
+        .maybeSingle();
+      
+      if (codeError) throw codeError;
+      codeRecord = data;
+      
+      if (!codeRecord) {
+        return res.status(400).json({ error: '验证码无效或已过期' });
+      }
+      
+      // 标记验证码已使用
+      await client
+        .from('verification_codes')
+        .update({ used: true })
+        .eq('id', codeRecord.id);
     }
-    
-    // 标记验证码已使用
-    await client
-      .from('verification_codes')
-      .update({ used: true })
-      .eq('id', codeRecord.id);
     
     // 查找或创建用户
     const { data: existingUser, error: userError } = await client
