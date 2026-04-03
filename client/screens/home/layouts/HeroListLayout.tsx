@@ -82,6 +82,10 @@ export default function HeroListLayout({
     router.push('/sentence-practice', { fileId: file.id, title: file.title });
   };
 
+  // 过滤掉与课程标题重复的句库文件
+  const courseTitles = new Set(courses.map(c => c.title));
+  const filteredAiSentenceFiles = aiSentenceFiles.filter(f => !courseTitles.has(f.title));
+
   const hasAnyContent = courses.length > 0 || aiSentenceFiles.length > 0 || customSentenceFiles.length > 0;
   const progressPercent = lastLearningPosition 
     ? Math.round(((lastLearningPosition.sentenceIndex + 1) / lastLearningPosition.totalSentences) * 100)
@@ -197,7 +201,7 @@ export default function HeroListLayout({
         </View>
 
         {/* 紧凑列表 */}
-        {[...courses, ...aiSentenceFiles].map((item) => {
+        {[...courses, ...filteredAiSentenceFiles].map((item) => {
           const isCourse = 'book_number' in item;
           return (
             <TouchableOpacity

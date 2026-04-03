@@ -84,7 +84,13 @@ export default function StateDrivenLayout({
   };
 
   const hasAnyContent = courses.length > 0 || aiSentenceFiles.length > 0 || customSentenceFiles.length > 0;
-  const allResources = [...courses, ...aiSentenceFiles, ...customSentenceFiles];
+  
+  // 过滤掉与课程标题重复的句库文件
+  const courseTitles = new Set(courses.map(c => c.title));
+  const filteredAiSentenceFiles = aiSentenceFiles.filter(f => !courseTitles.has(f.title));
+  const filteredCustomSentenceFiles = customSentenceFiles.filter(f => !courseTitles.has(f.title));
+  
+  const allResources = [...courses, ...filteredAiSentenceFiles, ...filteredCustomSentenceFiles];
   const progressPercent = lastLearningPosition
     ? Math.round(((lastLearningPosition.sentenceIndex + 1) / lastLearningPosition.totalSentences) * 100)
     : 0;

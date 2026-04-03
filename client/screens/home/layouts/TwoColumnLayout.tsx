@@ -87,8 +87,12 @@ export default function TwoColumnLayout({
 
   const hasAnyContent = courses.length > 0 || aiSentenceFiles.length > 0 || customSentenceFiles.length > 0;
 
+  // 过滤掉与课程标题重复的句库文件
+  const courseTitles = new Set(courses.map(c => c.title));
+  const filteredAiSentenceFiles = aiSentenceFiles.filter(f => !courseTitles.has(f.title));
+  
   // 将课程分组成双列
-  const allAIItems = [...courses, ...aiSentenceFiles];
+  const allAIItems = [...courses, ...filteredAiSentenceFiles];
 
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
