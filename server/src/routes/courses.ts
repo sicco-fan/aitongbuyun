@@ -869,6 +869,8 @@ router.get('/lessons/:lessonId', async (req: Request, res: Response) => {
         
         return {
           ...sentence,
+          text: sentence.english_text,  // 映射 english_text 为 text，方便前端使用
+          translation: sentence.chinese_text,  // 映射 chinese_text 为 translation
           audio_url: audioUrl,
           audio_duration: duration,
           available_voices: availableVoices,
