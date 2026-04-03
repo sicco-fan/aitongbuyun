@@ -14,10 +14,10 @@ ADD COLUMN IF NOT EXISTS is_early_adopter BOOLEAN DEFAULT FALSE;
 -- 'lifetime' - 终身会员
 
 -- 2. 为已有用户设置早期用户标记（在收费日期前注册的用户）
--- 这个日期你可以根据实际情况修改
+-- 2026年4月15日前注册的用户自动获得永久免费会员
 UPDATE users 
 SET is_early_adopter = TRUE 
-WHERE created_at < '2025-05-01 00:00:00'::timestamptz;
+WHERE created_at < '2026-04-15 00:00:00'::timestamptz;
 
 -- 3. 创建会员记录表（可选，用于记录会员购买历史）
 CREATE TABLE IF NOT EXISTS membership_orders (

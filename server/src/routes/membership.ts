@@ -4,7 +4,7 @@ import { getSupabaseClient } from '../storage/database/supabase-client';
 const router = express.Router();
 
 // 收费开始日期 - 在此日期前注册的用户永久免费
-const EARLY_ADOPTER_CUTOFF = new Date('2025-05-01T00:00:00Z');
+const EARLY_ADOPTER_CUTOFF = new Date('2026-04-15T00:00:00Z');
 
 // 会员价格配置
 export const MEMBERSHIP_PRICES = {
