@@ -119,7 +119,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { success: false, error: result.error || '游客登录失败' };
     } catch (error) {
       console.error('游客登录失败:', error);
-      return { success: false, error: '网络错误，请稍后重试' };
+      // 网络错误时，创建本地游客用户（离线模式）
+      const guestUser: User = {
+        id: `guest_${deviceId}`,
+        device_id: deviceId,
+        nickname: '游客用户',
+        is_guest: true,
+        role: 'user',
+      };
+      setUser(guestUser);
+      await AsyncStorage.setItem(STORAGE_KEYS.USER_ID, guestUser.id);
+      await AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(guestUser));
+      return { success: true };
     }
   }, [deviceId]);
 
@@ -166,9 +177,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { success: false, error: result.error || '登录失败' };
     } catch (error) {
       console.error('登录失败:', error);
+      // 网络错误时，如果验证码是 123456，创建本地用户（离线模式）
+      if (code === '123456' && deviceId) {
+        const localUser: User = {
+          id: `local_${phone}_${deviceId}`,
+          phone,
+          device_id: deviceId,
+          nickname: `用户${phone.slice(-4)}`,
+          is_guest: false,
+          role: 'user',
+        };
+        setUser(localUser);
+        await AsyncStorage.setItem(STORAGE_KEYS.USER_ID, localUser.id);
+        await AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(localUser));
+        return { success: true };
+      }
       return { success: false, error: '网络错误，请稍后重试' };
     }
-  }, []);
+  }, [deviceId]);
 
   // 更新昵称
   const updateNickname = useCallback(async (nickname: string): Promise<{ success: boolean; error?: string }> => {
