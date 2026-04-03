@@ -47,6 +47,11 @@ import {
   hasAudioLocal as hasCourseAudioLocal,
 } from '@/utils/audioStorage';
 import { getCachedAudio } from '@/utils/lessonAudioCache';
+import { 
+  isWebSpeechSupported, 
+  WebSpeechRecognizer,
+  WebSpeechResult 
+} from '@/utils/webSpeechRecognition';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
@@ -2560,6 +2565,10 @@ export default function SentencePracticeScreen() {
   const recordingRef = useRef<Audio.Recording | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null); // 长按录音延迟计时器
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null); // 触摸起点
+  
+  // Web Speech API 识别器（Web 端优先使用）
+  const webSpeechRef = useRef<WebSpeechRecognizer | null>(null);
+  const useWebSpeech = Platform.OS === 'web' && isWebSpeechSupported();
   
   // 跟随朗读模式的当前进度索引（已废弃，保留兼容）
   const followAlongIndexRef = useRef<number>(0);
@@ -5291,14 +5300,11 @@ export default function SentencePracticeScreen() {
     // 记录用户活动（语音输入）
     recordActivity();
 
-    // ===== 最简单可靠的方案：无条件暂停音频 =====
-    // 不管是移动端（onTouchStart已处理）还是Web端，都确保音频被暂停
+    // ===== 暂停音频 =====
     if (soundRef.current) {
       try {
-        // 获取当前播放状态
         const status = await soundRef.current.getStatusAsync();
         if (status.isLoaded && status.isPlaying) {
-          // 记录播放状态（只有还没记录时才记录，避免覆盖 onTouchStart 的记录）
           if (!wasPlayingBeforeRecordingRef.current) {
             wasPlayingBeforeRecordingRef.current = true;
             console.log('[录音开始] 记录播放状态');
@@ -5312,6 +5318,59 @@ export default function SentencePracticeScreen() {
       }
     }
 
+    // ===== Web 端优先使用 Web Speech API =====
+    if (useWebSpeech) {
+      console.log('[Web Speech] 启动语音识别');
+      try {
+        // 创建识别器
+        webSpeechRef.current = new WebSpeechRecognizer({
+          language: 'en-US',
+          interimResults: true,
+          onInterim: (text) => {
+            // 实时显示中间结果
+            console.log('[Web Speech] 中间结果:', text);
+            if (text && currentSentence) {
+              const lowerText = text.toLowerCase();
+              setVoiceResultText(lowerText);
+              const { recognizedWordMatches: recMatches } = calculateMatchScore(lowerText, currentSentence.text);
+              setRecognizedWordMatches(recMatches);
+              setShowVoiceResult(true);
+            }
+          },
+          onError: (error) => {
+            console.error('[Web Speech] 错误:', error);
+          },
+        });
+        
+        setIsRecording(true);
+        isStartingRecordingRef.current = false;
+        
+        // 标记为语音模式开始
+        if (!sentenceHadTypingRef.current) {
+          sentenceStartedWithVoiceRef.current = true;
+        }
+        
+        // 开始识别（异步，结果在 stopRecordingAndRecognize 中处理）
+        webSpeechRef.current.start().then((result) => {
+          console.log('[Web Speech] 识别完成:', result.text);
+          // 如果识别完成但还在录音状态，自动处理结果
+          if (isRecording) {
+            handleSpeechResult(result.text.toLowerCase());
+          }
+        }).catch((error) => {
+          console.error('[Web Speech] 识别失败:', error);
+          setIsRecording(false);
+          setIsRecognizing(false);
+        });
+        
+        return;
+      } catch (e) {
+        console.error('[Web Speech] 启动失败:', e);
+        // 失败则回退到传统录音方式
+      }
+    }
+
+    // ===== 传统录音方式（移动端或 Web Speech 不可用时）=====
     try {
       // 先清理可能存在的旧录音对象
       if (recordingRef.current) {
@@ -5352,10 +5411,86 @@ export default function SentencePracticeScreen() {
       isStartingRecordingRef.current = false;
       Alert.alert('录音失败', '无法启动录音');
     }
-  }, [hasRecordingPermission, recordActivity]);
+  }, [hasRecordingPermission, recordActivity, useWebSpeech, currentSentence, isRecording]);
+  
+  // 处理语音识别结果（提取为公共函数）
+  const handleSpeechResult = useCallback((recognizedText: string) => {
+    if (!currentSentence) return;
+    
+    setIsRecording(false);
+    setIsRecognizing(false);
+    
+    // 记录语音识别尝试次数
+    statsRef.current.voiceAttempts += 1;
+    
+    if (recognizedText) {
+      console.log(`[语音识别] 识别结果: ${recognizedText}`);
+      
+      // ===== 自动匹配模式 =====
+      const { score, wordMatches, recognizedWordMatches: recMatches } = calculateMatchScore(recognizedText, currentSentence.text);
+      const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
+      
+      // 显示用户念的内容，并把匹配到的单词标绿
+      setVoiceResultText(recognizedText);
+      setVoiceMatchScore(score);
+      setRecognizedWordMatches(recMatches);
+      setVoiceWordMatches([]);
+      setShowVoiceResult(true);
+      
+      // 延迟一下再填入匹配结果
+      setTimeout(() => {
+        if (matchedWords.length > 0) {
+          handleLongTextInput(matchedWords.join(' '));
+        }
+        
+        // 检查是否全部完成
+        const newIncompleteIndices = wordStatusesRef.current
+          .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
+          .filter(idx => idx !== -1);
+        
+        if (newIncompleteIndices.length === 0) {
+          setTimeout(() => setShowVoiceResult(false), 1000);
+        } else {
+          setTimeout(() => {
+            if (isLoopingRef.current && isMountedRef.current) {
+              playAudio();
+            }
+          }, 500);
+        }
+        
+        if (score < 100 && newIncompleteIndices.length > 0) {
+          sentenceHadVoiceErrorRef.current = true;
+        }
+      }, 300);
+    }
+    
+    // 恢复音频播放模式
+    if (wasPlayingBeforeRecordingRef.current && isLoopingRef.current && isMountedRef.current) {
+      setTimeout(() => {
+        if (isLoopingRef.current && isMountedRef.current) {
+          playAudio();
+        }
+      }, 300);
+    }
+    wasPlayingBeforeRecordingRef.current = false;
+  }, [currentSentence, handleLongTextInput, playAudio]);
 
   // 停止语音输入并识别
   const stopRecordingAndRecognize = useCallback(async () => {
+    // ===== Web Speech API 模式 =====
+    if (useWebSpeech && webSpeechRef.current) {
+      console.log('[Web Speech] 停止识别');
+      setIsRecognizing(true);
+      
+      // 停止识别（结果会通过 start() 的 Promise 返回）
+      webSpeechRef.current.stop();
+      webSpeechRef.current = null;
+      
+      // 注意：结果处理在 startRecording 的 Promise 中
+      return;
+    }
+    
+    // ===== 传统录音模式 =====
     if (!recordingRef.current) return;
 
     setIsRecording(false);
@@ -5390,51 +5525,9 @@ export default function SentencePracticeScreen() {
         setIsRecognizing(false); // 识别完成
 
         if (data.text) {
-          const recognizedText = data.text.toLowerCase();
-          
-          console.log(`[语音识别] 识别结果: ${recognizedText}`);
-          
-          // ===== 自动匹配模式（唯一模式）=====
-          // 极简风格：显示识别结果，匹配到的变绿，不要任何红色提示
-          
-          const { score, wordMatches, recognizedWordMatches: recMatches } = calculateMatchScore(recognizedText, currentSentence.text);
-          const matchedWords = wordMatches.filter(w => w.isMatch).map(w => w.word);
-          
-          // 显示用户念的内容，并把匹配到的单词标绿
-          setVoiceResultText(recognizedText);
-          setVoiceMatchScore(score);
-          setRecognizedWordMatches(recMatches); // 保存识别结果中每个词的匹配状态
-          setVoiceWordMatches([]); // 不显示红色块块
-          setShowVoiceResult(true);
-          
-          // 延迟一下再填入匹配结果，让用户先看到识别结果
-          setTimeout(() => {
-            if (matchedWords.length > 0) {
-              handleLongTextInput(matchedWords.join(' '));
-            }
-            
-            // 检查是否全部完成
-            const newIncompleteIndices = wordStatusesRef.current
-              .map((ws, idx) => (!ws.isPunctuation && !ws.revealed) ? idx : -1)
-              .filter(idx => idx !== -1);
-            
-            if (newIncompleteIndices.length === 0) {
-              // 全部完成，短暂显示后隐藏
-              setTimeout(() => setShowVoiceResult(false), 1000);
-            } else {
-              // 还有未完成的，恢复音频播放
-              setTimeout(() => {
-                if (isLoopingRef.current && isMountedRef.current) {
-                  playAudio();
-                }
-              }, 500);
-            }
-            
-            // 记录是否有语音错误（用于完美发音判断）
-            if (score < 100 && newIncompleteIndices.length > 0) {
-              sentenceHadVoiceErrorRef.current = true;
-            }
-          }, 300);
+          handleSpeechResult(data.text.toLowerCase());
+        } else {
+          setIsRecognizing(false);
         }
         
         // 恢复音频播放模式（从听筒切回扬声器）
@@ -5445,28 +5538,15 @@ export default function SentencePracticeScreen() {
             interruptionModeIOS: 1,
             shouldDuckAndroid: true,
             interruptionModeAndroid: 1,
-            playThroughEarpieceAndroid: false,  // 强制使用扬声器
+            playThroughEarpieceAndroid: false,
           });
         } catch (e) {
           // 忽略恢复错误
         }
-        
-        // ===== 统一恢复播放逻辑 =====
-        // 如果录音前是在播放状态，且循环状态仍然开启，恢复播放
-        if (wasPlayingBeforeRecordingRef.current && isLoopingRef.current && isMountedRef.current) {
-          console.log('[录音结束] 恢复音频播放');
-          setTimeout(() => {
-            if (isLoopingRef.current && isMountedRef.current) {
-              playAudio();
-            }
-          }, 300);
-        }
-        // 重置录音前播放状态
-        wasPlayingBeforeRecordingRef.current = false;
       }
     } catch (error) {
       console.error('语音识别失败:', error);
-      setIsRecognizing(false); // 识别失败
+      setIsRecognizing(false);
       
       // 恢复音频播放模式
       try {
@@ -5476,15 +5556,12 @@ export default function SentencePracticeScreen() {
           interruptionModeIOS: 1,
           shouldDuckAndroid: true,
           interruptionModeAndroid: 1,
-          playThroughEarpieceAndroid: false,  // 强制使用扬声器
+          playThroughEarpieceAndroid: false,
         });
-      } catch (e) {
-        // 忽略恢复错误
-      }
+      } catch (e) {}
       
       // 出错时也尝试恢复播放
       if (wasPlayingBeforeRecordingRef.current && isLoopingRef.current && isMountedRef.current) {
-        console.log('[录音出错] 恢复音频播放');
         setTimeout(() => {
           if (isLoopingRef.current && isMountedRef.current) {
             playAudio();
@@ -5493,7 +5570,7 @@ export default function SentencePracticeScreen() {
       }
       wasPlayingBeforeRecordingRef.current = false;
     }
-  }, [currentSentence, handleLongTextInput, playAudio, isPlaying]);
+  }, [useWebSpeech, currentSentence, handleSpeechResult, playAudio]);
 
   // 清理
   useEffect(() => {
