@@ -2552,6 +2552,7 @@ export default function SentencePracticeScreen() {
 
   // 语音输入
   const [isRecording, setIsRecording] = useState(false);
+  const [isRecognizing, setIsRecognizing] = useState(false); // 正在识别中
   const [hasRecordingPermission, setHasRecordingPermission] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null); // 长按录音延迟计时器
@@ -5224,8 +5225,10 @@ export default function SentencePracticeScreen() {
         playThroughEarpieceAndroid: false,  // 强制使用扬声器，避免听筒播放
       });
 
+      // 使用 LOW_QUALITY 录音，减少文件大小，加快 ASR 识别速度
+      // 语音识别不需要高保真音质，22.05kHz 单声道 64kbps 足够
       const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        Audio.RecordingOptionsPresets.LOW_QUALITY,
       );
 
       recordingRef.current = recording;
@@ -5249,6 +5252,7 @@ export default function SentencePracticeScreen() {
     if (!recordingRef.current) return;
 
     setIsRecording(false);
+    setIsRecognizing(true); // 开始识别
     
     // 记录语音识别尝试次数
     statsRef.current.voiceAttempts += 1;
@@ -5276,6 +5280,7 @@ export default function SentencePracticeScreen() {
         });
 
         const data = await response.json();
+        setIsRecognizing(false); // 识别完成
 
         if (data.text) {
           const recognizedText = data.text.toLowerCase();
@@ -5354,6 +5359,8 @@ export default function SentencePracticeScreen() {
       }
     } catch (error) {
       console.error('语音识别失败:', error);
+      setIsRecognizing(false); // 识别失败
+      
       // 恢复音频播放模式
       try {
         await Audio.setAudioModeAsync({
@@ -5879,6 +5886,21 @@ export default function SentencePracticeScreen() {
               <FontAwesome6 name="microphone" size={80} color={theme.buttonPrimaryText} />
               <ThemedText variant="h4" color={theme.buttonPrimaryText} style={{ marginTop: Spacing.lg }}>
                 正在录音...
+              </ThemedText>
+            </View>
+          </Animated.View>
+        )}
+
+        {/* Recognizing Overlay - 正在识别 */}
+        {isRecognizing && (
+          <Animated.View 
+            entering={FadeIn.duration(200)}
+            style={[styles.recordingOverlay, { pointerEvents: 'none' }]}
+          >
+            <View style={styles.recordingMicContainer}>
+              <ActivityIndicator size="large" color={theme.buttonPrimaryText} />
+              <ThemedText variant="h4" color={theme.buttonPrimaryText} style={{ marginTop: Spacing.lg }}>
+                正在识别...
               </ThemedText>
             </View>
           </Animated.View>
