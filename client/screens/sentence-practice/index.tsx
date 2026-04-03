@@ -46,6 +46,7 @@ import {
   hasAudioLocal,
   hasAudioLocal as hasCourseAudioLocal,
 } from '@/utils/audioStorage';
+import { getCachedAudio } from '@/utils/lessonAudioCache';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
@@ -3599,7 +3600,7 @@ export default function SentencePracticeScreen() {
           return;
         }
         
-        // 无本地缓存，使用在线 TTS
+        // 无本地缓存，使用在线 TTS（Web 端使用 Cache API）
         console.log(`[playAudio-课程] 无本地缓存，使用在线TTS, voiceId: ${playingVoiceId}`);
         try {
           /**
@@ -3609,8 +3610,19 @@ export default function SentencePracticeScreen() {
            */
           const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=${playingVoiceId}`;
           
+          // Web 端：使用 Cache API 缓存
+          let playUrl = ttsUrl;
+          if (Platform.OS === 'web') {
+            try {
+              playUrl = await getCachedAudio(audioKey, ttsUrl);
+              console.log(`[Web缓存] 使用URL: ${playUrl.substring(0, 50)}...`);
+            } catch (cacheErr) {
+              console.log('[Web缓存] 获取缓存失败，使用原始URL:', cacheErr);
+            }
+          }
+          
           const { sound } = await Audio.Sound.createAsync(
-            { uri: ttsUrl },
+            { uri: playUrl },
             {
               shouldPlay: true,
               isLooping: false,
