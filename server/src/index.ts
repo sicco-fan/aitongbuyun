@@ -20,6 +20,7 @@ import usersRouter from "./routes/users";
 import communityRouter from "./routes/community";
 import tasksRouter from "./routes/tasks";
 import ttsRouter from "./routes/tts";
+import membershipRouter from "./routes/membership";
 import { initializePresetData } from "./database/init-preset-data";
 
 const app = express();
@@ -88,6 +89,9 @@ app.use('/api/v1/tasks', tasksRouter);
 
 // 社区路由
 app.use('/api/v1/community', communityRouter);
+
+// 会员路由
+app.use('/api/v1/membership', membershipRouter);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
