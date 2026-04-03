@@ -190,6 +190,10 @@ export default function MyFilesScreen() {
 
   // 分享句库
   const handleShare = (file: SentenceFile) => {
+    if (!user?.id) {
+      Alert.alert('错误', '用户信息未加载，请重新登录');
+      return;
+    }
     setSelectedFile(file);
     setShareDescription(file.description || '');
     setShareModalVisible(true);
@@ -235,6 +239,11 @@ export default function MyFilesScreen() {
   const handleCancelShare = (file: SentenceFile) => {
     if (!file.share_info) return;
     
+    if (!user?.id) {
+      Alert.alert('错误', '用户信息未加载，请重新登录');
+      return;
+    }
+    
     Alert.alert(
       '取消分享',
       '确定要取消分享吗？其他用户将无法在市场中看到此句库。',
@@ -246,11 +255,9 @@ export default function MyFilesScreen() {
           onPress: async () => {
             try {
               const response = await fetch(
-                `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/share/${file.share_info?.id}`,
+                `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/share/${file.share_info?.id}?user_id=${user.id}`,
                 {
                   method: 'DELETE',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ user_id: user?.id }),
                 }
               );
               

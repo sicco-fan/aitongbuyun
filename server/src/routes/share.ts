@@ -328,12 +328,12 @@ router.put('/:share_id', async (req, res) => {
 /**
  * DELETE /api/v1/share/:share_id
  * 取消分享（允许所有用户操作）
- * Body: { user_id: string }
+ * Query: user_id
  */
 router.delete('/:share_id', async (req, res) => {
   try {
     const { share_id } = req.params;
-    const { user_id } = req.body;
+    const { user_id } = req.query;
     
     if (!user_id) {
       return res.status(400).json({ error: '缺少用户ID' });
