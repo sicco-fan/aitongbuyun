@@ -1,5 +1,6 @@
 import express from 'express';
 import { getSupabaseClient } from '../storage/database/supabase-client';
+import { requireAdmin } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -625,8 +626,9 @@ router.get('/file/:file_id', async (req, res) => {
 /**
  * GET /api/v1/stats/learners
  * 获取所有学习者列表（不按课程筛选）
+ * 权限要求：仅管理员可访问
  */
-router.get('/learners', async (req, res) => {
+router.get('/learners', requireAdmin, async (req, res) => {
   try {
     const client = getSupabaseClient();
     
@@ -756,8 +758,9 @@ router.get('/learners', async (req, res) => {
  * GET /api/v1/stats/user-trend/:userId
  * 获取用户学习趋势数据（最近7天）
  * Query: course_id (可选)
+ * 权限要求：仅管理员可访问
  */
-router.get('/user-trend/:userId', async (req, res) => {
+router.get('/user-trend/:userId', requireAdmin, async (req, res) => {
   try {
     const { userId } = req.params;
     const { course_id } = req.query;
@@ -826,11 +829,12 @@ router.get('/user-trend/:userId', async (req, res) => {
  * GET /api/v1/stats/course-learners/:courseId
  * 获取课程的学习者列表（管理员功能）
  * 返回：学习者名单、积分、学习时长、完成句子数、今日进度等
+ * 权限要求：仅管理员可访问
  * 
  * 注意：由于当前数据库结构限制，此API返回的是所有用户的学习统计
  * 课程ID参数暂时仅用于标识调用来源
  */
-router.get('/course-learners/:courseId', async (req, res) => {
+router.get('/course-learners/:courseId', requireAdmin, async (req, res) => {
   try {
     const courseId = parseInt(req.params.courseId, 10);
     if (isNaN(courseId)) {
@@ -982,8 +986,9 @@ router.get('/course-learners/:courseId', async (req, res) => {
  * GET /api/v1/stats/user-errors/:userId
  * 获取用户的错题分析
  * Query: course_id (可选，筛选特定课程的错题)
+ * 权限要求：仅管理员可访问
  */
-router.get('/user-errors/:userId', async (req, res) => {
+router.get('/user-errors/:userId', requireAdmin, async (req, res) => {
   try {
     const { userId } = req.params;
     const { course_id } = req.query;
