@@ -2587,6 +2587,10 @@ export default function SentencePracticeScreen() {
   const isStartingRecordingRef = useRef(false); // 正在启动录音（用于 onTouchEnd 检测）
   const previewSoundRef = useRef<Audio.Sound | null>(null); // 预览音频播放器
   
+  // 音频预加载缓存
+  const preloadedAudioRef = useRef<Map<string, { uri: string; sound: Audio.Sound | null; loading: boolean }>>(new Map());
+  const isPreloadingRef = useRef(false);
+  
   // 音频源选择状态
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]); // 选中的音源ID列表
   const [currentPlayingSourceIndex, setCurrentPlayingSourceIndex] = useState(0); // 当前播放的音源索引
@@ -3530,6 +3534,19 @@ export default function SentencePracticeScreen() {
           currentSentence.sentence_index,
           playingVoiceId  // 使用当前播放的voiceId
         );
+        
+        // 1. 先检查预加载缓存
+        const preloaded = preloadedAudioRef.current.get(audioKey);
+        if (preloaded?.sound) {
+          console.log(`[playAudio-课程] 使用预加载音频: ${audioKey}`);
+          try {
+            // 卸载预加载的声音对象（需要重新创建以设置正确的参数）
+            await preloaded.sound.unloadAsync();
+          } catch (e) {}
+          preloadedAudioRef.current.delete(audioKey);
+        }
+        
+        // 2. 检查本地存储
         const localAudioUri = await getAudioFromLocal(audioKey);
         
         // 播放完成后的处理：切换到下一个音源或循环播放
@@ -3814,6 +3831,57 @@ export default function SentencePracticeScreen() {
     setIsPlaying(false);
   }, []);
 
+  // 预加载下一句音频（课程模式）
+  const preloadNextAudio = useCallback(async (nextSentenceIndex: number) => {
+    if (!file?.is_lesson || !courseId || !lessonId || isPreloadingRef.current) return;
+    
+    const nextSentence = sentences[nextSentenceIndex];
+    if (!nextSentence) return;
+
+    const playingVoiceId = getCurrentPlayingVoiceId() || voiceId;
+    const audioKey = generateCourseAudioKey(
+      parseInt(courseId, 10),
+      parseInt(lessonId, 10),
+      nextSentence.sentence_index,
+      playingVoiceId
+    );
+
+    // 已缓存或正在加载则跳过
+    if (preloadedAudioRef.current.has(audioKey)) return;
+    
+    // 检查本地存储
+    const localUri = await getAudioFromLocal(audioKey);
+    if (localUri) {
+      preloadedAudioRef.current.set(audioKey, { uri: localUri, sound: null, loading: false });
+      return;
+    }
+
+    // 开始预加载 TTS
+    isPreloadingRef.current = true;
+    preloadedAudioRef.current.set(audioKey, { uri: '', sound: null, loading: true });
+    
+    console.log(`[预加载] 开始预加载句子 ${nextSentenceIndex}, voiceId: ${playingVoiceId}`);
+    
+    try {
+      const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(nextSentence.text)}&speaker=${playingVoiceId}`;
+      
+      // 创建但不播放，仅加载到内存
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: ttsUrl },
+        { shouldPlay: false, isLooping: false, volume: 0 },
+        null
+      );
+      
+      preloadedAudioRef.current.set(audioKey, { uri: ttsUrl, sound, loading: false });
+      console.log(`[预加载] 完成: 句子 ${nextSentenceIndex}`);
+    } catch (e) {
+      console.log(`[预加载] 失败: 句子 ${nextSentenceIndex}`, e);
+      preloadedAudioRef.current.delete(audioKey);
+    } finally {
+      isPreloadingRef.current = false;
+    }
+  }, [file?.is_lesson, courseId, lessonId, sentences, voiceId]);
+
   // 切换播放/暂停
   const togglePlayPause = useCallback(() => {
     // 记录用户活动（播放/暂停音频）
@@ -3898,6 +3966,11 @@ export default function SentencePracticeScreen() {
         return;
       }
       playAudio();
+      
+      // 预加载下一句音频（课程模式）
+      if (currentIndex < sentences.length - 1) {
+        preloadNextAudio(currentIndex + 1);
+      }
     }, 500);
 
     // 获取当前句子的完美发音记录
