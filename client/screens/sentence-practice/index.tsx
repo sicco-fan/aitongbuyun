@@ -2554,6 +2554,8 @@ export default function SentencePracticeScreen() {
   // 语音输入
   const [isRecording, setIsRecording] = useState(false);
   const [isRecognizing, setIsRecognizing] = useState(false); // 正在识别中
+  const [isAudioLoading, setIsAudioLoading] = useState(false); // 音频加载中
+  const [audioLoadError, setAudioLoadError] = useState<string | null>(null); // 音频加载错误
   const [hasRecordingPermission, setHasRecordingPermission] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null); // 长按录音延迟计时器
@@ -3499,6 +3501,9 @@ export default function SentencePracticeScreen() {
 
   // 播放音频片段
   const playAudio = useCallback(async () => {
+    // 重置错误状态
+    setAudioLoadError(null);
+    
     // 课程模式：从本地存储读取音频
     if (file?.is_lesson && courseId && lessonId && currentSentence) {
       try {
@@ -3514,6 +3519,11 @@ export default function SentencePracticeScreen() {
             console.log('[playAudio] 恢复播放失败:', e);
           }
           return;
+        }
+
+        // Web 端：显示加载状态
+        if (Platform.OS === 'web') {
+          setIsAudioLoading(true);
         }
 
         await Audio.setAudioModeAsync({
@@ -3662,13 +3672,21 @@ export default function SentencePracticeScreen() {
           );
           soundRef.current = sound;
           setIsPlaying(true);
-        } catch (ttsError) {
+          setIsAudioLoading(false); // 加载完成
+        } catch (ttsError: any) {
           console.error('[playAudio-课程] 在线TTS失败:', ttsError);
-          Alert.alert('提示', '音频播放失败，请检查网络连接');
+          setIsAudioLoading(false);
+          setAudioLoadError('音频加载失败，点击重试');
+          // Web 端 Safari 可能阻止了自动播放，不弹窗，而是显示重试按钮
+          if (Platform.OS !== 'web') {
+            Alert.alert('提示', '音频播放失败，请检查网络连接');
+          }
         }
         return;
       } catch (error) {
         console.error('[播放] 失败:', error);
+        setIsAudioLoading(false);
+        setAudioLoadError('播放失败，点击重试');
       }
     }
 
@@ -3911,6 +3929,10 @@ export default function SentencePracticeScreen() {
     if (!currentSentence) return;
 
     stopPlayback();
+    
+    // 重置音频加载状态
+    setIsAudioLoading(false);
+    setAudioLoadError(null);
 
     // 重置句子积分
     currentSentencePointsRef.current = 0;
@@ -5663,6 +5685,27 @@ export default function SentencePracticeScreen() {
         style={styles.progressContainer}
         onPress={() => showAudioSettings && setShowAudioSettings(false)}
       >
+        {/* 音频加载状态指示器 */}
+        {isAudioLoading && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+            <ActivityIndicator size="small" color={theme.primary} />
+            <ThemedText variant="tiny" color={theme.textMuted} style={{ marginLeft: 6 }}>
+              音频加载中...
+            </ThemedText>
+          </View>
+        )}
+        {/* 音频加载错误提示 */}
+        {audioLoadError && !isAudioLoading && (
+          <TouchableOpacity 
+            style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}
+            onPress={() => { setAudioLoadError(null); playAudio(); }}
+          >
+            <FontAwesome6 name="rotate" size={12} color={theme.error} />
+            <ThemedText variant="tiny" color={theme.error} style={{ marginLeft: 6 }}>
+              {audioLoadError}
+            </ThemedText>
+          </TouchableOpacity>
+        )}
         <View style={styles.progressBar}>
           {/* 彩虹渐变进度条 */}
           <View style={[styles.progressFillContainer, { width: `${progress}%` }]}>
