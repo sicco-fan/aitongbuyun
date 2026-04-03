@@ -278,7 +278,7 @@ router.post('/download/:share_id', async (req, res) => {
 
 /**
  * PUT /api/v1/share/:share_id
- * 更新分享描述
+ * 更新分享描述（允许所有用户操作）
  * Body: { user_id: string, description?: string }
  */
 router.put('/:share_id', async (req, res) => {
@@ -292,18 +292,17 @@ router.put('/:share_id', async (req, res) => {
     
     const client = getSupabaseClient();
     
-    // 验证是否是分享者
+    // 验证分享是否存在
     const { data: share, error: shareError } = await client
       .from('shared_sentence_files')
       .select('*')
       .eq('id', share_id)
-      .eq('shared_by', user_id)
       .maybeSingle();
     
     if (shareError) throw shareError;
     
     if (!share) {
-      return res.status(404).json({ error: '分享不存在或无权操作' });
+      return res.status(404).json({ error: '分享不存在' });
     }
     
     // 更新描述
@@ -328,7 +327,7 @@ router.put('/:share_id', async (req, res) => {
 
 /**
  * DELETE /api/v1/share/:share_id
- * 取消分享
+ * 取消分享（允许所有用户操作）
  * Body: { user_id: string }
  */
 router.delete('/:share_id', async (req, res) => {
@@ -342,18 +341,17 @@ router.delete('/:share_id', async (req, res) => {
     
     const client = getSupabaseClient();
     
-    // 验证是否是分享者
+    // 验证分享是否存在
     const { data: share, error: shareError } = await client
       .from('shared_sentence_files')
       .select('*')
       .eq('id', share_id)
-      .eq('shared_by', user_id)
       .maybeSingle();
     
     if (shareError) throw shareError;
     
     if (!share) {
-      return res.status(404).json({ error: '分享不存在或无权操作' });
+      return res.status(404).json({ error: '分享不存在' });
     }
     
     // 设置为不活跃
