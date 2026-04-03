@@ -144,6 +144,15 @@ export const createStyles = (theme: Theme) => {
       fontSize: 11,
       color: theme.success,
     },
+    presetBadge: {
+      paddingVertical: 2,
+      paddingHorizontal: Spacing.sm,
+      borderRadius: BorderRadius.sm,
+    },
+    presetBadgeText: {
+      fontSize: 11,
+      fontWeight: '500',
+    },
     modalOverlay: {
       flex: 1,
       backgroundColor: 'rgba(0, 0, 0, 0.5)',

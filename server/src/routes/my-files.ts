@@ -5,7 +5,7 @@ const router = express.Router();
 
 /**
  * GET /api/v1/my-files
- * 获取用户创建的句库列表
+ * 获取所有句库列表（包括用户创建的和预置的）
  * Query: user_id, page, limit
  */
 router.get('/', async (req, res) => {
@@ -21,7 +21,7 @@ router.get('/', async (req, res) => {
     const limitNum = Math.min(parseInt(limit as string, 10) || 20, 50);
     const offset = (pageNum - 1) * limitNum;
     
-    // 获取用户创建的句库
+    // 获取所有句库（包括预置的）
     const { data: files, error } = await client
       .from('sentence_files')
       .select(`
@@ -31,10 +31,10 @@ router.get('/', async (req, res) => {
         original_duration,
         source_type,
         status,
+        created_by,
         created_at,
         updated_at
       `)
-      .eq('created_by', user_id)
       .order('created_at', { ascending: false })
       .range(offset, offset + limitNum - 1);
     
@@ -63,12 +63,19 @@ router.get('/', async (req, res) => {
           .eq('is_active', true)
           .maybeSingle();
         
+        // 判断是否为预置句库
+        const isPreset = file.source_type === 'preset';
+        // 判断是否为用户自己创建的句库
+        const isOwner = file.created_by === user_id;
+        
         return {
           ...file,
           sentences_count: totalCount || 0,
           ready_sentences_count: readyCount || 0,
           is_shared: !!share,
-          share_info: share ? { id: share.id, download_count: share.download_count } : null
+          share_info: share ? { id: share.id, download_count: share.download_count } : null,
+          is_preset: isPreset,
+          is_owner: isOwner,
         };
       })
     );
@@ -76,8 +83,7 @@ router.get('/', async (req, res) => {
     // 获取总数
     const { count, error: countError } = await client
       .from('sentence_files')
-      .select('*', { count: 'exact', head: true })
-      .eq('created_by', user_id);
+      .select('*', { count: 'exact', head: true });
     
     if (countError) throw countError;
     
@@ -123,11 +129,6 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: '句库不存在' });
     }
     
-    // 检查权限：只有创建者可以查看
-    if (file.created_by !== user_id) {
-      return res.status(403).json({ error: '无权访问此句库' });
-    }
-    
     // 获取句子列表
     const { data: items, error: itemsError } = await client
       .from('sentence_file_items')
@@ -145,13 +146,19 @@ router.get('/:id', async (req, res) => {
       .eq('is_active', true)
       .maybeSingle();
     
+    // 判断是否为预置句库和用户创建的
+    const isPreset = file.source_type === 'preset';
+    const isOwner = file.created_by === user_id;
+    
     res.json({ 
       success: true, 
       file: {
         ...file,
         items: items || [],
         is_shared: !!share,
-        share_info: share
+        share_info: share,
+        is_preset: isPreset,
+        is_owner: isOwner,
       }
     });
   } catch (error) {
@@ -162,7 +169,7 @@ router.get('/:id', async (req, res) => {
 
 /**
  * PUT /api/v1/my-files/:id
- * 更新句库信息
+ * 更新句库信息（允许所有用户操作）
  * Body: { user_id: string, title?: string, description?: string }
  */
 router.put('/:id', async (req, res) => {
@@ -176,10 +183,10 @@ router.put('/:id', async (req, res) => {
     
     const client = getSupabaseClient();
     
-    // 检查权限
+    // 检查句库是否存在
     const { data: file, error: fileError } = await client
       .from('sentence_files')
-      .select('created_by')
+      .select('id, title')
       .eq('id', id)
       .maybeSingle();
     
@@ -187,10 +194,6 @@ router.put('/:id', async (req, res) => {
     
     if (!file) {
       return res.status(404).json({ error: '句库不存在' });
-    }
-    
-    if (file.created_by !== user_id) {
-      return res.status(403).json({ error: '无权修改此句库' });
     }
     
     // 更新句库
@@ -233,7 +236,7 @@ router.put('/:id', async (req, res) => {
 
 /**
  * DELETE /api/v1/my-files/:id
- * 删除句库
+ * 删除句库（允许所有用户操作，包括预置句库）
  * Body: { user_id: string }
  */
 router.delete('/:id', async (req, res) => {
@@ -247,10 +250,10 @@ router.delete('/:id', async (req, res) => {
     
     const client = getSupabaseClient();
     
-    // 检查权限
+    // 检查句库是否存在
     const { data: file, error: fileError } = await client
       .from('sentence_files')
-      .select('created_by, title')
+      .select('id, title, source_type')
       .eq('id', id)
       .maybeSingle();
     
@@ -258,10 +261,6 @@ router.delete('/:id', async (req, res) => {
     
     if (!file) {
       return res.status(404).json({ error: '句库不存在' });
-    }
-    
-    if (file.created_by !== user_id) {
-      return res.status(403).json({ error: '无权删除此句库' });
     }
     
     // 取消分享（如果已分享）

@@ -29,12 +29,15 @@ interface SentenceFile {
   original_duration: number;
   source_type: string;
   status: string;
+  created_by: string;
   created_at: string;
   updated_at: string;
   sentences_count: number;
   ready_sentences_count: number;
   is_shared: boolean;
   share_info: { id: number; download_count: number } | null;
+  is_preset: boolean;
+  is_owner: boolean;
 }
 
 export default function MyFilesScreen() {
@@ -145,9 +148,13 @@ export default function MyFilesScreen() {
 
   // 删除句库
   const handleDelete = (file: SentenceFile) => {
+    const confirmMessage = file.is_preset 
+      ? `「${file.title}」是预置句库，删除后将无法恢复。确定要删除吗？`
+      : `确定要删除「${file.title}」吗？此操作不可撤销。`;
+    
     Alert.alert(
       '确认删除',
-      `确定要删除「${file.title}」吗？此操作不可撤销。`,
+      confirmMessage,
       [
         { text: '取消', style: 'cancel' },
         {
@@ -309,6 +316,10 @@ export default function MyFilesScreen() {
     );
   }
 
+  // 分类统计
+  const presetCount = files.filter(f => f.is_preset).length;
+  const myCount = files.filter(f => !f.is_preset).length;
+
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
       <ScrollView
@@ -329,7 +340,7 @@ export default function MyFilesScreen() {
             <View style={{ width: 20 }} />
           </View>
           <ThemedText variant="body" color={theme.textMuted} style={styles.subtitle}>
-            共 {files.length} 个句库
+            共 {files.length} 个句库 {presetCount > 0 && `（预置 ${presetCount} 个，我的 ${myCount} 个）`}
           </ThemedText>
         </ThemedView>
 
@@ -363,14 +374,26 @@ export default function MyFilesScreen() {
               activeOpacity={0.7}
             >
               <View style={styles.fileHeader}>
-                <View style={styles.fileIconContainer}>
-                  <FontAwesome6 name="book-open" size={20} color={theme.primary} />
+                <View style={[
+                  styles.fileIconContainer,
+                  file.is_preset && { backgroundColor: theme.accent + '15' }
+                ]}>
+                  <FontAwesome6 
+                    name={file.is_preset ? "graduation-cap" : "book-open"} 
+                    size={20} 
+                    color={file.is_preset ? theme.accent : theme.primary} 
+                  />
                 </View>
                 <View style={styles.fileInfo}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.fileTitle}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.fileTitle} numberOfLines={1}>
                       {file.title}
                     </ThemedText>
+                    {file.is_preset && (
+                      <View style={[styles.presetBadge, { backgroundColor: theme.accent + '15' }]}>
+                        <Text style={[styles.presetBadgeText, { color: theme.accent }]}>预置</Text>
+                      </View>
+                    )}
                     {file.is_shared && (
                       <View style={styles.shareBadge}>
                         <FontAwesome6 name="share-nodes" size={10} color={theme.success} />

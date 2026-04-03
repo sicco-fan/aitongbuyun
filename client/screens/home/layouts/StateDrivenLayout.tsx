@@ -1,15 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React from 'react';
 import {
   ScrollView,
   TouchableOpacity,
   View,
   RefreshControl,
   Image,
-  Alert,
-  Modal,
-  TextInput,
-  ActivityIndicator,
-  Text,
 } from 'react-native';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { useTheme } from '@/hooks/useTheme';
@@ -22,8 +17,6 @@ import { Spacing, BorderRadius } from '@/constants/theme';
 import { LastLearningPosition } from '@/utils/learningStorage';
 import { createSharedStyles } from './shared-styles';
 
-const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
-
 interface SentenceFile {
   id: number;
   title: string;
@@ -33,9 +26,6 @@ interface SentenceFile {
   original_duration: number;
   source_type?: string;
   created_by?: string;
-  description?: string;
-  is_shared?: boolean;
-  share_info?: { id: number; download_count: number } | null;
 }
 
 interface Course {
@@ -79,13 +69,6 @@ export default function StateDrivenLayout({
   const { isAuthenticated, user } = useAuth();
   const sharedStyles = createSharedStyles(theme);
 
-  // 操作菜单状态
-  const [actionModalVisible, setActionModalVisible] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<SentenceFile | null>(null);
-  const [shareModalVisible, setShareModalVisible] = useState(false);
-  const [shareDescription, setShareDescription] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
   const formatDuration = (ms: number) => {
     const minutes = Math.floor(ms / 60000);
     const seconds = Math.floor((ms % 60000) / 1000);
@@ -99,147 +82,6 @@ export default function StateDrivenLayout({
   const handleSentenceFilePress = (file: SentenceFile) => {
     router.push('/sentence-practice', { fileId: file.id, title: file.title });
   };
-
-  // 检查是否是用户自己创建的资源
-  const isUserOwned = (file: SentenceFile) => {
-    return isAuthenticated && user?.id && file.created_by === user.id;
-  };
-
-  // 打开操作菜单
-  const handleMorePress = (file: SentenceFile) => {
-    setSelectedFile(file);
-    setActionModalVisible(true);
-  };
-
-  // 删除句库
-  const handleDelete = useCallback(async () => {
-    if (!selectedFile || !user?.id) return;
-
-    setActionModalVisible(false);
-
-    Alert.alert(
-      '确认删除',
-      `确定要删除「${selectedFile.title}」吗？此操作不可撤销。`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const response = await fetch(
-                `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/my-files/${selectedFile.id}`,
-                {
-                  method: 'DELETE',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ user_id: user.id }),
-                }
-              );
-
-              const result = await response.json();
-
-              if (result.success) {
-                onRefresh();
-              } else {
-                Alert.alert('错误', result.error || '删除失败');
-              }
-            } catch (error) {
-              console.error('删除失败:', error);
-              Alert.alert('错误', '网络错误，请稍后重试');
-            }
-          },
-        },
-      ]
-    );
-  }, [selectedFile, user?.id, onRefresh]);
-
-  // 分享句库
-  const handleShare = useCallback(() => {
-    if (!selectedFile) return;
-    setActionModalVisible(false);
-    setShareDescription(selectedFile.description || '');
-    setShareModalVisible(true);
-  }, [selectedFile]);
-
-  // 确认分享
-  const handleConfirmShare = async () => {
-    if (!selectedFile || !user?.id) return;
-
-    setSubmitting(true);
-
-    try {
-      const response = await fetch(
-        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/share/create`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sentence_file_id: selectedFile.id,
-            shared_by: user.id,
-            description: shareDescription.trim(),
-          }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (result.success) {
-        setShareModalVisible(false);
-        Alert.alert('成功', '句库已分享到市场');
-        onRefresh();
-      } else {
-        Alert.alert('错误', result.error || '分享失败');
-      }
-    } catch (error) {
-      console.error('分享失败:', error);
-      Alert.alert('错误', '网络错误，请稍后重试');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // 取消分享
-  const handleCancelShare = useCallback(async () => {
-    if (!selectedFile?.share_info || !user?.id) return;
-
-    setActionModalVisible(false);
-
-    Alert.alert(
-      '取消分享',
-      '确定要取消分享吗？其他用户将无法在市场中看到此句库。',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '确定',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const response = await fetch(
-                `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/share/${selectedFile.share_info?.id}`,
-                {
-                  method: 'DELETE',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ user_id: user.id }),
-                }
-              );
-
-              const result = await response.json();
-
-              if (result.success) {
-                Alert.alert('成功', '已取消分享');
-                onRefresh();
-              } else {
-                Alert.alert('错误', result.error || '操作失败');
-              }
-            } catch (error) {
-              console.error('取消分享失败:', error);
-              Alert.alert('错误', '网络错误，请稍后重试');
-            }
-          },
-        },
-      ]
-    );
-  }, [selectedFile, user?.id, onRefresh]);
 
   const hasAnyContent = courses.length > 0 || aiSentenceFiles.length > 0 || customSentenceFiles.length > 0;
   const allResources = [...courses, ...aiSentenceFiles, ...customSentenceFiles];
@@ -362,9 +204,6 @@ export default function StateDrivenLayout({
         {allResources.map((item) => {
           const isCourse = 'book_number' in item;
           const isAI = isCourse || (item as SentenceFile).source_type === 'ai_tts';
-          const isPreset = (item as SentenceFile).source_type === 'preset';
-          const file = isCourse ? null : (item as SentenceFile);
-          const canManage = file && isUserOwned(file) && !isPreset;
           const isLastLearned = lastLearningPosition?.sourceType === 'lesson' &&
                                lastLearningPosition?.courseId === (item as Course).id;
 
@@ -394,17 +233,9 @@ export default function StateDrivenLayout({
                   <ThemedText variant="bodyMedium" color={theme.textPrimary} numberOfLines={1} style={{ flex: 1 }}>
                     {item.title}
                   </ThemedText>
-                  {file?.is_shared && (
-                    <View style={[sharedStyles.tag, { backgroundColor: theme.success + '15', marginLeft: 4 }]}>
-                      <FontAwesome6 name="share-nodes" size={8} color={theme.success} />
-                      <ThemedText variant="tiny" color={theme.success} style={{ marginLeft: 2 }}>
-                        {file.share_info?.download_count || 0}
-                      </ThemedText>
-                    </View>
-                  )}
                   {isLastLearned && (
-                    <View style={[sharedStyles.tag, { backgroundColor: theme.success + '15', marginLeft: 4 }]}>
-                      <ThemedText variant="tiny" color={theme.success}>上次</ThemedText>
+                    <View style={[sharedStyles.tag, { backgroundColor: theme.success + '15', marginLeft: 8 }]}>
+                      <ThemedText variant="tiny" color={theme.success}>上次学到</ThemedText>
                     </View>
                   )}
                 </View>
@@ -430,18 +261,7 @@ export default function StateDrivenLayout({
                   )}
                 </View>
               </View>
-              {/* 更多按钮 - 仅对用户自己创建的资源显示 */}
-              {canManage && (
-                <TouchableOpacity
-                  style={{ padding: 8, marginRight: -4 }}
-                  onPress={() => handleMorePress(file)}
-                >
-                  <FontAwesome6 name="ellipsis-vertical" size={14} color={theme.textMuted} />
-                </TouchableOpacity>
-              )}
-              {!canManage && (
-                <FontAwesome6 name="chevron-right" size={14} color={theme.textMuted} />
-              )}
+              <FontAwesome6 name="chevron-right" size={14} color={theme.textMuted} />
             </TouchableOpacity>
           );
         })}
@@ -453,120 +273,6 @@ export default function StateDrivenLayout({
           </View>
         )}
       </ScrollView>
-
-      {/* 操作菜单弹窗 */}
-      <Modal visible={actionModalVisible} transparent animationType="fade">
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
-          onPress={() => setActionModalVisible(false)}
-          activeOpacity={1}
-        >
-          <View style={{
-            backgroundColor: theme.backgroundDefault,
-            borderTopLeftRadius: 20,
-            borderTopRightRadius: 20,
-            paddingBottom: 34,
-          }}>
-            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-              <ThemedText variant="bodyMedium" color={theme.textPrimary} style={{ textAlign: 'center', fontWeight: '600' }}>
-                {selectedFile?.title}
-              </ThemedText>
-            </View>
-
-            {/* 分享/取消分享 */}
-            {selectedFile?.is_shared ? (
-              <TouchableOpacity
-                style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}
-                onPress={handleCancelShare}
-              >
-                <FontAwesome6 name="xmark" size={20} color={theme.textSecondary} />
-                <ThemedText variant="body" color={theme.textPrimary}>取消分享</ThemedText>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}
-                onPress={handleShare}
-              >
-                <FontAwesome6 name="share" size={20} color={theme.accent} />
-                <ThemedText variant="body" color={theme.textPrimary}>分享到市场</ThemedText>
-              </TouchableOpacity>
-            )}
-
-            {/* 删除 */}
-            <TouchableOpacity
-              style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}
-              onPress={handleDelete}
-            >
-              <FontAwesome6 name="trash" size={20} color={theme.error} />
-              <ThemedText variant="body" color={theme.error}>删除</ThemedText>
-            </TouchableOpacity>
-
-            {/* 取消 */}
-            <TouchableOpacity
-              style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 8, borderTopWidth: 1, borderTopColor: theme.border }}
-              onPress={() => setActionModalVisible(false)}
-            >
-              <ThemedText variant="bodyMedium" color={theme.textSecondary}>取消</ThemedText>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* 分享弹窗 */}
-      <Modal visible={shareModalVisible} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <View style={{
-            backgroundColor: theme.backgroundDefault,
-            borderRadius: 16,
-            width: '100%',
-            maxWidth: 360,
-            padding: 20,
-          }}>
-            <ThemedText variant="h4" color={theme.textPrimary} style={{ marginBottom: 8 }}>
-              分享到市场
-            </ThemedText>
-            <ThemedText variant="small" color={theme.textMuted} style={{ marginBottom: 16 }}>
-              分享后，其他用户可以在市场中看到并下载此句库
-            </ThemedText>
-            <TextInput
-              style={{
-                borderWidth: 1,
-                borderColor: theme.border,
-                borderRadius: 8,
-                padding: 12,
-                minHeight: 80,
-                textAlignVertical: 'top',
-                color: theme.textPrimary,
-                marginBottom: 16,
-              }}
-              value={shareDescription}
-              onChangeText={setShareDescription}
-              placeholder="添加描述，让更多人了解这个句库..."
-              placeholderTextColor={theme.textMuted}
-              multiline
-            />
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity
-                style={{ flex: 1, padding: 12, borderRadius: 8, backgroundColor: theme.border, alignItems: 'center' }}
-                onPress={() => setShareModalVisible(false)}
-              >
-                <ThemedText variant="body" color={theme.textSecondary}>取消</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 1, padding: 12, borderRadius: 8, backgroundColor: theme.primary, alignItems: 'center' }}
-                onPress={handleConfirmShare}
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
-                ) : (
-                  <Text style={{ color: theme.buttonPrimaryText, fontWeight: '600' }}>确认分享</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </Screen>
   );
 }
