@@ -4,8 +4,10 @@ const appName = process.env.COZE_PROJECT_NAME || process.env.EXPO_PUBLIC_COZE_PR
 const projectId = process.env.COZE_PROJECT_ID || process.env.EXPO_PUBLIC_COZE_PROJECT_ID;
 
 // 正式包名：个人开发者建议使用 com.用户名.应用名 格式
-const androidPackage = `com.aidictation.app${projectId ? `.${projectId}` : ''}`;
-const iosBundleIdentifier = `com.aidictation.app${projectId ? `.${projectId}` : ''}`;
+// 注意：Android 包名规则要求每个 '.' 后必须跟字母，不能直接跟数字
+// 所以 projectId 前需要加字母前缀 'p'
+const androidPackage = `com.aidictation.app${projectId ? `.p${projectId}` : ''}`;
+const iosBundleIdentifier = `com.aidictation.app${projectId ? `.p${projectId}` : ''}`;
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   return {
