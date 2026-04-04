@@ -410,6 +410,9 @@ ${errors}
  * POST /api/v1/speech-recognize
  * 语音识别接口 - 支持中国人发音纠正和AI学习
  * Body: file (音频), targetWords, deviceId, materialId, language (语言代码)
+ * 
+ * 注意：豆包 ASR 目前只支持中文和英语，其他语言可能无法正确识别
+ * 建议 Web 端使用 Web Speech API 支持多语言识别
  */
 router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   try {
@@ -420,12 +423,16 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     const { buffer, mimetype } = req.file;
     const { targetWords, deviceId, materialId, language = 'en' } = req.body;
     
+    // 检查是否为不支持的语言
+    const unsupportedLanguages = ['fr', 'de', 'es', 'ja', 'ko'];
+    const isUnsupportedLanguage = unsupportedLanguages.includes(language);
+    
     // 将音频转为 base64
     const base64Data = buffer.toString('base64');
 
     // 获取 ASR 语言代码
     const asrLang = getASRLanguage(language);
-    console.log(`[ASR] 识别语言: ${language} -> ${asrLang}`);
+    console.log(`[ASR] 识别语言: ${language} -> ${asrLang}${isUnsupportedLanguage ? ' (可能不支持)' : ''}`);
 
     // 使用 ASR 识别
     const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
@@ -533,6 +540,9 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
         mode: 'letter',
         detectedType: 'letter',
         aiCorrected: letters.join('') !== correctedLetters.join(''),
+        languageSupportWarning: isUnsupportedLanguage ? 
+          `${language === 'fr' ? '法语' : language === 'de' ? '德语' : language === 'es' ? '西班牙语' : language === 'ja' ? '日语' : '韩语'}语音识别暂不支持，建议使用 Web 端或键盘输入` : 
+          undefined,
       });
     }
     
@@ -626,6 +636,9 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
         detectedType,
         aiCorrected: matchedWords.length > 0 && 
           !recognizedWords.some(w => matchedWords.includes(w.toLowerCase())),
+        languageSupportWarning: isUnsupportedLanguage ? 
+          `${language === 'fr' ? '法语' : language === 'de' ? '德语' : language === 'es' ? '西班牙语' : language === 'ja' ? '日语' : '韩语'}语音识别暂不支持，建议使用 Web 端或键盘输入` : 
+          undefined,
       });
     }
     
@@ -634,6 +647,9 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       success: true,
       text: recognizedText,
       mode: 'raw',
+      languageSupportWarning: isUnsupportedLanguage ? 
+        `${language === 'fr' ? '法语' : language === 'de' ? '德语' : language === 'es' ? '西班牙语' : language === 'ja' ? '日语' : '韩语'}语音识别暂不支持，建议使用 Web 端或键盘输入` : 
+        undefined,
     });
   } catch (error) {
     console.error('语音识别失败:', error);

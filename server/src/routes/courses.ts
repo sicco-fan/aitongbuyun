@@ -669,9 +669,14 @@ function sortCoursesSmart(courses: any[]): any[] {
   }
 
   // 排序：
+  // 0. 默认课程排在最前面
   // 1. 先按系列的 minBookNumber 排序（保持用户创建的系列顺序）
   // 2. 同系列内按 order 排序
   coursesWithSortKey.sort((a, b) => {
+    // 默认课程排在最前面
+    if (a.is_default && !b.is_default) return -1;
+    if (!a.is_default && b.is_default) return 1;
+    
     const aSeriesOrder = seriesMinBookNumber.get(a._seriesName) || 0;
     const bSeriesOrder = seriesMinBookNumber.get(b._seriesName) || 0;
     
@@ -692,7 +697,7 @@ function sortCoursesSmart(courses: any[]): any[] {
 
 /**
  * GET /api/v1/courses
- * 获取课程列表（包含实际句子数）
+ * 获取课程列表（包含实际句子数，默认课程排在最前面）
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -701,6 +706,7 @@ router.get('/', async (req: Request, res: Response) => {
     const { data: courses, error } = await supabase
       .from('courses')
       .select('*')
+      .order('is_default', { ascending: false })  // 默认课程排在最前面
       .order('book_number', { ascending: true });
     
     if (error) {
