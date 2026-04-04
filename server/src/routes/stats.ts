@@ -1,8 +1,11 @@
 import express from 'express';
 import { getSupabaseClient } from '../storage/database/supabase-client';
-import { requireAdmin } from '../middleware/auth';
+import { getUserMiddleware, requireAdmin } from '../middleware/auth';
 
 const router = express.Router();
+
+// 应用用户认证中间件
+router.use(getUserMiddleware);
 
 // 类型定义
 interface FileLearningSummary {

@@ -133,7 +133,11 @@ export default function LearningMonitorScreen() {
         url = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/course-learners/${selectedCourseId}`;
       }
 
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: {
+          'x-user-id': user?.id || '',
+        },
+      });
       const data = await response.json();
       
       if (data.success) {
@@ -149,7 +153,7 @@ export default function LearningMonitorScreen() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCourseId]);
+  }, [selectedCourseId, user?.id]);
 
   // 初始化加载
   useEffect(() => {
@@ -172,13 +176,23 @@ export default function LearningMonitorScreen() {
       
       // 获取错题分析
       const errorResponse = await fetch(
-        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/user-errors/${learner.user_id}`
+        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/user-errors/${learner.user_id}`,
+        {
+          headers: {
+            'x-user-id': user?.id || '',
+          },
+        }
       );
       const errorData = await errorResponse.json();
       
       // 获取趋势数据
       const trendResponse = await fetch(
-        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/user-trend/${learner.user_id}${selectedCourseId ? `?course_id=${selectedCourseId}` : ''}`
+        `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/stats/user-trend/${learner.user_id}${selectedCourseId ? `?course_id=${selectedCourseId}` : ''}`,
+        {
+          headers: {
+            'x-user-id': user?.id || '',
+          },
+        }
       );
       const trendData = await trendResponse.json();
       
