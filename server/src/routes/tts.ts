@@ -2,39 +2,50 @@ import express, { Router } from 'express';
 import type { Request, Response } from 'express';
 import axios from 'axios';
 import { TTSClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
+import { getTtsCache, setTtsCache, isVipUser, getCacheStats } from '../services/vipCache';
 
 const router: Router = express.Router();
-
-// 内存缓存：key = text:speaker, value = Buffer
-const ttsCache = new Map<string, { data: Buffer; timestamp: number }>();
-const CACHE_TTL = 1000 * 60 * 60; // 1小时缓存
 
 /**
  * GET /api/v1/tts
  * 文本转语音接口（用于 Web 端实时播放）
- * Query: text: string, speaker?: string
+ * Query: text: string, speaker?: string, user_id?: string, phone?: string
  * 返回: 音频流（直接播放）
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { text, speaker = 'zh_female_xiaohe_uranus_bigtts' } = req.query as { text?: string; speaker?: string };
+    const { 
+      text, 
+      speaker = 'zh_female_xiaohe_uranus_bigtts',
+      user_id,
+      phone
+    } = req.query as { 
+      text?: string; 
+      speaker?: string;
+      user_id?: string;
+      phone?: string;
+    };
     
     if (!text || typeof text !== 'string') {
       return res.status(400).json({ error: '请提供文本内容' });
     }
     
-    // 生成缓存 key
-    const cacheKey = `${text}:${speaker}`;
+    // 检查是否为 VIP 用户
+    const vip = isVipUser(user_id || '', phone);
+    if (vip) {
+      console.log(`[TTS] VIP用户请求: ${user_id || phone}`);
+    }
     
     // 检查缓存
-    const cached = ttsCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    const cached = getTtsCache(text, speaker);
+    if (cached) {
       console.log(`[TTS] 命中缓存: "${text.substring(0, 30)}..."`);
       res.setHeader('Content-Type', 'audio/mpeg');
-      res.setHeader('Content-Length', cached.data.length);
+      res.setHeader('Content-Length', cached.length);
       res.setHeader('Cache-Control', 'public, max-age=86400');
       res.setHeader('X-Cache', 'HIT');
-      return res.send(cached.data);
+      res.setHeader('X-VIP', vip ? 'true' : 'false');
+      return res.send(cached);
     }
     
     console.log(`[TTS] 生成音频: "${text.substring(0, 50)}..." speaker: ${speaker}`);
@@ -59,28 +70,31 @@ router.get('/', async (req: Request, res: Response) => {
     const audioBuffer = Buffer.from(audioResponse.data);
     
     // 存入缓存
-    ttsCache.set(cacheKey, { data: audioBuffer, timestamp: Date.now() });
-    
-    // 清理过期缓存（保留最近 500 条）
-    if (ttsCache.size > 500) {
-      const now = Date.now();
-      for (const [key, value] of ttsCache.entries()) {
-        if (now - value.timestamp > CACHE_TTL) {
-          ttsCache.delete(key);
-        }
-      }
-    }
+    setTtsCache(text, speaker, audioBuffer);
     
     // 设置响应头并返回音频数据
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Content-Length', audioBuffer.length);
     res.setHeader('Cache-Control', 'public, max-age=86400'); // 缓存1天
     res.setHeader('X-Cache', 'MISS');
+    res.setHeader('X-VIP', vip ? 'true' : 'false');
     res.send(audioBuffer);
   } catch (error: any) {
     console.error('[TTS] 生成失败:', error);
     res.status(500).json({ error: '语音生成失败', message: error.message });
   }
+});
+
+/**
+ * GET /api/v1/tts/cache-stats
+ * 获取缓存统计信息（仅管理员）
+ */
+router.get('/cache-stats', (req: Request, res: Response) => {
+  const stats = getCacheStats();
+  res.json({
+    ...stats,
+    ttsSizeMB: Math.round(stats.ttsSize / 1024 / 1024 * 100) / 100,
+  });
 });
 
 export default router;

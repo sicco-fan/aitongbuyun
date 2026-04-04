@@ -52,6 +52,12 @@ import {
   WebSpeechRecognizer,
   WebSpeechResult 
 } from '@/utils/webSpeechRecognition';
+import { 
+  isVipUser, 
+  preloadTtsAudios, 
+  getCachedTtsUrl,
+  initFastCache 
+} from '@/utils/fastCache';
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
@@ -3133,6 +3139,13 @@ export default function SentencePracticeScreen() {
       isMountedRef.current = true;
       isExitingRef.current = false; // 重置退出标记
       
+      // 初始化极速缓存（VIP用户特权）
+      initFastCache().then((isVip) => {
+        if (isVip) {
+          console.log('[极速缓存] 已启用VIP极速模式');
+        }
+      });
+      
       // 开始学习计时（进入页面就开始计时）
       sessionStartTimeRef.current = Date.now();
       lastActivityTimeRef.current = Date.now();
@@ -3619,7 +3632,7 @@ export default function SentencePracticeScreen() {
           return;
         }
         
-        // 无本地缓存，使用在线 TTS（Web 端使用 Cache API）
+        // 无本地缓存，使用在线 TTS（Web 端使用极速缓存）
         console.log(`[playAudio-课程] 无本地缓存，使用在线TTS, voiceId: ${playingVoiceId}`);
         try {
           /**
@@ -3627,17 +3640,29 @@ export default function SentencePracticeScreen() {
            * 接口：GET /api/v1/tts
            * Query 参数：text: string, speaker?: string
            */
-          const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=${playingVoiceId}`;
           
-          // Web 端：使用 Cache API 缓存
-          let playUrl = ttsUrl;
+          // Web 端：使用极速缓存（优先检查本地缓存）
+          let playUrl: string;
           if (Platform.OS === 'web') {
             try {
-              playUrl = await getCachedAudio(audioKey, ttsUrl);
-              console.log(`[Web缓存] 使用URL: ${playUrl.substring(0, 50)}...`);
+              const voiceIdToUse = playingVoiceId || 'zh_female_xiaohe_uranus_bigtts';
+              playUrl = await getCachedTtsUrl(currentSentence.text, voiceIdToUse, EXPO_PUBLIC_BACKEND_BASE_URL);
+              console.log(`[极速缓存] 使用URL: ${playUrl.substring(0, 50)}...`);
+              
+              // 预加载接下来的句子音频
+              if (sentences.length > currentIndex + 1) {
+                preloadTtsAudios(
+                  sentences.map(s => ({ text: s.text })),
+                  currentIndex,
+                  EXPO_PUBLIC_BACKEND_BASE_URL
+                ).catch(() => {});
+              }
             } catch (cacheErr) {
-              console.log('[Web缓存] 获取缓存失败，使用原始URL:', cacheErr);
+              console.log('[极速缓存] 获取失败，使用原始URL:', cacheErr);
+              playUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=${playingVoiceId || 'zh_female_xiaohe_uranus_bigtts'}`;
             }
+          } else {
+            playUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=${playingVoiceId}`;
           }
           
           const { sound } = await Audio.Sound.createAsync(
