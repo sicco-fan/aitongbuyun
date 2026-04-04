@@ -5,7 +5,7 @@ import { ASRClient, Config, HeaderUtils, LLMClient } from 'coze-coding-dev-sdk';
 import { Pool } from 'pg';
 import { getASRLanguage, getLanguageConfig } from '../config/languages';
 import type { LanguageCode } from '../config/languages';
-import { transcribeWithGroq, shouldUseGroq, isGroqAvailable } from '../services/groqWhisper';
+import { transcribeWithOpenAI, shouldUseOpenAI, isOpenAIAvailable } from '../services/openai';
 
 const router = Router();
 const upload = multer({
@@ -413,8 +413,8 @@ ${errors}
  * Body: file (音频), targetWords, deviceId, materialId, language (语言代码)
  * 
  * 支持的语言：
- * - 中文、英语：使用豆包 ASR
- * - 法语、德语、西班牙语、日语、韩语：使用 Groq Whisper API
+ * - 所有语言：使用 OpenAI Whisper API（优先）
+ * - 中文、英语：fallback 到豆包 ASR
  */
 router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   try {
@@ -425,16 +425,16 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     const { buffer, mimetype } = req.file;
     const { targetWords, deviceId, materialId, language = 'en' } = req.body;
     
-    // 检查是否应该使用 Groq Whisper（多语言支持）
-    const useGroq = shouldUseGroq(language as LanguageCode);
-    const groqAvailable = isGroqAvailable();
+    // 检查是否应该使用 OpenAI Whisper（多语言支持）
+    const useOpenAI = shouldUseOpenAI(language as LanguageCode);
+    const openAIAvailable = isOpenAIAvailable();
     
     let rawRecognizedText = '';
     
     // 根据语言选择 ASR 服务
-    if (useGroq && groqAvailable) {
-      // 使用 Groq Whisper 进行多语言识别
-      console.log(`[ASR] 使用 Groq Whisper 识别，语言: ${language}`);
+    if (useOpenAI && openAIAvailable) {
+      // 使用 OpenAI Whisper 进行多语言识别
+      console.log(`[ASR] 使用 OpenAI Whisper 识别，语言: ${language}`);
       
       // 从 mimetype 推断文件扩展名
       const ext = mimetype.includes('mp4') || mimetype.includes('m4a') ? 'm4a' :
@@ -443,20 +443,20 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
                   mimetype.includes('ogg') ? 'ogg' : 'm4a';
       const filename = `audio.${ext}`;
       
-      const groqResult = await transcribeWithGroq(buffer, language as LanguageCode, filename);
+      const openAIResult = await transcribeWithOpenAI(buffer, language as LanguageCode, filename);
       
-      if (groqResult.error) {
-        console.error('[Groq Whisper] 识别失败:', groqResult.error);
+      if (openAIResult.error) {
+        console.error('[OpenAI Whisper] 识别失败:', openAIResult.error);
         return res.json({ 
           success: false,
           text: '',
-          message: `语音识别失败: ${groqResult.error}`,
+          message: `语音识别失败: ${openAIResult.error}`,
           languageSupportWarning: true,
         });
       }
       
-      rawRecognizedText = groqResult.text.trim();
-      console.log(`[Groq Whisper] 识别结果: ${rawRecognizedText}`);
+      rawRecognizedText = openAIResult.text.trim();
+      console.log(`[OpenAI Whisper] 识别结果: ${rawRecognizedText}`);
     } else {
       // 使用豆包 ASR（中文和英语）
       const asrLang = getASRLanguage(language);

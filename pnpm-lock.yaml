@@ -296,7 +296,7 @@ importers:
         specifier: ^1.11.19
         version: 1.11.19
       dotenv:
-        specifier: ^17.2.3
+        specifier: ^17.2.4
         version: 17.2.4
       drizzle-orm:
         specifier: ^0.45.1

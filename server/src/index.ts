@@ -1,3 +1,4 @@
+import 'dotenv/config'; // 加载 .env 环境变量
 import express from "express";
 import cors from "cors";
 import materialsRouter from "./routes/materials";

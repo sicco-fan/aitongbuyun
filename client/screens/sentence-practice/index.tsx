@@ -2618,52 +2618,52 @@ export default function SentencePracticeScreen() {
   const currentPlayingSourceIndexRef = useRef(0); // 用于在回调中获取最新值
   // 根据课程语言设置 AI 人名
   const getAIVoicesByLanguage = useCallback((language: string) => {
-    // 法语 AI 人名
+    // 法语 AI 人名（使用 OpenAI TTS 声音）
     if (language === 'fr') {
       return [
-        { id: 'ai_marie', name: 'Marie（法语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
-        { id: 'ai_pierre', name: 'Pierre（法语男声）', voiceId: 'zh_male_m191_uranus_bigtts' },
-        { id: 'ai_sophie', name: 'Sophie（法语女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
-        { id: 'ai_lucas', name: 'Lucas（法语男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
+        { id: 'ai_marie', name: 'Marie（法语女声）', voiceId: 'nova' },
+        { id: 'ai_pierre', name: 'Pierre（法语男声）', voiceId: 'echo' },
+        { id: 'ai_sophie', name: 'Sophie（法语女声）', voiceId: 'shimmer' },
+        { id: 'ai_lucas', name: 'Lucas（法语男声）', voiceId: 'onyx' },
       ];
     }
-    // 德语 AI 人名
+    // 德语 AI 人名（使用 OpenAI TTS 声音）
     if (language === 'de') {
       return [
-        { id: 'ai_anna', name: 'Anna（德语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
-        { id: 'ai_hans', name: 'Hans（德语男声）', voiceId: 'zh_male_m191_uranus_bigtts' },
-        { id: 'ai_lisa', name: 'Lisa（德语女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
-        { id: 'ai_felix', name: 'Felix（德语男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
+        { id: 'ai_anna', name: 'Anna（德语女声）', voiceId: 'nova' },
+        { id: 'ai_hans', name: 'Hans（德语男声）', voiceId: 'echo' },
+        { id: 'ai_lisa', name: 'Lisa（德语女声）', voiceId: 'shimmer' },
+        { id: 'ai_felix', name: 'Felix（德语男声）', voiceId: 'onyx' },
       ];
     }
-    // 西班牙语 AI 人名
+    // 西班牙语 AI 人名（使用 OpenAI TTS 声音）
     if (language === 'es') {
       return [
-        { id: 'ai_maria', name: 'María（西语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
-        { id: 'ai_carlos', name: 'Carlos（西语男声）', voiceId: 'zh_male_m191_uranus_bigtts' },
-        { id: 'ai_elena', name: 'Elena（西语女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
-        { id: 'ai_diego', name: 'Diego（西语男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
+        { id: 'ai_maria', name: 'María（西语女声）', voiceId: 'nova' },
+        { id: 'ai_carlos', name: 'Carlos（西语男声）', voiceId: 'echo' },
+        { id: 'ai_elena', name: 'Elena（西语女声）', voiceId: 'shimmer' },
+        { id: 'ai_diego', name: 'Diego（西语男声）', voiceId: 'onyx' },
       ];
     }
-    // 日语 AI 人名
+    // 日语 AI 人名（使用 OpenAI TTS 声音）
     if (language === 'ja') {
       return [
-        { id: 'ai_yuki', name: '雪（日语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
-        { id: 'ai_takeshi', name: '武（日语男声）', voiceId: 'zh_male_m191_uranus_bigtts' },
-        { id: 'ai_sakura', name: '樱（日语女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
-        { id: 'ai_kenji', name: '健二（日语男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
+        { id: 'ai_yuki', name: '雪（日语女声）', voiceId: 'nova' },
+        { id: 'ai_takeshi', name: '武（日语男声）', voiceId: 'echo' },
+        { id: 'ai_sakura', name: '樱（日语女声）', voiceId: 'shimmer' },
+        { id: 'ai_kenji', name: '健二（日语男声）', voiceId: 'onyx' },
       ];
     }
-    // 韩语 AI 人名
+    // 韩语 AI 人名（使用 OpenAI TTS 声音）
     if (language === 'ko') {
       return [
-        { id: 'ai_minji', name: '민지（韩语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
-        { id: 'ai_jimin', name: '지민（韩语男声）', voiceId: 'zh_male_m191_uranus_bigtts' },
-        { id: 'ai_sora', name: '소라（韩语女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
-        { id: 'ai_minho', name: '민호（韩语男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
+        { id: 'ai_minji', name: '민지（韩语女声）', voiceId: 'nova' },
+        { id: 'ai_jimin', name: '지민（韩语男声）', voiceId: 'echo' },
+        { id: 'ai_sora', name: '소라（韩语女声）', voiceId: 'shimmer' },
+        { id: 'ai_minho', name: '민호（韩语男声）', voiceId: 'onyx' },
       ];
     }
-    // 默认中文/英语人名
+    // 默认中文/英语人名（使用豆包 TTS 声音）
     return [
       { id: 'ai_weiwei', name: '薇薇（双语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
       { id: 'ai_xiaohe', name: '晓荷（中文女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },

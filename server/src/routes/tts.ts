@@ -5,8 +5,39 @@ import { TTSClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
 import { getTtsCache, setTtsCache, isVipUser, getCacheStats } from '../services/vipCache';
 import { getTTSSpeaker, LANGUAGE_CONFIGS } from '../config/languages';
 import type { LanguageCode } from '../config/languages';
+import { synthesizeWithOpenAI, getRecommendedVoice, isOpenAIAvailable, OPENAI_VOICES, type OpenAIVoice } from '../services/openai';
 
 const router: Router = express.Router();
+
+// 语言类型判断：是否为非中英语言（需要使用 OpenAI TTS）
+function isNonChineseEnglishLanguage(language: string): boolean {
+  return ['fr', 'de', 'es', 'ja', 'ko'].includes(language);
+}
+
+// 判断 speaker ID 是否为 OpenAI 声音
+function isOpenAIVoice(speaker: string): boolean {
+  return ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'].includes(speaker);
+}
+
+// 从 speaker ID 解析性别
+function parseGenderFromSpeaker(speaker: string): 'male' | 'female' {
+  if (speaker.includes('female') || speaker.includes('vv') || speaker.includes('xiaohe')) {
+    return 'female';
+  }
+  return 'male';
+}
+
+// speaker ID 到 OpenAI voice 的映射
+const SPEAKER_TO_OPENAI_VOICE: Record<string, OpenAIVoice> = {
+  // 女声映射到 nova
+  'zh_female_vv_uranus_bigtts': 'nova',
+  'zh_female_xiaohe_uranus_bigtts': 'nova',
+  // 男声映射到 echo
+  'zh_male_m191_uranus_bigtts': 'echo',
+  'zh_male_taocheng_uranus_bigtts': 'echo',
+  // 默认
+  'default': 'nova',
+};
 
 /**
  * 自动检测文本语言
@@ -121,11 +152,9 @@ router.get('/', async (req: Request, res: Response) => {
     // 自动检测语言（如果没有指定）
     const detectedLanguage = language || detectLanguage(text);
     
-    // 根据语言选择合适的 speaker
-    const ttsSpeaker = speaker || getTTSSpeaker(detectedLanguage, 'male');
-    
-    // 检查缓存
-    const cached = getTtsCache(text, ttsSpeaker);
+    // 检查缓存（使用 speaker + language 作为 key）
+    const cacheKey = `${speaker || 'default'}_${detectedLanguage}`;
+    const cached = getTtsCache(text, cacheKey);
     if (cached) {
       console.log(`[TTS] 命中缓存: "${text.substring(0, 30)}..."`);
       res.setHeader('Content-Type', 'audio/mpeg');
@@ -138,39 +167,46 @@ router.get('/', async (req: Request, res: Response) => {
       return res.send(cached);
     }
     
-    console.log(`[TTS] 生成音频: "${text.substring(0, 50)}..." language: ${detectedLanguage}${language ? '' : '(自动检测)'}, speaker: ${ttsSpeaker}`);
+    // 判断是否使用 OpenAI TTS
+    // 条件1：speaker 是 OpenAI 声音 ID（nova, echo 等）
+    // 条件2：非中英语言且 OpenAI 可用
+    const useOpenAI = (isOpenAIAvailable() && (isOpenAIVoice(speaker || '') || isNonChineseEnglishLanguage(detectedLanguage)));
     
-    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
-    const config = new Config();
-    const ttsClient = new TTSClient(config, customHeaders);
+    let audioBuffer: Buffer;
     
-    const ttsResponse = await ttsClient.synthesize({
-      uid: 'web_tts_' + Date.now(),
-      text: text,
-      speaker: ttsSpeaker,
-      audioFormat: 'mp3',
-      sampleRate: 24000,
-    });
-    
-    // 检查 audioUri 是否有效
-    if (!ttsResponse.audioUri) {
-      console.error(`[TTS] 音频 URI 为空，语言: ${detectedLanguage}, speaker: ${ttsSpeaker}`);
-      return res.status(500).json({ 
-        error: '语音合成暂不支持该语言', 
-        message: `暂不支持 ${detectedLanguage} 语言的语音合成，请使用中英双语内容`,
-        language: detectedLanguage,
-      });
+    if (useOpenAI && isOpenAIAvailable()) {
+      // 使用 OpenAI TTS（支持纯正法语等多语言口音）
+      // 如果 speaker 是 OpenAI 声音 ID，直接使用；否则根据性别选择
+      let openAIVoice: OpenAIVoice = 'nova';
+      if (speaker && isOpenAIVoice(speaker)) {
+        openAIVoice = speaker as OpenAIVoice;
+      } else {
+        const gender = speaker ? parseGenderFromSpeaker(speaker) : 'female';
+        openAIVoice = getRecommendedVoice(detectedLanguage as LanguageCode, gender);
+      }
+      
+      console.log(`[TTS] 使用 OpenAI TTS，语言: ${detectedLanguage}, 声音: ${openAIVoice}`);
+      
+      const result = await synthesizeWithOpenAI(text, openAIVoice);
+      
+      if (result.error || result.audioBuffer.length === 0) {
+        console.error(`[OpenAI TTS] 合成失败: ${result.error}`);
+        // fallback 到豆包 TTS
+        console.log(`[TTS] fallback 到豆包 TTS`);
+        const ttsSpeaker = speaker || getTTSSpeaker(detectedLanguage, 'male');
+        audioBuffer = await synthesizeWithDoubao(text, ttsSpeaker, req);
+      } else {
+        audioBuffer = result.audioBuffer;
+      }
+    } else {
+      // 使用豆包 TTS（中英文）
+      const ttsSpeaker = speaker || getTTSSpeaker(detectedLanguage, 'male');
+      console.log(`[TTS] 使用豆包 TTS，语言: ${detectedLanguage}, speaker: ${ttsSpeaker}`);
+      audioBuffer = await synthesizeWithDoubao(text, ttsSpeaker, req);
     }
     
-    // 获取音频数据
-    const audioResponse = await axios.get(ttsResponse.audioUri, {
-      responseType: 'arraybuffer',
-    });
-    
-    const audioBuffer = Buffer.from(audioResponse.data);
-    
     // 存入缓存
-    setTtsCache(text, ttsSpeaker, audioBuffer);
+    setTtsCache(text, cacheKey, audioBuffer);
     
     // 设置响应头并返回音频数据
     res.setHeader('Content-Type', 'audio/mpeg');
@@ -185,6 +221,70 @@ router.get('/', async (req: Request, res: Response) => {
     console.error('[TTS] 生成失败:', error);
     res.status(500).json({ error: '语音生成失败', message: error.message });
   }
+});
+
+/**
+ * 使用豆包 TTS 合成语音
+ */
+async function synthesizeWithDoubao(text: string, speaker: string, req: Request): Promise<Buffer> {
+  const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+  const config = new Config();
+  const ttsClient = new TTSClient(config, customHeaders);
+  
+  const ttsResponse = await ttsClient.synthesize({
+    uid: 'web_tts_' + Date.now(),
+    text: text,
+    speaker: speaker,
+    audioFormat: 'mp3',
+    sampleRate: 24000,
+  });
+  
+  // 检查 audioUri 是否有效
+  if (!ttsResponse.audioUri) {
+    throw new Error('语音合成失败：音频 URI 为空');
+  }
+  
+  // 获取音频数据
+  const audioResponse = await axios.get(ttsResponse.audioUri, {
+    responseType: 'arraybuffer',
+  });
+  
+  return Buffer.from(audioResponse.data);
+}
+
+/**
+ * GET /api/v1/tts/voices
+ * 获取支持的 TTS 声音列表
+ */
+router.get('/voices', (req: Request, res: Response) => {
+  const voices = {
+    openai: Object.entries(OPENAI_VOICES).map(([id, info]) => ({
+      id,
+      name: info.name,
+      gender: info.gender,
+      description: info.description,
+    })),
+    doubao: [
+      { id: 'zh_female_vv_uranus_bigtts', name: '薇薇', gender: 'female', description: '双语女声' },
+      { id: 'zh_female_xiaohe_uranus_bigtts', name: '晓荷', gender: 'female', description: '中文女声' },
+      { id: 'zh_male_m191_uranus_bigtts', name: '云舟', gender: 'male', description: '中文男声' },
+      { id: 'zh_male_taocheng_uranus_bigtts', name: '晓天', gender: 'male', description: '中文男声' },
+    ],
+  };
+  
+  res.json({
+    success: true,
+    voices,
+    recommendation: {
+      chinese: '使用豆包 TTS（薇薇、晓荷等）',
+      english: '使用豆包 TTS 或 OpenAI TTS',
+      french: '使用 OpenAI TTS（nova、echo）',
+      german: '使用 OpenAI TTS（nova、echo）',
+      spanish: '使用 OpenAI TTS（nova、echo）',
+      japanese: '使用 OpenAI TTS（nova、echo）',
+      korean: '使用 OpenAI TTS（nova、echo）',
+    },
+  });
 });
 
 /**
