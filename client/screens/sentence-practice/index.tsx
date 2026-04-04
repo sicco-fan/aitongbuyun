@@ -53,11 +53,21 @@ import {
   WebSpeechResult 
 } from '@/utils/webSpeechRecognition';
 import { 
+  isWebSpeechTTSSupported,
+  speakWithWebTTS,
+  stopWebTTS,
+  hasNativeVoiceForLanguage,
+  waitForVoicesLoaded,
+} from '@/utils/webSpeechTTS';
+import { 
   isVipUser, 
   preloadTtsAudios, 
   getCachedTtsUrl,
   initFastCache 
 } from '@/utils/fastCache';
+
+// 使用 Web Speech TTS 的语言（非中英文，在 Web 端使用浏览器原生 TTS）
+const USE_WEB_SPEECH_TTS_LANGUAGES = ['fr', 'de', 'es', 'ja', 'ko'];
 
 const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://127.0.0.1:9091';
 
@@ -2552,6 +2562,7 @@ export default function SentencePracticeScreen() {
   const [playbackRate, setPlaybackRate] = useState(1.0);
   const [showAudioSettings, setShowAudioSettings] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const webTTSStopRef = useRef<(() => void) | null>(null); // Web Speech TTS 停止函数
   const isMountedRef = useRef(true);
   const isLoopingRef = useRef(true);
   const volumeRef = useRef(1.0);
@@ -3559,8 +3570,45 @@ export default function SentencePracticeScreen() {
       setIsPlaying(true);
     } else {
       // 无本地缓存，使用在线 TTS（支持 Web 端）
-      console.log(`[playNextSource] 使用在线TTS, voiceId: ${aiVoice.voiceId}, language: ${file?.language || 'en'}`);
-      const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence!.text)}&speaker=${aiVoice.voiceId}&language=${file?.language || 'en'}`;
+      const lang = file?.language || 'en';
+      
+      // ===== Web 端：法语等非中英语言使用浏览器原生 TTS（免费）=====
+      if (Platform.OS === 'web' && USE_WEB_SPEECH_TTS_LANGUAGES.includes(lang) && isWebSpeechTTSSupported()) {
+        console.log(`[playNextSource-Web TTS] 使用浏览器原生语音合成: ${lang}`);
+        setIsPlaying(true);
+        
+        // 等待声音列表加载
+        await waitForVoicesLoaded();
+        
+        // 使用 Web Speech TTS
+        const stopTTS = speakWithWebTTS({
+          text: currentSentence!.text,
+          language: lang,
+          rate: playbackRateRef.current,
+          volume: volumeRef.current,
+          onStart: () => {
+            console.log('[playNextSource-Web TTS] 开始播放');
+          },
+          onEnd: () => {
+            console.log('[playNextSource-Web TTS] 播放结束');
+            setIsPlaying(false);
+            // 播放下一个音源
+            if (isMountedRef.current && playNextSourceRef.current) {
+              playNextSourceRef.current();
+            }
+          },
+          onError: (error) => {
+            console.error('[playNextSource-Web TTS] 播放错误:', error);
+            setIsPlaying(false);
+          },
+        });
+        
+        webTTSStopRef.current = stopTTS;
+        return;
+      }
+      
+      console.log(`[playNextSource] 使用在线TTS, voiceId: ${aiVoice.voiceId}, language: ${lang}`);
+      const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence!.text)}&speaker=${aiVoice.voiceId}&language=${lang}`;
       const { sound } = await Audio.Sound.createAsync(
         { uri: ttsUrl },
         {
@@ -3701,6 +3749,48 @@ export default function SentencePracticeScreen() {
            * 接口：GET /api/v1/tts
            * Query 参数：text: string, speaker?: string
            */
+          
+          // ===== Web 端：法语等非中英语言使用浏览器原生 TTS（免费）=====
+          const lang = file?.language || 'en';
+          if (Platform.OS === 'web' && USE_WEB_SPEECH_TTS_LANGUAGES.includes(lang) && isWebSpeechTTSSupported()) {
+            console.log(`[Web TTS] 使用浏览器原生语音合成: ${lang}`);
+            setIsAudioLoading(false);
+            setIsPlaying(true);
+            
+            // 等待声音列表加载
+            await waitForVoicesLoaded();
+            
+            // 使用 Web Speech TTS
+            const stopTTS = speakWithWebTTS({
+              text: currentSentence.text,
+              language: lang,
+              rate: playbackRateRef.current,
+              volume: volumeRef.current,
+              onStart: () => {
+                console.log('[Web TTS] 开始播放');
+              },
+              onEnd: () => {
+                console.log('[Web TTS] 播放结束');
+                setIsPlaying(false);
+                
+                // 检查循环播放
+                if (isLoopingRef.current && isMountedRef.current) {
+                  setTimeout(() => {
+                    playAudio();
+                  }, 500);
+                }
+              },
+              onError: (error) => {
+                console.error('[Web TTS] 播放错误:', error);
+                setIsPlaying(false);
+                setAudioLoadError('语音合成失败，点击重试');
+              },
+            });
+            
+            // 保存停止函数
+            webTTSStopRef.current = stopTTS;
+            return;
+          }
           
           // Web 端：使用极速缓存（优先检查本地缓存）
           let playUrl: string;
@@ -3935,6 +4025,12 @@ export default function SentencePracticeScreen() {
 
   // 暂停播放
   const pauseAudio = useCallback(async () => {
+    // 停止 Web Speech TTS
+    if (webTTSStopRef.current) {
+      webTTSStopRef.current();
+      webTTSStopRef.current = null;
+    }
+    
     if (soundRef.current) {
       try {
         await soundRef.current.pauseAsync();
@@ -3947,6 +4043,12 @@ export default function SentencePracticeScreen() {
 
   // 停止播放
   const stopPlayback = useCallback(async () => {
+    // 停止 Web Speech TTS
+    if (webTTSStopRef.current) {
+      webTTSStopRef.current();
+      webTTSStopRef.current = null;
+    }
+    
     if (soundRef.current) {
       try {
         await soundRef.current.stopAsync();
