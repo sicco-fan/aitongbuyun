@@ -385,6 +385,15 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
       justifyContent: 'center',
     },
+    recordingCancelBtn: {
+      marginTop: Spacing.xl,
+      paddingHorizontal: Spacing.xl,
+      paddingVertical: Spacing.md,
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
+      borderRadius: BorderRadius.lg,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.3)',
+    },
     
     // Custom Keyboard
     customKeyboardContainer: {

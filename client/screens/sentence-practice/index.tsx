@@ -2616,12 +2616,63 @@ export default function SentencePracticeScreen() {
   const [currentPlayingSourceIndex, setCurrentPlayingSourceIndex] = useState(0); // 当前播放的音源索引
   const selectedSourceIdsRef = useRef<string[]>([]); // 用于在回调中获取最新值
   const currentPlayingSourceIndexRef = useRef(0); // 用于在回调中获取最新值
-  const aiVoicesRef = useRef<Array<{id: string; name: string; voiceId: string}>>([
-    { id: 'ai_weiwei', name: '薇薇（双语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
-    { id: 'ai_xiaohe', name: '晓荷（中文女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
-    { id: 'ai_yunzhou', name: '云舟（中文男声）', voiceId: 'zh_male_m191_uranus_bigtts' },
-    { id: 'ai_xiaotian', name: '晓天（中文男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
-  ]); // 四种AI音色
+  // 根据课程语言设置 AI 人名
+  const getAIVoicesByLanguage = useCallback((language: string) => {
+    // 法语 AI 人名
+    if (language === 'fr') {
+      return [
+        { id: 'ai_marie', name: 'Marie（法语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
+        { id: 'ai_pierre', name: 'Pierre（法语男声）', voiceId: 'zh_male_m191_uranus_bigtts' },
+        { id: 'ai_sophie', name: 'Sophie（法语女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
+        { id: 'ai_lucas', name: 'Lucas（法语男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
+      ];
+    }
+    // 德语 AI 人名
+    if (language === 'de') {
+      return [
+        { id: 'ai_anna', name: 'Anna（德语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
+        { id: 'ai_hans', name: 'Hans（德语男声）', voiceId: 'zh_male_m191_uranus_bigtts' },
+        { id: 'ai_lisa', name: 'Lisa（德语女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
+        { id: 'ai_felix', name: 'Felix（德语男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
+      ];
+    }
+    // 西班牙语 AI 人名
+    if (language === 'es') {
+      return [
+        { id: 'ai_maria', name: 'María（西语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
+        { id: 'ai_carlos', name: 'Carlos（西语男声）', voiceId: 'zh_male_m191_uranus_bigtts' },
+        { id: 'ai_elena', name: 'Elena（西语女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
+        { id: 'ai_diego', name: 'Diego（西语男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
+      ];
+    }
+    // 日语 AI 人名
+    if (language === 'ja') {
+      return [
+        { id: 'ai_yuki', name: '雪（日语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
+        { id: 'ai_takeshi', name: '武（日语男声）', voiceId: 'zh_male_m191_uranus_bigtts' },
+        { id: 'ai_sakura', name: '樱（日语女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
+        { id: 'ai_kenji', name: '健二（日语男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
+      ];
+    }
+    // 韩语 AI 人名
+    if (language === 'ko') {
+      return [
+        { id: 'ai_minji', name: '민지（韩语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
+        { id: 'ai_jimin', name: '지민（韩语男声）', voiceId: 'zh_male_m191_uranus_bigtts' },
+        { id: 'ai_sora', name: '소라（韩语女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
+        { id: 'ai_minho', name: '민호（韩语男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
+      ];
+    }
+    // 默认中文/英语人名
+    return [
+      { id: 'ai_weiwei', name: '薇薇（双语女声）', voiceId: 'zh_female_vv_uranus_bigtts' },
+      { id: 'ai_xiaohe', name: '晓荷（中文女声）', voiceId: 'zh_female_xiaohe_uranus_bigtts' },
+      { id: 'ai_yunzhou', name: '云舟（中文男声）', voiceId: 'zh_male_m191_uranus_bigtts' },
+      { id: 'ai_xiaotian', name: '晓天（中文男声）', voiceId: 'zh_male_taocheng_uranus_bigtts' },
+    ];
+  }, []);
+
+  const aiVoicesRef = useRef<Array<{id: string; name: string; voiceId: string}>>(getAIVoicesByLanguage(file?.language || 'en'));
 
   // 同步 ref 和 state
   useEffect(() => {
@@ -2631,6 +2682,14 @@ export default function SentencePracticeScreen() {
   useEffect(() => {
     currentPlayingSourceIndexRef.current = currentPlayingSourceIndex;
   }, [currentPlayingSourceIndex]);
+
+  // 当课程语言变化时更新 AI 人名
+  useEffect(() => {
+    if (file?.language) {
+      aiVoicesRef.current = getAIVoicesByLanguage(file.language);
+      console.log(`[AI人名] 根据语言 ${file.language} 更新 AI 人名:`, aiVoicesRef.current.map(v => v.name).join(', '));
+    }
+  }, [file?.language, getAIVoicesByLanguage]);
 
   const currentSentence = sentences[currentIndex];
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0;
@@ -6127,13 +6186,42 @@ export default function SentencePracticeScreen() {
           <Animated.View 
             entering={FadeIn.duration(200)}
             exiting={FadeOut.duration(200)}
-            style={[styles.recordingOverlay, { pointerEvents: 'none' }]}
+            style={styles.recordingOverlay}
           >
             <View style={styles.recordingMicContainer}>
               <FontAwesome6 name="microphone" size={80} color={theme.buttonPrimaryText} />
               <ThemedText variant="h4" color={theme.buttonPrimaryText} style={{ marginTop: Spacing.lg }}>
                 正在录音...
               </ThemedText>
+              {/* 取消按钮 */}
+              <TouchableOpacity
+                style={styles.recordingCancelBtn}
+                onPress={() => {
+                  // 停止 Web Speech API
+                  if (webSpeechRef.current) {
+                    webSpeechRef.current.stop();
+                    webSpeechRef.current = null;
+                  }
+                  // 停止传统录音
+                  if (recordingRef.current) {
+                    recordingRef.current.stopAndUnloadAsync().catch(() => {});
+                    recordingRef.current = null;
+                  }
+                  setIsRecording(false);
+                  setIsRecognizing(false);
+                  // 恢复音频播放
+                  if (wasPlayingBeforeRecordingRef.current && isLoopingRef.current && isMountedRef.current) {
+                    setTimeout(() => {
+                      if (isLoopingRef.current && isMountedRef.current) {
+                        playAudio();
+                      }
+                    }, 300);
+                  }
+                  wasPlayingBeforeRecordingRef.current = false;
+                }}
+              >
+                <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>取消</ThemedText>
+              </TouchableOpacity>
             </View>
           </Animated.View>
         )}
@@ -6142,13 +6230,32 @@ export default function SentencePracticeScreen() {
         {isRecognizing && (
           <Animated.View 
             entering={FadeIn.duration(200)}
-            style={[styles.recordingOverlay, { pointerEvents: 'none' }]}
+            style={styles.recordingOverlay}
           >
             <View style={styles.recordingMicContainer}>
               <ActivityIndicator size="large" color={theme.buttonPrimaryText} />
               <ThemedText variant="h4" color={theme.buttonPrimaryText} style={{ marginTop: Spacing.lg }}>
                 正在识别...
               </ThemedText>
+              {/* 取消按钮 */}
+              <TouchableOpacity
+                style={styles.recordingCancelBtn}
+                onPress={() => {
+                  setIsRecognizing(false);
+                  setIsRecording(false);
+                  // 恢复音频播放
+                  if (wasPlayingBeforeRecordingRef.current && isLoopingRef.current && isMountedRef.current) {
+                    setTimeout(() => {
+                      if (isLoopingRef.current && isMountedRef.current) {
+                        playAudio();
+                      }
+                    }, 300);
+                  }
+                  wasPlayingBeforeRecordingRef.current = false;
+                }}
+              >
+                <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>取消</ThemedText>
+              </TouchableOpacity>
             </View>
           </Animated.View>
         )}
