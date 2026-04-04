@@ -1651,7 +1651,7 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
     
     const { data: lesson, error: lessonError } = await supabase
       .from('lessons')
-      .select('*')
+      .select('*, courses!course_id(language, native_language)')
       .eq('id', lessonId)
       .single();
     
@@ -1673,6 +1673,11 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
     // 前端会使用 TTS 在本地生成音频
     const targetVoiceId = voiceId || 'zh_female_xiaohe_uranus_bigtts';
     
+    // 获取课程的语言设置
+    const courseData = lesson.courses as { language?: string; native_language?: string } | null;
+    const language = courseData?.language || 'en';
+    const nativeLanguage = courseData?.native_language || 'zh';
+    
     const learnableSentences = (sentences || []).map((sentence: any) => ({
       id: sentence.id,
       text: sentence.english_text,
@@ -1693,6 +1698,8 @@ router.get('/lessons/:lessonId/learnable', async (req: Request, res: Response) =
         is_lesson: true,
         lesson_id: parseInt(lessonId as string),
         voice_id: targetVoiceId,
+        language: language,
+        native_language: nativeLanguage,
       },
       sentences: learnableSentences,
     });

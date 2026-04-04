@@ -5349,10 +5349,22 @@ export default function SentencePracticeScreen() {
     // ===== Web 端优先使用 Web Speech API =====
     if (useWebSpeech) {
       console.log('[Web Speech] 启动语音识别');
+      
+      // 根据课程语言设置 Web Speech 语言
+      const webSpeechLang = file?.language === 'fr' ? 'fr-FR' :
+                            file?.language === 'de' ? 'de-DE' :
+                            file?.language === 'es' ? 'es-ES' :
+                            file?.language === 'ja' ? 'ja-JP' :
+                            file?.language === 'ko' ? 'ko-KR' :
+                            file?.language === 'zh' ? 'zh-CN' :
+                            'en-US';
+      
+      console.log(`[Web Speech] 语言设置: ${file?.language || 'en'} -> ${webSpeechLang}`);
+      
       try {
         // 创建识别器
         webSpeechRef.current = new WebSpeechRecognizer({
-          language: 'en-US',
+          language: webSpeechLang,
           interimResults: true,
           onInterim: (text) => {
             // 实时显示中间结果
