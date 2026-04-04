@@ -839,7 +839,7 @@ router.get('/user-trend/:userId', requireAdmin, async (req, res) => {
  */
 router.get('/course-learners/:courseId', requireAdmin, async (req, res) => {
   try {
-    const courseId = parseInt(req.params.courseId, 10);
+    const courseId = parseInt(req.params.courseId as string, 10);
     if (isNaN(courseId)) {
       return res.status(400).json({ error: '无效的课程ID' });
     }

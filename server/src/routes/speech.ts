@@ -5,6 +5,7 @@ import { ASRClient, Config, HeaderUtils, LLMClient } from 'coze-coding-dev-sdk';
 import { Pool } from 'pg';
 import { getASRLanguage, getLanguageConfig } from '../config/languages';
 import type { LanguageCode } from '../config/languages';
+import { transcribeWithGroq, shouldUseGroq, isGroqAvailable } from '../services/groqWhisper';
 
 const router = Router();
 const upload = multer({
@@ -411,8 +412,9 @@ ${errors}
  * 语音识别接口 - 支持中国人发音纠正和AI学习
  * Body: file (音频), targetWords, deviceId, materialId, language (语言代码)
  * 
- * 注意：豆包 ASR 目前只支持中文和英语，其他语言可能无法正确识别
- * 建议 Web 端使用 Web Speech API 支持多语言识别
+ * 支持的语言：
+ * - 中文、英语：使用豆包 ASR
+ * - 法语、德语、西班牙语、日语、韩语：使用 Groq Whisper API
  */
 router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   try {
@@ -423,29 +425,59 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     const { buffer, mimetype } = req.file;
     const { targetWords, deviceId, materialId, language = 'en' } = req.body;
     
-    // 检查是否为不支持的语言
-    const unsupportedLanguages = ['fr', 'de', 'es', 'ja', 'ko'];
-    const isUnsupportedLanguage = unsupportedLanguages.includes(language);
+    // 检查是否应该使用 Groq Whisper（多语言支持）
+    const useGroq = shouldUseGroq(language as LanguageCode);
+    const groqAvailable = isGroqAvailable();
     
-    // 将音频转为 base64
-    const base64Data = buffer.toString('base64');
-
-    // 获取 ASR 语言代码
-    const asrLang = getASRLanguage(language);
-    console.log(`[ASR] 识别语言: ${language} -> ${asrLang}${isUnsupportedLanguage ? ' (可能不支持)' : ''}`);
-
-    // 使用 ASR 识别
-    const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
-    const asrClient = new ASRClient(new Config(), customHeaders);
+    let rawRecognizedText = '';
     
-    const result = await asrClient.recognize({
-      uid: deviceId || 'user',
-      base64Data,
-      lang: asrLang,
-    } as any);
+    // 根据语言选择 ASR 服务
+    if (useGroq && groqAvailable) {
+      // 使用 Groq Whisper 进行多语言识别
+      console.log(`[ASR] 使用 Groq Whisper 识别，语言: ${language}`);
+      
+      // 从 mimetype 推断文件扩展名
+      const ext = mimetype.includes('mp4') || mimetype.includes('m4a') ? 'm4a' :
+                  mimetype.includes('mp3') ? 'mp3' :
+                  mimetype.includes('wav') ? 'wav' :
+                  mimetype.includes('ogg') ? 'ogg' : 'm4a';
+      const filename = `audio.${ext}`;
+      
+      const groqResult = await transcribeWithGroq(buffer, language as LanguageCode, filename);
+      
+      if (groqResult.error) {
+        console.error('[Groq Whisper] 识别失败:', groqResult.error);
+        return res.json({ 
+          success: false,
+          text: '',
+          message: `语音识别失败: ${groqResult.error}`,
+          languageSupportWarning: true,
+        });
+      }
+      
+      rawRecognizedText = groqResult.text.trim();
+      console.log(`[Groq Whisper] 识别结果: ${rawRecognizedText}`);
+    } else {
+      // 使用豆包 ASR（中文和英语）
+      const asrLang = getASRLanguage(language);
+      console.log(`[ASR] 使用豆包 ASR 识别，语言: ${language} -> ${asrLang}`);
+      
+      // 将音频转为 base64
+      const base64Data = buffer.toString('base64');
 
-    const rawRecognizedText = result.text.trim();
-    console.log('[ASR] 原始识别结果:', rawRecognizedText);
+      // 使用 ASR 识别
+      const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
+      const asrClient = new ASRClient(new Config(), customHeaders);
+      
+      const result = await asrClient.recognize({
+        uid: deviceId || 'user',
+        base64Data,
+        lang: asrLang,
+      } as any);
+
+      rawRecognizedText = result.text.trim();
+      console.log('[ASR] 原始识别结果:', rawRecognizedText);
+    }
     
     // 非英语不做缩写词修复和发音纠正
     let recognizedText = rawRecognizedText;
@@ -540,9 +572,6 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
         mode: 'letter',
         detectedType: 'letter',
         aiCorrected: letters.join('') !== correctedLetters.join(''),
-        languageSupportWarning: isUnsupportedLanguage ? 
-          `${language === 'fr' ? '法语' : language === 'de' ? '德语' : language === 'es' ? '西班牙语' : language === 'ja' ? '日语' : '韩语'}语音识别暂不支持，建议使用 Web 端或键盘输入` : 
-          undefined,
       });
     }
     
@@ -636,9 +665,6 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
         detectedType,
         aiCorrected: matchedWords.length > 0 && 
           !recognizedWords.some(w => matchedWords.includes(w.toLowerCase())),
-        languageSupportWarning: isUnsupportedLanguage ? 
-          `${language === 'fr' ? '法语' : language === 'de' ? '德语' : language === 'es' ? '西班牙语' : language === 'ja' ? '日语' : '韩语'}语音识别暂不支持，建议使用 Web 端或键盘输入` : 
-          undefined,
       });
     }
     
@@ -647,9 +673,6 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       success: true,
       text: recognizedText,
       mode: 'raw',
-      languageSupportWarning: isUnsupportedLanguage ? 
-        `${language === 'fr' ? '法语' : language === 'de' ? '德语' : language === 'es' ? '西班牙语' : language === 'ja' ? '日语' : '韩语'}语音识别暂不支持，建议使用 Web 端或键盘输入` : 
-        undefined,
     });
   } catch (error) {
     console.error('语音识别失败:', error);
