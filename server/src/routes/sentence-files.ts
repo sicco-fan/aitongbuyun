@@ -245,8 +245,8 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       return res.status(400).json({ error: '请上传音频或视频文件' });
     }
 
-    const { title, description, user_id } = req.body;
-    console.log('请求参数:', { title, description, user_id, hasFile: !!req.file });
+    const { title, description, user_id, language, native_language } = req.body;
+    console.log('请求参数:', { title, description, user_id, language, native_language, hasFile: !!req.file });
     
     if (!title) {
       console.log('错误: 没有标题');
@@ -356,6 +356,8 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
         source_type: 'upload',
         status: 'audio_ready',
         created_by: user_id || null,
+        language: language || 'en',
+        native_language: native_language || 'zh',
       })
       .select()
       .single();

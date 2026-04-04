@@ -3,6 +3,8 @@ import type { Request, Response } from 'express';
 import multer from 'multer';
 import { ASRClient, Config, HeaderUtils, LLMClient } from 'coze-coding-dev-sdk';
 import { Pool } from 'pg';
+import { getASRLanguage, getLanguageConfig } from '../config/languages';
+import type { LanguageCode } from '../config/languages';
 
 const router = Router();
 const upload = multer({
@@ -407,6 +409,7 @@ ${errors}
 /**
  * POST /api/v1/speech-recognize
  * 语音识别接口 - 支持中国人发音纠正和AI学习
+ * Body: file (音频), targetWords, deviceId, materialId, language (语言代码)
  */
 router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   try {
@@ -415,10 +418,14 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     }
 
     const { buffer, mimetype } = req.file;
-    const { targetWords, deviceId, materialId } = req.body;
+    const { targetWords, deviceId, materialId, language = 'en' } = req.body;
     
     // 将音频转为 base64
     const base64Data = buffer.toString('base64');
+
+    // 获取 ASR 语言代码
+    const asrLang = getASRLanguage(language);
+    console.log(`[ASR] 识别语言: ${language} -> ${asrLang}`);
 
     // 使用 ASR 识别
     const customHeaders = HeaderUtils.extractForwardHeaders(req.headers as Record<string, string>);
@@ -427,23 +434,28 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
     const result = await asrClient.recognize({
       uid: deviceId || 'user',
       base64Data,
-      lang: 'en', // 固定识别为英语
+      lang: asrLang,
     } as any);
 
     const rawRecognizedText = result.text.trim();
     console.log('[ASR] 原始识别结果:', rawRecognizedText);
     
-    // 自动修复缩写词（don t → don't, what s → what's 等）
-    let recognizedText = fixContractions(rawRecognizedText);
-    if (recognizedText !== rawRecognizedText) {
-      console.log('[ASR] 缩写词修复:', rawRecognizedText, '→', recognizedText);
+    // 非英语不做缩写词修复和发音纠正
+    let recognizedText = rawRecognizedText;
+    
+    // 英语特有的后处理：自动修复缩写词（don t → don't, what s → what's 等）
+    if (language === 'en') {
+      recognizedText = fixContractions(rawRecognizedText);
+      if (recognizedText !== rawRecognizedText) {
+        console.log('[ASR] 缩写词修复:', rawRecognizedText, '→', recognizedText);
+      }
     }
     
     // 获取目标文本（用于混淆词修复）
     const targetText = req.body.targetText as string | undefined;
     
-    // 修复常见混淆词（如 we'll → well，当目标文本中有 well 时）
-    if (targetText) {
+    // 英语特有的处理：修复常见混淆词（如 we'll → well，当目标文本中有 well 时）
+    if (language === 'en' && targetText) {
       const afterConfusionFix = fixCommonConfusions(recognizedText, targetText);
       if (afterConfusionFix !== recognizedText) {
         console.log('[ASR] 混淆词修复:', recognizedText, '→', afterConfusionFix, '(目标:', targetText, ')');

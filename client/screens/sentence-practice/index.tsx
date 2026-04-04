@@ -1733,6 +1733,8 @@ interface SentenceFile {
   is_lesson?: boolean; // 是否为课程模式
   lesson_id?: number; // 课时ID
   voice_id?: string; // 音色ID
+  language?: string; // 语言代码（en, fr, de, es, ja, ko, zh）
+  native_language?: string; // 母语代码（用于翻译）
 }
 
 interface WordStatus {
@@ -3498,8 +3500,8 @@ export default function SentencePracticeScreen() {
       setIsPlaying(true);
     } else {
       // 无本地缓存，使用在线 TTS（支持 Web 端）
-      console.log(`[playNextSource] 使用在线TTS, voiceId: ${aiVoice.voiceId}`);
-      const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence!.text)}&speaker=${aiVoice.voiceId}`;
+      console.log(`[playNextSource] 使用在线TTS, voiceId: ${aiVoice.voiceId}, language: ${file?.language || 'en'}`);
+      const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence!.text)}&speaker=${aiVoice.voiceId}&language=${file?.language || 'en'}`;
       const { sound } = await Audio.Sound.createAsync(
         { uri: ttsUrl },
         {
@@ -3646,7 +3648,7 @@ export default function SentencePracticeScreen() {
           if (Platform.OS === 'web') {
             try {
               const voiceIdToUse = playingVoiceId || 'zh_female_xiaohe_uranus_bigtts';
-              playUrl = await getCachedTtsUrl(currentSentence.text, voiceIdToUse, EXPO_PUBLIC_BACKEND_BASE_URL);
+              playUrl = await getCachedTtsUrl(currentSentence.text, voiceIdToUse, EXPO_PUBLIC_BACKEND_BASE_URL, file?.language || 'en');
               console.log(`[极速缓存] 使用URL: ${playUrl.substring(0, 50)}...`);
               
               // 预加载接下来的句子音频
@@ -3654,15 +3656,16 @@ export default function SentencePracticeScreen() {
                 preloadTtsAudios(
                   sentences.map(s => ({ text: s.text })),
                   currentIndex,
-                  EXPO_PUBLIC_BACKEND_BASE_URL
+                  EXPO_PUBLIC_BACKEND_BASE_URL,
+                  file?.language || 'en'
                 ).catch(() => {});
               }
             } catch (cacheErr) {
               console.log('[极速缓存] 获取失败，使用原始URL:', cacheErr);
-              playUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=${playingVoiceId || 'zh_female_xiaohe_uranus_bigtts'}`;
+              playUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=${playingVoiceId || 'zh_female_xiaohe_uranus_bigtts'}&language=${file?.language || 'en'}`;
             }
           } else {
-            playUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=${playingVoiceId}`;
+            playUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(currentSentence.text)}&speaker=${playingVoiceId}&language=${file?.language || 'en'}`;
           }
           
           const { sound } = await Audio.Sound.createAsync(
@@ -3927,7 +3930,7 @@ export default function SentencePracticeScreen() {
     console.log(`[预加载] 开始预加载句子 ${nextSentenceIndex}, voiceId: ${playingVoiceId}`);
     
     try {
-      const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(nextSentence.text)}&speaker=${playingVoiceId}`;
+      const ttsUrl = `${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/tts?text=${encodeURIComponent(nextSentence.text)}&speaker=${playingVoiceId}&language=${file?.language || 'en'}`;
       
       // 创建但不播放，仅加载到内存
       const { sound } = await Audio.Sound.createAsync(
@@ -5540,6 +5543,8 @@ export default function SentencePracticeScreen() {
         formData.append('file', fileData as any);
         // 传递目标句子文本，用于 ASR 混淆词修复（如 we'll → well）
         formData.append('targetText', currentSentence.text);
+        // 传递语言参数，支持多语言识别
+        formData.append('language', file?.language || 'en');
 
         const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/speech-recognize`, {
           method: 'POST',

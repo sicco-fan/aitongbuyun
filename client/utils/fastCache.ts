@@ -100,7 +100,8 @@ async function getWebCache(): Promise<Cache | null> {
 export async function preloadTtsAudios(
   sentences: Array<{ text: string; speaker?: string }>,
   currentIndex: number,
-  baseUrl: string
+  baseUrl: string,
+  language: string = 'en'
 ): Promise<void> {
   if (Platform.OS !== 'web') return;
   
@@ -116,7 +117,7 @@ export async function preloadTtsAudios(
     
     for (const sentence of toPreload) {
       const speaker = sentence.speaker || 'zh_female_xiaohe_uranus_bigtts';
-      const ttsUrl = `${baseUrl}/api/v1/tts?text=${encodeURIComponent(sentence.text)}&speaker=${speaker}`;
+      const ttsUrl = `${baseUrl}/api/v1/tts?text=${encodeURIComponent(sentence.text)}&speaker=${speaker}&language=${language}`;
       
       // 检查是否已缓存
       const cached = await cache.match(ttsUrl);
@@ -144,19 +145,20 @@ export async function preloadTtsAudios(
 export async function getCachedTtsUrl(
   text: string,
   speaker: string,
-  baseUrl: string
+  baseUrl: string,
+  language: string = 'en'
 ): Promise<string> {
   if (Platform.OS !== 'web') {
-    return `${baseUrl}/api/v1/tts?text=${encodeURIComponent(text)}&speaker=${speaker}`;
+    return `${baseUrl}/api/v1/tts?text=${encodeURIComponent(text)}&speaker=${speaker}&language=${language}`;
   }
   
   try {
     const cache = await getWebCache();
     if (!cache) {
-      return `${baseUrl}/api/v1/tts?text=${encodeURIComponent(text)}&speaker=${speaker}`;
+      return `${baseUrl}/api/v1/tts?text=${encodeURIComponent(text)}&speaker=${speaker}&language=${language}`;
     }
     
-    const ttsUrl = `${baseUrl}/api/v1/tts?text=${encodeURIComponent(text)}&speaker=${speaker}`;
+    const ttsUrl = `${baseUrl}/api/v1/tts?text=${encodeURIComponent(text)}&speaker=${speaker}&language=${language}`;
     
     // 检查缓存
     const cached = await cache.match(ttsUrl);
@@ -178,7 +180,7 @@ export async function getCachedTtsUrl(
     return ttsUrl;
   } catch (error) {
     console.error('[TTS缓存] 失败:', error);
-    return `${baseUrl}/api/v1/tts?text=${encodeURIComponent(text)}&speaker=${speaker}`;
+    return `${baseUrl}/api/v1/tts?text=${encodeURIComponent(text)}&speaker=${speaker}&language=${language}`;
   }
 }
 
