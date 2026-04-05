@@ -2592,7 +2592,8 @@ export default function SentencePracticeScreen() {
   
   // Web Speech API 识别器（Web 端优先使用）
   const webSpeechRef = useRef<WebSpeechRecognizer | null>(null);
-  const useWebSpeech = Platform.OS === 'web' && isWebSpeechSupported();
+  // Web Speech API 模式：仅对非英文语言使用（英文课程保持原来的 ASR）
+  const useWebSpeech = Platform.OS === 'web' && isWebSpeechSupported() && file?.language && USE_WEB_SPEECH_TTS_LANGUAGES.includes(file.language);
   
   // 跟随朗读模式的当前进度索引（已废弃，保留兼容）
   const followAlongIndexRef = useRef<number>(0);
