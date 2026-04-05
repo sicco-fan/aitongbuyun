@@ -40,19 +40,34 @@ export function getBestVoiceForLanguage(language: string): SpeechSynthesisVoice 
   const voices = getAvailableVoices();
   const langCodes = LANGUAGE_VOICE_MAP[language] || [language];
   
+  console.log(`[Web TTS] 查找声音 - 语言: ${language}, 可用声音数量: ${voices.length}`);
+  
+  // 打印所有可用的法语声音（调试用）
+  if (language === 'fr') {
+    const frenchVoices = voices.filter(v => v.lang.startsWith('fr'));
+    console.log(`[Web TTS] 法语声音列表:`, frenchVoices.map(v => `${v.name} (${v.lang}, local: ${v.localService})`));
+  }
+  
   // 优先级：原生声音 > 非原生声音
   for (const langCode of langCodes) {
     // 先找原生声音
     const nativeVoice = voices.find(v => 
       v.lang === langCode && v.localService
     );
-    if (nativeVoice) return nativeVoice;
+    if (nativeVoice) {
+      console.log(`[Web TTS] 找到原生声音: ${nativeVoice.name} (${nativeVoice.lang})`);
+      return nativeVoice;
+    }
     
     // 再找任何支持该语言的声音
     const anyVoice = voices.find(v => v.lang.startsWith(langCode.split('-')[0]));
-    if (anyVoice) return anyVoice;
+    if (anyVoice) {
+      console.log(`[Web TTS] 找到声音: ${anyVoice.name} (${anyVoice.lang})`);
+      return anyVoice;
+    }
   }
   
+  console.log(`[Web TTS] 未找到 ${language} 的声音，使用默认声音`);
   return null;
 }
 
@@ -96,17 +111,23 @@ export function speakWithWebTTS(options: WebTTSOptions): () => void {
   const langCodes = LANGUAGE_VOICE_MAP[language] || [language];
   utterance.lang = langCodes[0];
   
+  console.log(`[Web TTS] 准备播放 - 语言: ${language}, 文本: "${text.substring(0, 50)}...", 设置语言代码: ${utterance.lang}`);
+  
   // 设置声音
   if (voice) {
     const voices = getAvailableVoices();
     const selectedVoice = voices.find(v => v.name === voice);
     if (selectedVoice) {
       utterance.voice = selectedVoice;
+      console.log(`[Web TTS] 使用指定声音: ${selectedVoice.name}`);
     }
   } else {
     const bestVoice = getBestVoiceForLanguage(language);
     if (bestVoice) {
       utterance.voice = bestVoice;
+      console.log(`[Web TTS] 使用最佳声音: ${bestVoice.name} (${bestVoice.lang})`);
+    } else {
+      console.log(`[Web TTS] 未找到合适声音，使用浏览器默认声音`);
     }
   }
   
