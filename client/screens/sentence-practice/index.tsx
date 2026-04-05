@@ -1618,6 +1618,7 @@ const calculateMatchScore = (
 } => {
   // 预处理：转小写，统一引号格式，移除多余空格和标点
   // 【重要】与 extractWords 保持一致，保留单词内部的单引号（如 don't, what's）
+  // 【法语支持】保留法语特殊字符（é, è, ê, ë, à, â, ù, û, ô, î, ç, œ, æ）
   const cleanText = (text: string) => 
     text.toLowerCase()
       // 【新增】处理 extractWords 中使用的 Unicode 引号占位符
@@ -1626,7 +1627,7 @@ const calculateMatchScore = (
       // 统一所有类型的单引号为标准单引号（与 extractWords 一致）
       .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035\u02B9\u02BB\u02BC\u02BD\uFF07\u0060\u00B4]/g, "'")
       // 移除独立引号（单词外部的引号，如 'hello' 中的引号）
-      .replace(/(?<![a-z])'(?![a-z])/g, ' ')
+      .replace(/(?<![a-zàâäéèêëîïôöùûüÿçœæ])'(?![a-zàâäéèêëîïôöùûüÿçœæ])/gi, ' ')
       .replace(/[""„‶❝❞]/g, ' ') // 将双引号替换为空格
       // 【修复】将所有类型的破折号和连字符都替换为空格
       // 这样 A-B 会被拆分成 A B，支持连接符单词的拆分匹配
@@ -1634,9 +1635,12 @@ const calculateMatchScore = (
       // 【关键修复】先处理缩写词中的句号，让字母分开
       // 例如：B.C. -> b c, A.D. -> a d, U.S. -> u s
       // 这样与 extractWords 的处理方式一致（缩写词被分成单独的字母）
-      .replace(/([a-z])\.(?=[a-z]|$)/gi, '$1 ')
-      .replace(/([a-z])\.(?=[a-z]|$)/gi, '$1 ') // 再次处理，处理连续的情况如 B.C.
-      .replace(/[^\w\s']/g, '') // 移除标点符号（保留字母、数字、空格、单引号）
+      .replace(/([a-zàâäéèêëîïôöùûüÿçœæ])\.(?=[a-zàâäéèêëîïôöùûüÿçœæ]|$)/gi, '$1 ')
+      .replace(/([a-zàâäéèêëîïôöùûüÿçœæ])\.(?=[a-zàâäéèêëîïôöùûüÿçœæ]|$)/gi, '$1 ') // 再次处理，处理连续的情况如 B.C.
+      // 【法语支持】移除标点符号，但保留字母（包括法语等特殊字符）、数字、空格、单引号
+      // \w 只匹配 [a-zA-Z0-9_]，不匹配法语特殊字符
+      // 使用 Unicode 属性匹配：\p{L} 匹配所有字母（包括法语、德语等）
+      .replace(/[^\p{L}\p{N}\s']/gu, '')
       .replace(/\s+/g, ' ')
       .trim();
   
@@ -3419,8 +3423,9 @@ export default function SentencePracticeScreen() {
     }
     
     // 使用正则分割：保留单词（包括内部的 - ' &）、纯标点符号、以及独立引号占位符
-    // 注意：\u2772-\u2775 需要单独列出，因为正则范围可能无法正确匹配 Unicode
-    const tokens = processedText.match(/[a-z0-9'\-&]+|[,.!?;:()"❲❳❴❵]/gi) || [];
+    // 【法语支持】\u00C0-\u017F 包含西欧语言特殊字符（法语、德语、西班牙语等）
+    // 例如：é, è, ê, ë, à, â, ç, î, ï, ô, ö, ù, û, ü, ÿ, œ, æ, ß, ñ, ü, ö, ä
+    const tokens = processedText.match(/[\w'\-&\u00C0-\u017F\u0400-\u04FF\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]+|[,.!?;:()"❲❳❴❵]/giu) || [];
 
     tokens.forEach((token) => {
       // 还原独立引号占位符为显示文本
@@ -3441,7 +3446,8 @@ export default function SentencePracticeScreen() {
         isPunctuation = true;
       } else {
         // 判断是否为纯标点符号（不包含字母数字、-'&）
-        isPunctuation = !/[a-z0-9]/i.test(token);
+        // 【法语支持】使用 Unicode 属性匹配所有语言的字母
+        isPunctuation = !/[\p{L}\p{N}]/u.test(token);
       }
       
       result.push({
@@ -5554,9 +5560,14 @@ export default function SentencePracticeScreen() {
         // 开始识别（异步，结果在 stopRecordingAndRecognize 中处理）
         webSpeechRef.current.start().then((result) => {
           console.log('[Web Speech] 识别完成:', result.text);
-          // 如果识别完成但还在录音状态，自动处理结果
-          if (isRecording) {
+          // 直接处理结果，不需要检查 isRecording（因为 stop() 已被调用）
+          if (result.text) {
             handleSpeechResult(result.text.toLowerCase());
+          } else {
+            // 没有识别到内容
+            setIsRecording(false);
+            setIsRecognizing(false);
+            setShowVoiceResult(false);
           }
         }).catch((error) => {
           console.error('[Web Speech] 识别失败:', error);
@@ -5681,6 +5692,7 @@ export default function SentencePracticeScreen() {
     // ===== Web Speech API 模式 =====
     if (useWebSpeech && webSpeechRef.current) {
       console.log('[Web Speech] 停止识别');
+      setIsRecording(false);  // ← 关键修复：设置录音状态为 false
       setIsRecognizing(true);
       
       // 停止识别（结果会通过 start() 的 Promise 返回）
