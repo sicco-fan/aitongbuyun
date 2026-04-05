@@ -2567,6 +2567,7 @@ export default function SentencePracticeScreen() {
   const [showAudioSettings, setShowAudioSettings] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
   const webTTSStopRef = useRef<(() => void) | null>(null); // Web Speech TTS 停止函数
+  const webTTSLoopTimerRef = useRef<NodeJS.Timeout | null>(null); // Web Speech TTS 循环定时器
   const isMountedRef = useRef(true);
   const isLoopingRef = useRef(true);
   const volumeRef = useRef(1.0);
@@ -3779,10 +3780,13 @@ export default function SentencePracticeScreen() {
                 console.log('[Web TTS] 播放结束');
                 setIsPlaying(false);
                 
-                // 检查循环播放
+                // 检查循环播放（使用 setTimeout 并保存 timer）
                 if (isLoopingRef.current && isMountedRef.current) {
-                  setTimeout(() => {
-                    playAudio();
+                  webTTSLoopTimerRef.current = setTimeout(() => {
+                    // 再次检查是否仍在循环状态
+                    if (isLoopingRef.current && isMountedRef.current) {
+                      playAudio();
+                    }
                   }, 500);
                 }
               },
@@ -4031,6 +4035,12 @@ export default function SentencePracticeScreen() {
 
   // 暂停播放
   const pauseAudio = useCallback(async () => {
+    // 清除 Web Speech TTS 循环定时器
+    if (webTTSLoopTimerRef.current) {
+      clearTimeout(webTTSLoopTimerRef.current);
+      webTTSLoopTimerRef.current = null;
+    }
+    
     // 停止 Web Speech TTS
     if (webTTSStopRef.current) {
       webTTSStopRef.current();
@@ -4049,6 +4059,12 @@ export default function SentencePracticeScreen() {
 
   // 停止播放
   const stopPlayback = useCallback(async () => {
+    // 清除 Web Speech TTS 循环定时器
+    if (webTTSLoopTimerRef.current) {
+      clearTimeout(webTTSLoopTimerRef.current);
+      webTTSLoopTimerRef.current = null;
+    }
+    
     // 停止 Web Speech TTS
     if (webTTSStopRef.current) {
       webTTSStopRef.current();
