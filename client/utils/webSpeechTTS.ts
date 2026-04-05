@@ -160,8 +160,9 @@ export function speakWithWebTTS(options: WebTTSOptions): () => void {
   
   // 返回停止函数
   return () => {
+    console.log('[Web TTS] 停止播放');
     window.speechSynthesis.cancel();
-    onEnd?.();
+    // 注意：不调用 onEnd，因为这会触发循环播放
   };
 }
 

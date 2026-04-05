@@ -6082,11 +6082,12 @@ export default function SentencePracticeScreen() {
             }
           }}
           onTouchMove={(e) => {
-            // 移动超过20px就取消长按录音
+            // 移动超过50px才取消长按录音（增加容忍度，避免手指抖动误取消）
             if (touchStartRef.current && recordingTimerRef.current) {
               const dx = Math.abs(e.nativeEvent.pageX - touchStartRef.current.x);
               const dy = Math.abs(e.nativeEvent.pageY - touchStartRef.current.y);
-              if (dx > 20 || dy > 20) {
+              if (dx > 50 || dy > 50) {
+                console.log(`[触摸录音] 移动过大取消: dx=${dx}, dy=${dy}`);
                 clearTimeout(recordingTimerRef.current);
                 recordingTimerRef.current = null;
                 touchStartRef.current = null;
